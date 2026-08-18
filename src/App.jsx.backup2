@@ -1,0 +1,166 @@
+import React, { useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+
+import { auth } from './firebase';
+
+import Login from './pages/Login';
+import Dashboard from './pages/Dashboard';
+import Members from './pages/Members';
+import ChitsPlaceholder from './pages/ChitsPlaceholder';
+import PaymentsPlaceholder from './pages/PaymentsPlaceholder';
+import WhatsAppPlaceholder from './pages/WhatsAppPlaceholder';
+import SettingsPlaceholder from './pages/SettingsPlaceholder';
+import AdminLayout from './layouts/AdminLayout';
+
+function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setIsAuthenticated(!!user);
+      setAuthLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const handleLogin = () => {
+    // Firebase authentication has already succeeded.
+    // onAuthStateChanged will update isAuthenticated.
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-brand-navy-deep border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-brand-text-secondary">
+            Checking authentication...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <BrowserRouter>
+      <Routes>
+
+        {/* Public Login Route */}
+        <Route
+          path="/login"
+          element={
+            isAuthenticated ? (
+              <Navigate to="/dashboard" replace />
+            ) : (
+              <Login onLogin={handleLogin} />
+            )
+          }
+        />
+
+        {/* Private Protected Routes */}
+        <Route
+          path="/dashboard"
+          element={
+            isAuthenticated ? (
+              <AdminLayout onLogout={handleLogout}>
+                <Dashboard />
+              </AdminLayout>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+
+        <Route
+          path="/members"
+          element={
+            isAuthenticated ? (
+              <AdminLayout onLogout={handleLogout}>
+                <Members />
+              </AdminLayout>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+
+        <Route
+          path="/chits"
+          element={
+            isAuthenticated ? (
+              <AdminLayout onLogout={handleLogout}>
+                <ChitsPlaceholder />
+              </AdminLayout>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+
+        <Route
+          path="/payments"
+          element={
+            isAuthenticated ? (
+              <AdminLayout onLogout={handleLogout}>
+                <PaymentsPlaceholder />
+              </AdminLayout>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+
+        <Route
+          path="/whatsapp"
+          element={
+            isAuthenticated ? (
+              <AdminLayout onLogout={handleLogout}>
+                <WhatsAppPlaceholder />
+              </AdminLayout>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+
+        <Route
+          path="/settings"
+          element={
+            isAuthenticated ? (
+              <AdminLayout onLogout={handleLogout}>
+                <SettingsPlaceholder />
+              </AdminLayout>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+
+        {/* Default Fallback Redirect */}
+        <Route
+          path="*"
+          element={
+            <Navigate
+              to={isAuthenticated ? '/dashboard' : '/login'}
+              replace
+            />
+          }
+        />
+
+      </Routes>
+    </BrowserRouter>
+  );
+}
+
+export default App;

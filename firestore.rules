@@ -1,0 +1,65 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions for private administration access control
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        (request.auth.token.keys().hasAll(['email']) && request.auth.token.email.lower() == 'raghavendrachitts@gmail.com') ||
+        request.auth.uid == 'VCAIVBi2ZaV5zZqQmBeWpnr0Qln2' ||
+        (request.auth.token.keys().hasAll(['admin']) && request.auth.token.admin == true)
+      );
+    }
+
+    // Members collection — authenticated read, admin write
+    match /members/{memberId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Chits collection — authenticated read, admin write
+    match /chits/{chitId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Group Payment Settings collection — authenticated read, admin write
+    match /groupPaymentSettings/{settingId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Holdings collection — authenticated read, admin write
+    match /holdings/{holdingId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Payments collection — authenticated read, admin write
+    match /payments/{paymentId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // WhatsApp & SMS message logs — Cloud Functions Admin SDK write, authenticated read
+    match /messageLogs/{logId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+
+    match /whatsappMessageLogs/{logId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+
+    // Default fallback rule — authenticated read, admin write
+    match /{document=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+  }
+}

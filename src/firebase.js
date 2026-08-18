@@ -1,0 +1,24 @@
+import { initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
+import { getFunctions } from "firebase/functions";
+import { getStorage } from "firebase/storage";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAHf9ZmllsvCCnSZ8-LjYEaJhpqaEmRzcU",
+  authDomain: "raghavendra-chitts-c0822.firebaseapp.com",
+  projectId: "raghavendra-chitts-c0822",
+  storageBucket: "raghavendra-chitts-c0822.firebasestorage.app",
+  messagingSenderId: "1033279730234",
+  appId: "1:1033279730234:web:3cbfe0f06a842c41523b03",
+  measurementId: "G-D0C6CKKZR7",
+};
+
+const app = initializeApp(firebaseConfig);
+
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+export const functions = getFunctions(app);
+export const storage = getStorage(app);
+
+export default app;
