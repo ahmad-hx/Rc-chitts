@@ -1,5 +1,141 @@
 import { calculateMemberPayableAmount } from './upiService';
 
+export const DEFAULT_ENGLISH_TEMPLATE = `Hello {{memberName}},
+
+This is a payment reminder from Raghavendra Chitts.
+
+Chit Group: {{groupName}}
+Billing Month: {{billingMonth}}
+Chit Amount: ₹{{chitAmount}}
+Pending Amount: ₹{{pendingAmount}}
+Due Date: {{dueDate}}
+
+Please make the payment on time.
+
+Thank you,
+Raghavendra Chitts`;
+
+export const DEFAULT_TELUGU_TEMPLATE = `నమస్కారం {{memberName}} గారు,
+
+రాఘవేంద్ర చిట్స్ నుండి చెల్లింపు రిమైండర్.
+
+చిట్టీ గ్రూప్: {{groupName}}
+బిల్లింగ్ నెల: {{billingMonth}}
+చిట్టీ విలువ: ₹{{chitAmount}}
+బాకీ మొత్తం: ₹{{pendingAmount}}
+గడువు తేదీ: {{dueDate}}
+
+దయచేసి సమయానికి చెల్లింపు పూర్తి చేయండి.
+
+ధన్యవాదములు,
+రాఘవేంద్ర చిట్స్`;
+
+/**
+ * Unified Currency Formatter — Prevents duplicate ₹ symbols (never outputs ₹₹1,00,000)
+ */
+export function formatCurrency(value) {
+  if (value === null || value === undefined || value === '') return '₹0';
+  const str = String(value).trim();
+  const cleanStr = str.replace(/^₹+/, '').trim();
+  const num = Number(cleanStr.replace(/,/g, ''));
+  if (isNaN(num)) return '₹0';
+  return `₹${num.toLocaleString('en-IN')}`;
+}
+
+export function formatRawNumber(value) {
+  if (value === null || value === undefined || value === '') return '0';
+  const str = String(value).trim();
+  const cleanStr = str.replace(/^₹+/, '').trim();
+  const num = Number(cleanStr.replace(/,/g, ''));
+  if (isNaN(num)) return '0';
+  return num.toLocaleString('en-IN');
+}
+
+/**
+ * Unified Phone Number Normalization & Display Formatter
+ */
+export function normalizeApiPhoneNumber(value = '') {
+  if (!value) return '';
+  const digits = String(value).replace(/\D/g, '');
+  if (!digits) return '';
+
+  if (digits.length === 10 && /^[6-9]/.test(digits)) {
+    return `91${digits}`;
+  }
+  if (digits.length === 11 && digits.startsWith('0')) {
+    return `91${digits.slice(1)}`;
+  }
+  if (digits.length === 12 && digits.startsWith('91')) {
+    return digits;
+  }
+  return digits;
+}
+
+export function formatDisplayPhoneNumber(value = '') {
+  if (!value) return 'N/A';
+  const clean = String(value).trim();
+  if (clean.startsWith('+')) {
+    return clean;
+  }
+
+  const digits = clean.replace(/\D/g, '');
+  if (!digits) return value;
+
+  if (digits.length === 10 && /^[6-9]/.test(digits)) {
+    return `+91 ${digits.slice(0, 5)} ${digits.slice(5)}`;
+  }
+  if (digits.length === 11 && digits.startsWith('0')) {
+    const main = digits.slice(1);
+    return `+91 ${main.slice(0, 5)} ${main.slice(5)}`;
+  }
+  if (digits.length === 12 && digits.startsWith('91')) {
+    const main = digits.slice(2);
+    return `+91 ${main.slice(0, 5)} ${main.slice(5)}`;
+  }
+  return `+${digits}`;
+}
+
+/**
+ * Replace placeholders dynamically in custom WhatsApp templates.
+ * Supported variables: {{memberName}}, {{phone}}, {{groupName}}, {{chitAmount}}, {{pendingAmount}}, {{billingMonth}}, {{dueDate}}
+ */
+export function formatWhatsAppTemplate({
+  templateText = '',
+  memberName = 'Member',
+  phone = '',
+  groupName = 'Chit Group',
+  chitAmount = '1,00,000',
+  pendingAmount = '0',
+  billingMonth = 'August 2026',
+  dueDate = '15th of Month',
+  upiUrl = null,
+}) {
+  if (!templateText) return '';
+
+  const cleanChitAmt = formatRawNumber(chitAmount);
+  const cleanPendingAmt = formatRawNumber(pendingAmount);
+  const formattedPhone = formatDisplayPhoneNumber(phone);
+
+  let compiled = templateText
+    .replace(/\{\{memberName\}\}/g, memberName || 'Member')
+    .replace(/\{\{phone\}\}/g, formattedPhone || '')
+    .replace(/\{\{groupName\}\}/g, groupName || 'Chit Group')
+    .replace(/\{\{chitAmount\}\}/g, cleanChitAmt)
+    .replace(/\{\{pendingAmount\}\}/g, cleanPendingAmt)
+    .replace(/\{\{billingMonth\}\}/g, billingMonth || 'August 2026')
+    .replace(/\{\{dueDate\}\}/g, dueDate || '15th of Month');
+
+  // Strip any accidental double currency symbols
+  compiled = compiled.replace(/₹₹+/g, '₹');
+
+  if (upiUrl && upiUrl.trim()) {
+    compiled += `\n\nPayment Link (UPI):\n${upiUrl.trim()}`;
+  }
+
+  return compiled;
+}
+
+
 export function getBilingualWhatsAppMessage(member, groupPaymentSettings = {}) {
   if (!member) return '';
   const totalAmountToPay = calculateMemberPayableAmount(member, groupPaymentSettings);
@@ -53,3 +189,4 @@ export function getBilingualWhatsAppMessage(member, groupPaymentSettings = {}) {
 
   return `${englishMessage}\n-------------------\n\n${teluguMessage}`;
 }
+

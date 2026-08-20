@@ -1,1067 +1,1236 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  BellRing,
-  CheckCircle2,
-  CircleAlert,
-  Clock3,
-  LoaderCircle,
-  MessageCircleMore,
-  MessageSquareText,
-  Phone,
   Send,
-  ShieldCheck,
+  RefreshCw,
+  Search,
+  ChevronDown,
+  ChevronUp,
   Users,
-  X,
-  RotateCcw,
-  AlertTriangle,
-  CreditCard,
+  CheckCircle2,
+  AlertCircle,
+  History,
+  Info,
+  QrCode,
+  Smartphone,
+  Check,
+  Unlink,
 } from 'lucide-react';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import Badge from '../components/Badge';
 import Toast from '../components/Toast';
 import Modal from '../components/Modal';
-import { ADMIN_WHATSAPP_NUMBER, WA_STATUS, getWhatsAppConfigStatus, sendWhatsAppBroadcast, sendSingleWhatsAppMessage } from '../services/whatsappService';
-import { memberService, groupPaymentSettingsService } from '../services/dbService';
-import { getBilingualWhatsAppMessage } from '../services/messageFormatter';
-import { generateUpiPayLink } from '../services/upiService';
-
-const ADMIN_NUMBER = ADMIN_WHATSAPP_NUMBER;
-
-function normalizeWhatsAppNumber(value = '') {
-  const digits = String(value).replace(/\D/g, '');
-  if (!digits) return '';
-  if (digits.startsWith('0')) return `91${digits.slice(1)}`;
-  if (digits.startsWith('91')) return digits;
-  return `91${digits}`;
-}
-
-async function safeParseJson(response) {
-  try {
-    const text = await response.text();
-    if (!text || !text.trim()) return {};
-    return JSON.parse(text);
-  } catch {
-    return {};
-  }
-}
-
-function formatCurrency(value) {
-  return `₹${Number(value || 0).toLocaleString('en-IN')}`;
-}
+import {
+  MESSAGE_TEMPLATES,
+  normalizePhone,
+  filterRecipients,
+  generatePersonalizedMessage,
+  createMessageHistoryDoc,
+  fetchMessageHistory,
+} from '../services/messagingService';
+import {
+  sendSingleWhatsAppMessage,
+  sendTestWhatsAppMessage,
+} from '../services/whatsappService';
+import { memberService, chitService } from '../services/dbService';
 
 function getActiveChits(member) {
   return (member?.chits || []).filter((chit) => (chit.status ? chit.status === 'ACTIVE' : true));
 }
 
-function getDueDateFromChits(chits = []) {
-  const dates = chits
-    .flatMap((chit) => (chit?.paymentHistory || []).map((entry) => entry?.date).filter(Boolean))
-    .map((date) => new Date(date))
-    .filter((value) => Number.isFinite(value.getTime()))
-    .sort((a, b) => a - b);
-
-  if (!dates.length) return '15 Aug';
-
-  const selected = dates[dates.length - 1];
-  return `${selected.getDate()} ${selected.toLocaleString('en-US', { month: 'short' })}`;
-}
-
-function getTeluguDueDate(chits = []) {
-  const dates = chits
-    .flatMap((chit) => (chit?.paymentHistory || []).map((entry) => entry?.date).filter(Boolean))
-    .map((date) => new Date(date))
-    .filter((value) => Number.isFinite(value.getTime()))
-    .sort((a, b) => a - b);
-
-  if (!dates.length) return '15 ఆగస్టు';
-
-  const selected = dates[dates.length - 1];
-  const monthMap = {
-    Jan: 'జనవరి', Feb: 'ఫిబ్రవరి', Mar: 'మార్చి', Apr: 'ఏప్రిల్',
-    May: 'మే', Jun: 'జూన్', Jul: 'జూలై', Aug: 'ఆగస్టు',
-    Sep: 'సెప్టెంబర్', Oct: 'అక్టోబర్', Nov: 'నవంబర్', Dec: 'డిసెంబర్',
-  };
-
-  return `${selected.getDate()} ${monthMap[selected.toLocaleString('en-US', { month: 'short' })] || 'ఆగస్టు'}`;
-}
-
-// BILINGUAL SMS TEMPLATE GENERATOR
-function buildBilingualSmsTemplate(member) {
-  if (!member) return 'No member selected for template preview.';
-  const activeChits = getActiveChits(member);
-  const monthlyAmount = activeChits.reduce((total, chit) => total + Number(chit.amountToPay || 0), 0);
-  const pendingAmount = activeChits.reduce((total, chit) => total + Number(chit.balanceAmount || 0), 0);
-  const dueDate = getDueDateFromChits(activeChits);
-  const dueDateTelugu = getTeluguDueDate(activeChits);
-  const name = member?.name || 'Member';
-
-  return `Dear ${name},
-Chitt Due: ${formatCurrency(monthlyAmount)} | ${dueDate}
-Pending: ${formatCurrency(pendingAmount)}
-
-${name} గారు,
-చిట్టి బకాయి: ${formatCurrency(monthlyAmount)} | ${dueDateTelugu}
-పెండింగ్: ${formatCurrency(pendingAmount)}
-
-Please pay on time.
-సమయానికి చెల్లించండి.
-
-Raghavendra Chitts | 9705184411`;
-}
-
-function buildWhatsAppMessage(member, language = 'english+telugu', groupPaymentSettings = {}) {
-  if (!member) return '';
-  return getBilingualWhatsAppMessage(member, groupPaymentSettings);
+function formatGroupDisplayName(groupId, totalChitValue) {
+  if (!groupId || groupId === 'all') return 'All Chit Groups';
+  const val = Number(totalChitValue || 100000);
+  const lakhStr = val >= 100000 ? `₹${(val / 100000).toFixed(0)} Lakh Chit` : `₹${val.toLocaleString('en-IN')}`;
+  return `Group ${groupId} — ${lakhStr}`;
 }
 
 export default function WhatsAppPlaceholder() {
+  // Core Data States
   const [members, setMembers] = useState([]);
-  const [groupPaymentSettings, setGroupPaymentSettings] = useState({});
-  const [membersLoading, setMembersLoading] = useState(true);
-  const [membersError, setMembersError] = useState(null);
-
-  const [activeTab, setActiveTab] = useState('whatsapp');
-  const [language, setLanguage] = useState('english+telugu');
-  const [selectedRecipientType, setSelectedRecipientType] = useState('all');
-  const [selectedMembers, setSelectedMembers] = useState([]);
+  const [chits, setChits] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
 
-  // WhatsApp states
-  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-  const [status, setStatus] = useState({ connected: false, loading: true, message: 'Checking WhatsApp service status...' });
-  const [isSending, setIsSending] = useState(false);
-  const [progress, setProgress] = useState({ current: 0, total: 0, sent: 0, failed: 0 });
-  const [results, setResults] = useState([]);
-  const [previewMemberId, setPreviewMemberId] = useState(null);
-  const [lastSingleResult, setLastSingleResult] = useState(null);
-
-  // SMS states
-  const [smsStatus, setSmsStatus] = useState({ connected: true, loading: false, message: 'SMS Gateway Ready' });
-  const [isSmsConfirmOpen, setIsSmsConfirmOpen] = useState(false);
-  const [isSendingSms, setIsSendingSms] = useState(false);
-  const [smsProgress, setSmsProgress] = useState({ current: 0, total: 0, sent: 0, failed: 0 });
-  const [smsCampaign, setSmsCampaign] = useState({
-    status: 'idle', // idle, sending, completed
-    sent: 0,
-    failed: 0,
-    total: 0,
-    failedList: [],
-    lastSent: 'Not sent yet',
+  // QR Code Gateway States
+  const [qrGatewayState, setQrGatewayState] = useState({
+    connected: false,
+    status: 'DISCONNECTED',
+    userPhone: '9705184411',
+    qrCodeDataUrl: null,
   });
-  const [showFailedModal, setShowFailedModal] = useState(false);
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+
+  // Template & Language States
+  const [selectedTemplateId, setSelectedTemplateId] = useState('PAYMENT_REMINDER');
+  const [language, setLanguage] = useState('english');
+  const [customTemplateText, setCustomTemplateText] = useState(MESSAGE_TEMPLATES.PAYMENT_REMINDER.englishText);
+
+  // Parameter Inputs
+  const [selectedGroupId, setSelectedGroupId] = useState('I');
+  const [billingMonth, setBillingMonth] = useState('August 2026');
+  const [dueDate, setDueDate] = useState('15th of Month');
+  const [chitAmount, setChitAmount] = useState('25000');
+  const [groupPendingAmount, setGroupPendingAmount] = useState('0');
+  const [balanceAmount, setBalanceAmount] = useState('0');
+
+  // Auto-Calculated Amounts
+  const totalAmount = useMemo(() => {
+    const c = Number(chitAmount) || 0;
+    const p = Number(groupPendingAmount) || 0;
+    return c + p;
+  }, [chitAmount, groupPendingAmount]);
+
+  const finalAmount = useMemo(() => {
+    const b = Number(balanceAmount) || 0;
+    return totalAmount - b;
+  }, [totalAmount, balanceAmount]);
+
+  // Recipient Filters
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [groupFilter, setGroupFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+
+  // Selection States
+  const [selectedMemberIds, setSelectedMemberIds] = useState([]);
+  const [selectedPreviewMember, setSelectedPreviewMember] = useState(null);
+
+  // Sending States
+  const [isSendingSingle, setIsSendingSingle] = useState(false);
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({
+    isSending: false,
+    current: 0,
+    total: 0,
+    sentCount: 0,
+    failedCount: 0,
+  });
+  const [bulkSummaryModal, setBulkSummaryModal] = useState(null);
+
+  // History & Audit Logs
+  const [historyLogs, setHistoryLogs] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyStatusFilter, setHistoryStatusFilter] = useState('all');
+  const [detailsLogModal, setDetailsLogModal] = useState(null);
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
   };
 
+  // Poll QR Code Gateway Status
+  const fetchQrGatewayStatus = async () => {
+    try {
+      const res = await fetch('/api/whatsapp/qr');
+      if (res.ok) {
+        const data = await res.json();
+        setQrGatewayState(data);
+        if (data.connected && isQrModalOpen) {
+          setIsQrModalOpen(false);
+          showToast(`✓ WhatsApp Linked to +${data.userPhone}! Device ready for direct message sending.`, 'success');
+        }
+      }
+    } catch (_) {}
+  };
+
+  useEffect(() => {
+    fetchQrGatewayStatus();
+    const interval = setInterval(fetchQrGatewayStatus, 3000);
+    return () => clearInterval(interval);
+  }, [isQrModalOpen]);
+
+  // Load Firestore Data on Mount
   useEffect(() => {
     let mounted = true;
-
-    async function loadMembersFromDb() {
-      setMembersLoading(true);
-      setMembersError(null);
+    async function loadData() {
+      setLoading(true);
       try {
-        const fetchedMembers = await memberService.getMembers();
+        const [fetchedMembers, fetchedChits] = await Promise.all([
+          memberService.getMembers().catch(() => []),
+          chitService.getChits().catch(() => []),
+        ]);
+
         if (mounted) {
           const list = Array.isArray(fetchedMembers) ? fetchedMembers : [];
           setMembers(list);
-          setSelectedMembers(list.map((m) => m.id));
+          setChits(Array.isArray(fetchedChits) ? fetchedChits : []);
+
           if (list.length > 0) {
-            setPreviewMemberId(list[0].id);
+            setSelectedPreviewMember(list[0]);
           }
         }
       } catch (err) {
-        console.error('[WHATSAPP PAGE FIRESTORE ERROR]', err);
         if (mounted) {
-          setMembersError('Failed to load members from Firebase.');
-          setMembers([]);
+          showToast('Failed to load member records from Firebase.', 'error');
         }
-      } finally {
-        if (mounted) {
-          setMembersLoading(false);
-        }
+      } fontally: {
+        if (mounted) setLoading(false);
       }
     }
 
-    async function loadStatus() {
-      try {
-        const data = await getWhatsAppConfigStatus();
-        if (mounted) {
-          setStatus({
-            connected: !!data?.connected,
-            loading: false,
-            message: data?.connected ? 'WhatsApp Connected' : 'Not Connected (Simulation Active)',
-          });
-        }
-      } catch (error) {
-        if (mounted) {
-          setStatus({
-            connected: false,
-            loading: false,
-            message: 'Not Connected (Simulation Active)',
-          });
-        }
-      }
-    }
-
-    async function loadSmsStatus() {
-      try {
-        const response = await fetch('/api/sms/health');
-        const data = await safeParseJson(response);
-        if (mounted) {
-          setSmsStatus({
-            connected: true,
-            loading: false,
-            message: data?.connected ? 'SMS Service Live' : 'SMS Gateway Active',
-          });
-        }
-      } catch (error) {
-        if (mounted) {
-          setSmsStatus({
-            connected: true,
-            loading: false,
-            message: 'SMS Gateway Active',
-          });
-        }
-      }
-    }
-
-    async function loadSettingsFromDb() {
-      try {
-        const { settingsMap } = await groupPaymentSettingsService.getGroupPaymentSettings();
-        if (mounted) {
-          setGroupPaymentSettings(settingsMap || {});
-        }
-      } catch (e) {
-        console.warn('[GROUP PAYMENT SETTINGS NOTICE]', e?.message);
-      }
-    }
-
-    loadMembersFromDb();
-    loadSettingsFromDb();
-    loadStatus();
-    loadSmsStatus();
+    loadData();
     return () => {
       mounted = false;
     };
   }, []);
 
-  const activeMembers = useMemo(() => {
-    return members.filter((member) => {
-      const active = getActiveChits(member);
-      if (selectedRecipientType === 'all') return true;
-      if (selectedRecipientType === 'single') return active.length === 1;
-      if (selectedRecipientType === 'multiple') return active.length > 1;
-      if (selectedRecipientType === 'overdue') return member.status === 'warning' || member.status === 'pending_due';
-      return true;
+  // Fetch Message History from Firestore ('messageHistory' collection)
+  const refreshHistoryLogs = async () => {
+    setHistoryLoading(true);
+    try {
+      const logs = await fetchMessageHistory({ statusFilter: historyStatusFilter, limitCount: 50 });
+      setHistoryLogs(logs || []);
+    } catch (_) {
+      setHistoryLogs([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refreshHistoryLogs();
+  }, [historyStatusFilter]);
+
+  // Sync Template Text on Template or Language Change
+  useEffect(() => {
+    const tmpl = MESSAGE_TEMPLATES[selectedTemplateId] || MESSAGE_TEMPLATES.PAYMENT_REMINDER;
+    if (language === 'english') {
+      setCustomTemplateText(tmpl.englishText);
+    } else if (language === 'telugu') {
+      setCustomTemplateText(tmpl.teluguText);
+    } else {
+      setCustomTemplateText(`${tmpl.englishText}\n\n-------------------\n\n${tmpl.teluguText}`);
+    }
+  }, [selectedTemplateId, language]);
+
+  // Active Chit Group Info
+  const activeGroup = useMemo(() => {
+    if (selectedGroupId === 'all') {
+      return { id: 'all', name: 'All Chit Groups', totalChitValue: 100000 };
+    }
+    const found = chits.find((c) => String(c.groupId).toLowerCase() === String(selectedGroupId).toLowerCase());
+    if (found) return found;
+    return { id: selectedGroupId, name: `Group ${selectedGroupId}`, totalChitValue: 100000 };
+  }, [chits, selectedGroupId]);
+
+  // Filtered Recipients List
+  const filteredRecipients = useMemo(() => {
+    return filterRecipients(members, {
+      searchQuery,
+      categoryFilter,
+      groupFilter: groupFilter !== 'all' ? groupFilter : selectedGroupId,
+      statusFilter,
     });
-  }, [members, selectedRecipientType]);
+  }, [members, searchQuery, categoryFilter, groupFilter, selectedGroupId, statusFilter]);
 
-  const recipientMembers = useMemo(() => {
-    return activeMembers.filter((member) => selectedMembers.includes(member.id));
-  }, [activeMembers, selectedMembers]);
+  // Auto-Select Filtered Members
+  useEffect(() => {
+    setSelectedMemberIds(filteredRecipients.map((m) => m.id));
+  }, [filteredRecipients]);
 
-  const totalMembers = members.length;
-  const readyToSend = activeMembers.length;
-  const sentCount = results.filter((item) => item.status === WA_STATUS.SENT || item.status === 'sent').length;
-  const failedCount = results.filter((item) => item.status === WA_STATUS.FAILED || item.status === 'failed').length;
+  // Selection Handlers
+  const handleSelectAll = () => {
+    if (selectedMemberIds.length === filteredRecipients.length) {
+      setSelectedMemberIds([]);
+    } else {
+      setSelectedMemberIds(filteredRecipients.map((m) => m.id));
+    }
+  };
 
-  const previewMember = members.find((member) => member.id === previewMemberId) || members[0] || null;
-  const previewText = previewMember ? buildWhatsAppMessage(previewMember, language, groupPaymentSettings) : 'No members available for preview.';
+  const handleClearSelection = () => {
+    setSelectedMemberIds([]);
+  };
 
-  const selectMember = (memberId) => {
-    setSelectedMembers((current) => {
-      if (current.includes(memberId)) {
-        return current.filter((id) => id !== memberId);
-      }
-      return [...current, memberId];
+  const handleToggleMember = (id) => {
+    setSelectedMemberIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  // Personalized Message Compiler
+  const getCompiledMessageForMember = (member) => {
+    return generatePersonalizedMessage(member, customTemplateText, {
+      groupId: selectedGroupId,
+      billingMonth,
+      chitAmount,
+      pendingAmount: groupPendingAmount,
+      balanceAmount,
+      totalAmount,
+      finalAmount,
+      dueDate,
     });
   };
 
-  const handleConfirmSend = async () => {
-    if (!recipientMembers.length) {
-      showToast('Please select a recipient member first.', 'error');
+  // Selected Members Roster
+  const selectedMembersList = useMemo(() => {
+    return filteredRecipients.filter((m) => selectedMemberIds.includes(m.id));
+  }, [filteredRecipients, selectedMemberIds]);
+
+  // Single Member Direct Backend Send Handler
+  const handleSendSingleMessage = async (member) => {
+    if (!member) return;
+
+    const rawPhone = member.whatsapp || member.phone || '';
+    const norm = normalizePhone(rawPhone);
+
+    if (!norm) {
+      showToast(`Member "${member.name}" does not have a valid WhatsApp phone number.`, 'error');
       return;
     }
 
-    if (recipientMembers.length > 1) {
-      showToast('Bulk sending is disabled during testing. Select exactly 1 member (e.g. Ahmad Alisha) for the WhatsApp verification test.', 'error');
-      setIsConfirmOpen(false);
+    const messageContent = getCompiledMessageForMember(member);
+    if (!messageContent || !messageContent.trim()) {
+      showToast('Please enter message content before sending.', 'error');
       return;
     }
 
-    const singleMember = recipientMembers[0];
-    setIsConfirmOpen(false);
-    setIsSending(true);
-    setLastSingleResult(null);
+    setIsSendingSingle(true);
 
     try {
-      // Pass the full member object — the Cloud Function builds the message server-side.
-      const response = await sendSingleWhatsAppMessage({
-        member: singleMember,
-        recipient: singleMember.whatsapp || singleMember.phone,
+      // Call secure backend delivery service (Linked Device QR Gateway or Meta API)
+      const res = await sendSingleWhatsAppMessage({
+        member,
+        recipient: norm,
+        message: messageContent,
         language,
       });
 
-      const isSent = response?.success && response?.status === WA_STATUS.SENT;
+      setIsSendingSingle(false);
 
-      setResults([
-        {
-          memberId:    singleMember.id,
-          memberName:  singleMember.name,
-          phoneNumber: response?.recipient || singleMember.phone,
-          status:      isSent ? WA_STATUS.SENT : (response?.status || WA_STATUS.FAILED),
-          sentAt:      isSent ? new Date().toISOString() : null,
-          error:       isSent ? null : response?.message,
-        },
-      ]);
+      const isSent = res.success || res.status === 'SENT';
+      const statusText = isSent ? 'SENT' : res.status || 'NOT_CONFIGURED';
+
+      // Log accurate result into dedicated 'messageHistory' Firestore collection
+      await createMessageHistoryDoc({
+        member,
+        phone: norm,
+        channel: 'WHATSAPP',
+        message: messageContent,
+        status: statusText,
+        groupId: selectedGroupId,
+        billingMonth,
+        chitAmount: Number(chitAmount || 0),
+        pendingAmount: Number(groupPendingAmount || 0),
+        balanceAmount: Number(balanceAmount || 0),
+        totalAmount,
+        finalAmount,
+        isTest: false,
+      });
+
+      refreshHistoryLogs();
 
       if (isSent) {
-        showToast(`✓ WhatsApp message sent to ${singleMember.name} (${response.recipient})`);
-        setLastSingleResult({
-          success:   true,
-          status:    WA_STATUS.SENT,
-          member:    singleMember.name,
-          recipient: response.recipient,
-          messageId: response.messageId,
-          message:   'WhatsApp message accepted by Meta Business Cloud API.',
-        });
+        showToast(`✓ WhatsApp message sent directly to ${member.name}!`, 'success');
+      } else if (res.status === 'NOT_CONFIGURED') {
+        showToast(`⚠️ WhatsApp is not linked yet. Scan the QR code to link your device.`, 'warning');
+        setIsQrModalOpen(true);
       } else {
-        const errMsg = response?.message || 'WhatsApp request was not accepted.';
-        const toastType = response?.status === WA_STATUS.NOT_CONFIGURED ? 'info' : 'error';
-        showToast(`✗ ${errMsg}`, toastType);
-        setLastSingleResult({
-          success:   false,
-          status:    response?.status || WA_STATUS.FAILED,
-          member:    singleMember.name,
-          recipient: response?.recipient || singleMember.phone,
-          messageId: null,
-          message:   errMsg,
-        });
+        showToast(`✕ Delivery failed for ${member.name}: ${res.message || 'API error'}`, 'error');
       }
-    } catch (error) {
-      showToast(`✗ Error: ${error.message}`, 'error');
-      setLastSingleResult({
-        success:   false,
-        status:    WA_STATUS.NETWORK_ERROR,
-        member:    singleMember.name,
-        recipient: singleMember.whatsapp || singleMember.phone,
-        messageId: null,
-        message:   error.message || 'Unexpected error during WhatsApp send.',
-      });
-    } finally {
-      setIsSending(false);
+    } catch (err) {
+      setIsSendingSingle(false);
+      showToast(`Send error: ${err.message}`, 'error');
     }
   };
 
-  // SEND SMS TO ALL CHITT HOLDERS CAMPAIGN EXECUTION
-  const handleStartSmsCampaign = async () => {
-    setIsSmsConfirmOpen(false);
-    setIsSendingSms(true);
+  // Disconnect Scanned Device Session
+  const handleDisconnectDevice = async () => {
+    try {
+      const res = await fetch('/api/whatsapp/disconnect', { method: 'POST' });
+      if (res.ok) {
+        showToast('WhatsApp device unlinked successfully.', 'info');
+        fetchQrGatewayStatus();
+      }
+    } catch (_) {}
+  };
 
-    const activeSmsMembers = members.filter((member) => getActiveChits(member).length > 0);
-    const totalToStep = activeSmsMembers.length;
-
-    setSmsProgress({ current: 0, total: totalToStep, sent: 0, failed: 0 });
-
-    const stepSize = Math.max(1, Math.floor(totalToStep / 10));
-    let currentSent = 0;
-
-    for (let i = 0; i <= totalToStep; i += stepSize) {
-      currentSent = Math.min(i, totalToStep);
-      setSmsProgress({
-        current: currentSent,
-        total: totalToStep,
-        sent: Math.max(0, currentSent - 2),
-        failed: Math.min(2, currentSent),
-      });
-      await new Promise((r) => setTimeout(r, 180));
-    }
-
-    let sentFinal = Math.max(0, totalToStep - 4);
-    let failedFinal = Math.min(4, totalToStep);
-    let failedMembersList = [
-      { id: 'mem_fail_1', name: 'Priya Devi', phone: '+918877665544', reason: 'Mobile network un-reachable' },
-      { id: 'mem_fail_2', name: 'K. Venkatesh', phone: '+919701122334', reason: 'Invalid number format' },
-      { id: 'mem_fail_3', name: 'B. Anjaneyulu', phone: '+919944556677', reason: 'Provider DND blocked' },
-      { id: 'mem_fail_4', name: 'M. Sambaiah', phone: '+919811223344', reason: 'Carrier timeout' },
-    ];
+  // Quick Test Message Execution
+  const handleExecuteTestSend = async (recipientName, rawPhone) => {
+    const norm = normalizePhone(rawPhone);
+    const testMsg = `Hello ${recipientName} 👋 This is a test message from Raghavendra Chitts.`;
 
     try {
-      const response = await fetch('/api/sms/broadcast', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          members: activeSmsMembers,
-          language: 'english+telugu',
-          messageType: 'payment_reminder',
-        }),
-      });
-      const data = await response.json();
-      if (data?.ok && data?.sentCount > 0) {
-        sentFinal = data.sentCount;
-        failedFinal = data.failedCount || 0;
-      }
-    } catch (e) {
-      // Fallback summary payload
-    }
+      const res = await sendTestWhatsAppMessage({ recipient: norm, message: testMsg });
 
-    setIsSendingSms(false);
-    setSmsCampaign({
-      status: 'completed',
-      sent: sentFinal,
-      failed: failedFinal,
-      total: sentFinal + failedFinal,
-      failedList: failedMembersList,
-      lastSent: new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }),
+      const isSent = res.success || res.status === 'SENT';
+      const statusText = isSent ? 'SENT' : res.status || 'NOT_CONFIGURED';
+
+      await createMessageHistoryDoc({
+        member: { id: 'test_member', name: recipientName },
+        phone: norm,
+        channel: 'WHATSAPP',
+        message: testMsg,
+        status: statusText,
+        groupId: selectedGroupId,
+        billingMonth,
+        pendingAmount: 0,
+        isTest: true,
+      });
+
+      refreshHistoryLogs();
+
+      if (isSent) {
+        showToast(`✓ Live test message sent to ${recipientName}!`, 'success');
+      } else {
+        showToast(`⚠️ Device not linked yet. Please scan QR Code to enable direct sending.`, 'warning');
+        setIsQrModalOpen(true);
+      }
+    } catch (err) {
+      showToast(`Test send error: ${err.message}`, 'error');
+    }
+  };
+
+  // Bulk Batch Send Handler
+  const handleExecuteBulkSend = async () => {
+    const recipients = selectedMembersList;
+    if (recipients.length === 0) return;
+
+    setIsConfirmModalOpen(false);
+
+    setBulkProgress({
+      isSending: true,
+      current: 0,
+      total: recipients.length,
+      sentCount: 0,
+      failedCount: 0,
     });
 
-    showToast(`SMS Campaign Completed: ${sentFinal} Sent, ${failedFinal} Failed.`);
+    let sent = 0;
+    let failed = 0;
+
+    for (let i = 0; i < recipients.length; i++) {
+      const member = recipients[i];
+      const norm = normalizePhone(member.whatsapp || member.phone);
+      const messageContent = getCompiledMessageForMember(member);
+
+      setBulkProgress({
+        isSending: true,
+        current: i + 1,
+        total: recipients.length,
+        sentCount: sent,
+        failedCount: failed,
+      });
+
+      if (!norm) {
+        failed += 1;
+        await createMessageHistoryDoc({
+          member,
+          phone: member.whatsapp || member.phone || 'N/A',
+          channel: 'WHATSAPP',
+          message: messageContent,
+          status: 'INVALID_NUMBER',
+          groupId: selectedGroupId,
+          billingMonth,
+          chitAmount: Number(chitAmount || 0),
+          pendingAmount: Number(groupPendingAmount || 0),
+          balanceAmount: Number(balanceAmount || 0),
+          totalAmount,
+          finalAmount,
+        });
+        continue;
+      }
+
+      try {
+        const res = await sendSingleWhatsAppMessage({
+          member,
+          recipient: norm,
+          message: messageContent,
+          language,
+        });
+
+        const isSent = res.success || res.status === 'SENT';
+        const statusText = isSent ? 'SENT' : res.status || 'NOT_CONFIGURED';
+
+        if (isSent) {
+          sent += 1;
+        } else {
+          failed += 1;
+        }
+
+        await createMessageHistoryDoc({
+          member,
+          phone: norm,
+          channel: 'WHATSAPP',
+          message: messageContent,
+          status: statusText,
+          groupId: selectedGroupId,
+          billingMonth,
+          chitAmount: Number(chitAmount || 0),
+          pendingAmount: Number(groupPendingAmount || 0),
+          balanceAmount: Number(balanceAmount || 0),
+          totalAmount,
+          finalAmount,
+        });
+      } catch (_) {
+        failed += 1;
+      }
+
+      await new Promise((r) => setTimeout(r, 250));
+    }
+
+    setBulkProgress({
+      isSending: false,
+      current: recipients.length,
+      total: recipients.length,
+      sentCount: sent,
+      failedCount: failed,
+    });
+
+    setBulkSummaryModal({
+      total: recipients.length,
+      sentCount: sent,
+      failedCount: failed,
+    });
+
+    refreshHistoryLogs();
   };
 
-  const handleRetryFailedSms = () => {
-    showToast('Retrying delivery for failed SMS recipients...');
-    setTimeout(() => {
-      setSmsCampaign((prev) => ({
-        ...prev,
-        sent: prev.sent + prev.failed,
-        failed: 0,
-        failedList: [],
-      }));
-      setShowFailedModal(false);
-      showToast('All failed SMS messages successfully re-transmitted!');
-    }, 1200);
-  };
+  const selectedCount = selectedMemberIds.length;
+  const charCount = customTemplateText.length;
 
   return (
-    <div className="space-y-6 font-sans">
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
+    <div className="space-y-6 font-sans max-w-7xl mx-auto pb-12">
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
-      {membersError && (
-        <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-between text-xs text-amber-900 font-bold shadow-xs">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-            <span>{membersError}</span>
-          </div>
-          <span className="text-[11px] font-normal text-amber-700">Check browser console for details.</span>
-        </div>
-      )}
-
-      {/* HEADER */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between border-b border-slate-200/60 pb-5">
+      {/* ─── LINKED DEVICE QR CODE GATEWAY CARD ────────────────────────────────────── */}
+      <div className="bg-white border border-[#E5E5E1] rounded-2xl p-5 md:p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.22em] text-sky-600">Communication Center</p>
-          <h1 className="mt-1 text-2xl md:text-3xl font-black text-slate-900">WhatsApp & SMS Notifications</h1>
-          <p className="text-xs text-slate-500 mt-1">Send personalized billing reminders, bilingual templates, and bulk SMS campaigns.</p>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#2F5D50]">Raghavendra Chitts</span>
+            <span className="text-[#959590]">•</span>
+            <span className="text-xs font-extrabold text-[#1C1C1A]">Linked Device Gateway</span>
+          </div>
+          <h1 className="mt-1 text-2xl font-black text-[#1C1C1A] tracking-tight">WhatsApp Messaging Gateway</h1>
+          <p className="text-xs text-[#6B6B67] mt-1">
+            Link your WhatsApp account (`+${qrGatewayState.userPhone}`) by scanning the QR code with WhatsApp ➔ Linked Devices.
+          </p>
         </div>
 
-        <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 shadow-xs">
-          <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">Admin Contact</span>
-          <span className="text-sm font-black text-slate-900 font-mono">{ADMIN_NUMBER}</span>
-        </div>
-      </div>
-
-      {/* TABS HEADER */}
-      <div className="inline-flex rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xs">
-        <button
-          type="button"
-          onClick={() => setActiveTab('whatsapp')}
-          className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-bold transition-all cursor-pointer ${
-            activeTab === 'whatsapp' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <MessageSquareText className="w-4 h-4" />
-          WhatsApp Broadcast
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('sms')}
-          className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-bold transition-all cursor-pointer ${
-            activeTab === 'sms' ? 'bg-sky-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <Phone className="w-4 h-4" />
-          SMS Center (Bilingual)
-        </button>
-      </div>
-
-      {/* WHATSAPP TAB CONTENT */}
-      {activeTab === 'whatsapp' ? (
-        <>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <Card className="p-5 border border-slate-200 bg-white rounded-3xl shadow-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Total Members</span>
-                <Users className="h-4 w-4 text-slate-600" />
-              </div>
-              <div className="mt-4 text-3xl font-black text-slate-900">
-                {membersLoading ? <span className="text-sm text-slate-400 font-normal">Loading...</span> : totalMembers}
-              </div>
-            </Card>
-
-            <Card className="p-5 border border-slate-200 bg-white rounded-3xl shadow-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Ready to Send</span>
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              </div>
-              <div className="mt-4 text-3xl font-black text-slate-900">
-                {membersLoading ? <span className="text-sm text-slate-400 font-normal">Loading...</span> : readyToSend}
-              </div>
-            </Card>
-
-            <Card className="p-5 border border-slate-200 bg-white rounded-3xl shadow-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Sent</span>
-                <MessageSquareText className="h-4 w-4 text-emerald-600" />
-              </div>
-              <div className="mt-4 text-3xl font-black text-slate-900">{sentCount}</div>
-            </Card>
-
-            <Card className="p-5 border border-slate-200 bg-white rounded-3xl shadow-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Failed / Pending</span>
-                <CircleAlert className="h-4 w-4 text-amber-600" />
-              </div>
-              <div className="mt-4 text-3xl font-black text-slate-900">{failedCount}</div>
-            </Card>
+        {/* QR GATEWAY STATUS & PAIRING BUTTON */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="p-3 bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl flex items-center gap-3 text-xs">
+            <div className="flex items-center gap-2">
+              <span className={`w-2.5 h-2.5 rounded-full ${qrGatewayState.connected ? 'bg-[#2F6B4F] animate-pulse' : 'bg-amber-500'}`}></span>
+              <span className="font-extrabold text-[#1C1C1A]">
+                {qrGatewayState.connected ? `WhatsApp Linked (+${qrGatewayState.userPhone})` : 'Device Not Linked'}
+              </span>
+            </div>
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
-            <Card className="p-6 border border-slate-200 bg-white rounded-3xl shadow-xs">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-slate-100">
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Status</p>
-                  <div className="mt-1 flex items-center gap-2">
-                    <Badge variant={status.connected ? 'success' : 'info'}>{status.message}</Badge>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                    onClick={() => setIsConfirmOpen(true)}
-                    disabled={isSending || selectedMembers.length === 0}
-                  >
-                    {isSending
-                      ? <><LoaderCircle className="h-3.5 w-3.5 animate-spin" /> Sending...</>
-                      : <><Send className="h-3.5 w-3.5" /> Send to Selected ({selectedMembers.length})</>
-                    }
-                  </Button>
-                </div>
-              </div>
-
-              <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                {['all', 'single', 'multiple', 'overdue'].map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => setSelectedRecipientType(option)}
-                    className={`rounded-xl border px-3 py-2 text-left text-xs font-bold transition cursor-pointer ${
-                      selectedRecipientType === option
-                        ? 'border-sky-600 bg-sky-600 text-white'
-                        : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
-                    }`}
-                  >
-                    {option === 'all' ? 'All Members' : option === 'single' ? 'Single Chit' : option === 'multiple' ? 'Multiple Chit' : 'Overdue Dues'}
-                  </button>
-                ))}
-              </div>
-
-              <div className="mt-5 flex flex-col gap-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Recipient Members</p>
-                  <span className="text-xs font-bold text-sky-700">{selectedMembers.length} selected</span>
-                </div>
-                <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
-                  {activeMembers.map((member) => {
-                    const isSelected = selectedMembers.includes(member.id);
-                    const active = getActiveChits(member);
-                    return (
-                      <button
-                        key={member.id}
-                        type="button"
-                        onClick={() => selectMember(member.id)}
-                        className={`flex w-full items-center justify-between rounded-2xl border p-3 text-left transition cursor-pointer ${
-                          isSelected ? 'border-sky-600 bg-sky-50/70' : 'border-slate-200 bg-white hover:bg-slate-50'
-                        }`}
-                      >
-                        <div>
-                          <div className="font-bold text-slate-900 text-xs flex items-center gap-2">
-                            <span>{member.name}</span>
-                            {member.sharedPhone && (
-                              <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-amber-100 text-amber-800 border border-amber-200">
-                                Shared Phone
-                              </span>
-                            )}
-                          </div>
-                          <div className="mt-0.5 text-[11px] text-slate-500 font-sans">
-                            {active.length > 1 ? 'Multiple Chits' : 'Single Chit'} • {normalizeWhatsAppNumber(member.whatsapp || member.phone || '')}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant={active.length > 1 ? 'success' : 'info'}>
-                            {active.length > 1 ? 'Multiple' : 'Single'}
-                          </Badge>
-                          {isSelected ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <MessageCircleMore className="h-4 w-4 text-slate-300" />}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </Card>
-
-            <Card className="p-6 border border-slate-200 bg-white rounded-3xl shadow-xs">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">WhatsApp Message Composer</p>
-              <div className="mt-4 space-y-4">
-                <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">Select Language</label>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {['english', 'telugu', 'english+telugu'].map((option) => (
-                      <button
-                        key={option}
-                        type="button"
-                        onClick={() => setLanguage(option)}
-                        className={`rounded-xl border px-2 py-2 text-[11px] font-bold cursor-pointer ${
-                          language === option ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                        }`}
-                      >
-                        {option === 'english+telugu' ? 'Bilingual' : option === 'telugu' ? 'Telugu' : 'English'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-[#ece5dd] p-3">
-                  <div className="mb-2 flex items-center justify-between rounded-t-xl bg-[#0b141a] px-3 py-2 text-white">
-                    <div className="flex items-center gap-2 text-xs font-semibold">
-                      <MessageSquareText className="h-4 w-4 text-[#25D366]" />
-                      Preview
-                    </div>
-                    <span className="text-[10px] uppercase text-slate-300">Live Card</span>
-                  </div>
-                  <div className="bg-white p-3 text-xs leading-6 text-slate-900 whitespace-pre-wrap rounded-b-xl border border-slate-200 font-sans">
-                    {previewText}
-                  </div>
-                </div>
-
-                {/* UPI PAYMENT ACTION PREVIEW */}
-                {previewMember && (() => {
-                  const upiInfo = generateUpiPayLink({ member: previewMember, groupPaymentSettings });
-                  return (
-                    <div className="space-y-2">
-                      {upiInfo.success ? (
-                        <div className="bg-slate-900 text-white p-3.5 rounded-2xl border border-slate-800 space-y-2 font-sans">
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Clickable UPI Payment Action</span>
-                            <span className="font-mono font-bold text-emerald-400">{upiInfo.formattedAmount}</span>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-                              if (isMobile) {
-                                window.location.href = upiInfo.upiUrl;
-                              } else {
-                                if (navigator.clipboard) navigator.clipboard.writeText(upiInfo.upiUrl);
-                                showToast(`UPI Payment Link (${upiInfo.formattedAmount}) copied to clipboard! UPI payments open automatically on supported mobile devices (Google Pay, PhonePe, Paytm, BHIM).`, 'info');
-                              }
-                            }}
-                            className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 px-3.5 py-2.5 text-xs font-bold text-white shadow-md hover:from-emerald-600 cursor-pointer"
-                          >
-                            <CreditCard className="w-4 h-4" />
-                            <span>PAY {upiInfo.formattedAmount}</span>
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="bg-slate-100 p-2.5 rounded-xl text-center text-xs font-bold text-slate-500">
-                          No payment required for preview member (Payable Amount is ₹0).
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Preview Member</label>
-                  <select
-                    value={previewMemberId || ''}
-                    onChange={(event) => setPreviewMemberId(event.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-900"
-                  >
-                    {members.map((member) => (
-                      <option key={member.id} value={member.id}>{member.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {lastSingleResult && (() => {
-                  const s = lastSingleResult.status;
-                  const isOk = lastSingleResult.success;
-                  const isNotConfigured = s === WA_STATUS.NOT_CONFIGURED;
-                  const isUnauth = s === WA_STATUS.UNAUTHORIZED;
-                  const colorClass = isOk
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-950'
-                    : isNotConfigured
-                    ? 'bg-amber-50 border-amber-200 text-amber-950'
-                    : isUnauth
-                    ? 'bg-sky-50 border-sky-200 text-sky-950'
-                    : 'bg-red-50 border-red-200 text-red-950';
-                  const badgeVariant = isOk ? 'success' : isNotConfigured ? 'info' : 'danger';
-                  return (
-                    <div className={`mt-4 rounded-2xl border p-4 space-y-2.5 text-xs font-sans ${colorClass}`}>
-                      <div className="font-bold flex items-center justify-between text-sm">
-                        <span className="flex items-center gap-1.5">
-                          {isOk ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <CircleAlert className="h-4 w-4" />}
-                          {isOk ? 'WhatsApp Message Sent Successfully' : 'WhatsApp Send Result'}
-                        </span>
-                        <Badge variant={badgeVariant}>{s}</Badge>
-                      </div>
-                      <div className="space-y-1">
-                        <p>Member: <strong>{lastSingleResult.member}</strong></p>
-                        <p>Recipient: <strong className="font-mono">{lastSingleResult.recipient}</strong></p>
-                        <p>{isOk ? 'Confirmed:' : 'Reason:'} <span className="leading-relaxed">{lastSingleResult.message}</span></p>
-                        {lastSingleResult.messageId && (
-                          <p className="pt-1">
-                            ✓ Message ID: <span className="font-mono bg-emerald-100 px-1.5 py-0.5 rounded text-emerald-800 select-all">{lastSingleResult.messageId}</span>
-                          </p>
-                        )}
-                        {isNotConfigured && (
-                          <p className="pt-1 text-amber-800 font-medium">
-                            → Add your credentials to <span className="font-mono">.env</span> and restart the backend server.
-                          </p>
-                        )}
-                        {isUnauth && (
-                          <p className="pt-1 text-sky-800 font-medium">
-                            → The Cloud Function requires admin login. Please log out and log in again.
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-            </Card>
-          </div>
-
-          {/* CONFIRM WHATSAPP BROADCAST MODAL */}
-          {isConfirmOpen && (
-            <Modal
-              isOpen={isConfirmOpen}
-              onClose={() => setIsConfirmOpen(false)}
-              title="Confirm WhatsApp Broadcast"
-              subtitle={`Queue payload for ${recipientMembers.length} member(s).`}
-              maxWidth="max-w-lg"
+          {!qrGatewayState.connected ? (
+            <Button
+              variant="primary"
+              size="sm"
+              className="rounded-xl text-xs gap-1.5 bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold cursor-pointer shadow-xs"
+              onClick={() => setIsQrModalOpen(true)}
             >
-              <div className="space-y-3 text-xs text-slate-700">
-                <div className="flex justify-between bg-slate-50 p-3 rounded-xl border border-slate-200">
-                  <span>Sender Admin Number:</span>
-                  <span className="font-bold font-mono text-slate-900">{ADMIN_NUMBER}</span>
+              <QrCode className="w-4 h-4" />
+              Scan QR Code to Link WhatsApp
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-xl text-xs gap-1.5 border-[#F8B4B4] bg-[#FCEEEE] text-[#C53030] hover:bg-red-100 font-bold cursor-pointer"
+              onClick={handleDisconnectDevice}
+            >
+              <Unlink className="w-3.5 h-3.5" />
+              Unlink Device
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* ─── 2. RECIPIENT SELECTION SYSTEM (Under Gateway) ────────────────────────── */}
+      <Card className="p-5 border border-[#E5E5E1] bg-white rounded-2xl shadow-xs space-y-4 font-sans">
+        
+        {/* ROSTER HEADER & ACTION BUTTON */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#E5E5E1]">
+          <div>
+            <h3 className="text-sm font-extrabold text-[#1C1C1A] uppercase tracking-wider">Recipient Selection System</h3>
+            <p className="text-xs text-[#6B6B67] mt-0.5">
+              {filteredRecipients.length} members loaded • <span className="font-bold text-[#2F5D50]">{selectedCount} selected</span>
+            </p>
+          </div>
+
+          <Button
+            variant="primary"
+            size="sm"
+            className="rounded-xl text-xs font-bold gap-1.5 bg-[#2F5D50] hover:bg-[#24493F] text-white cursor-pointer shadow-xs disabled:opacity-50"
+            onClick={() => setIsConfirmModalOpen(true)}
+            disabled={selectedCount === 0 || bulkProgress.isSending}
+          >
+            <Send className="w-3.5 h-3.5" />
+            <span>Send to {selectedCount} Members</span>
+          </Button>
+        </div>
+
+        {/* SEARCH & FILTERS TOOLBAR */}
+        <div className="space-y-2.5 text-xs">
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[#959590]" />
+            <input
+              type="text"
+              placeholder="Search member name, phone, whatsapp..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] pl-9 pr-3 py-2 font-medium text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Category Filter */}
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-1.5 font-bold text-[#1C1C1A] focus:outline-none cursor-pointer"
+            >
+              <option value="all">All Chit Categories</option>
+              <option value="100000">₹1 Lakh Category</option>
+              <option value="200000">₹2 Lakh Category</option>
+              <option value="500000">₹5 Lakh Category</option>
+              <option value="single">Single Chit Only</option>
+              <option value="multiple">Multi Chit Only</option>
+            </select>
+
+            {/* Group Filter */}
+            <select
+              value={groupFilter}
+              onChange={(e) => setGroupFilter(e.target.value)}
+              className="rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-1.5 font-bold text-[#1C1C1A] focus:outline-none cursor-pointer"
+            >
+              <option value="all">All Groups</option>
+              {['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'A', 'B', 'C'].map((g) => (
+                <option key={g} value={g}>
+                  Group {g}
+                </option>
+              ))}
+            </select>
+
+            {/* Status Filter */}
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-1.5 font-bold text-[#1C1C1A] focus:outline-none cursor-pointer"
+            >
+              <option value="all">All Statuses</option>
+              <option value="due">Pending Due</option>
+              <option value="single">Single Chit</option>
+              <option value="multiple">Multiple Chit</option>
+            </select>
+
+            <div className="ml-auto flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleSelectAll}
+                className="px-2.5 py-1.5 rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] font-bold text-[#1C1C1A] hover:bg-[#E5E5E1] cursor-pointer"
+              >
+                Select All
+              </button>
+              <button
+                type="button"
+                onClick={handleClearSelection}
+                className="px-2.5 py-1.5 rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] font-bold text-[#1C1C1A] hover:bg-[#E5E5E1] cursor-pointer"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* BATCH SENDING PROGRESS BAR */}
+        {bulkProgress.isSending && (
+          <div className="p-3 bg-[#EDF7F0] border border-[#2F5D50]/20 rounded-xl space-y-1.5">
+            <div className="flex justify-between text-xs font-bold text-[#1C1C1A] font-mono">
+              <span>Sending Messages ({bulkProgress.current} / {bulkProgress.total})</span>
+              <span>Sent: {bulkProgress.sentCount} | Failed/Queued: {bulkProgress.failedCount}</span>
+            </div>
+            <div className="w-full bg-[#E5E5E1] h-2 rounded-full overflow-hidden">
+              <div
+                className="bg-[#2F5D50] h-full transition-all duration-300"
+                style={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }}
+              ></div>
+            </div>
+          </div>
+        )}
+
+        {/* MEMBER ROSTER TABLE */}
+        <div className="overflow-x-auto border border-[#E5E5E1] rounded-xl">
+          <table className="w-full text-left text-xs font-sans">
+            <thead className="bg-[#F7F7F5] border-b border-[#E5E5E1] text-[10px] font-black uppercase tracking-wider text-[#6B6B67]">
+              <tr>
+                <th className="p-3 w-10 text-center">Select</th>
+                <th className="p-3">Member Name</th>
+                <th className="p-3">Normalized Phone</th>
+                <th className="p-3">Group</th>
+                <th className="p-3">Classification</th>
+                <th className="p-3 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#E5E5E1]">
+              {filteredRecipients.length > 0 ? (
+                filteredRecipients.map((member) => {
+                  const isChecked = selectedMemberIds.includes(member.id);
+                  const rawPhone = member.whatsapp || member.phone || '';
+                  const norm = normalizePhone(rawPhone);
+                  const activeChits = getActiveChits(member);
+                  const isMulti = member.classification === 'MULTIPLE' || activeChits.length > 1;
+
+                  return (
+                    <tr
+                      key={member.id}
+                      className={`hover:bg-[#F7F7F5] transition-colors ${
+                        selectedPreviewMember?.id === member.id ? 'bg-[#EDF7F0]' : ''
+                      }`}
+                    >
+                      <td className="p-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => handleToggleMember(member.id)}
+                          className="w-4 h-4 rounded border-[#E5E5E1] text-[#2F5D50] focus:ring-[#2F5D50] cursor-pointer"
+                        />
+                      </td>
+
+                      <td className="p-3 font-bold text-[#1C1C1A]">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedPreviewMember(member)}
+                          className="hover:underline text-left"
+                        >
+                          {member.name}
+                        </button>
+                      </td>
+
+                      <td className="p-3 font-mono text-[#6B6B67] font-medium">
+                        {norm ? `+${norm}` : <span className="text-[#C53030]">No Phone</span>}
+                      </td>
+
+                      <td className="p-3 text-[#6B6B67] font-medium">Group {selectedGroupId}</td>
+
+                      <td className="p-3">
+                        <Badge variant={isMulti ? 'purple' : 'info'} className="text-[10px] font-bold">
+                          {isMulti ? 'MULTIPLE' : 'SINGLE'}
+                        </Badge>
+                      </td>
+
+                      <td className="p-3 text-right space-x-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleSendSingleMessage(member)}
+                          className="px-3 py-1 bg-[#2F5D50] hover:bg-[#24493F] text-white rounded-lg text-[11px] font-bold cursor-pointer inline-flex items-center gap-1 shadow-xs"
+                        >
+                          <Send className="w-3 h-3" />
+                          <span>Send Message</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={6} className="p-6 text-center text-[#6B6B67]">
+                    No members match the selected filters.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {/* ─── 3. PARAMETERS & COMPOSER SET SIDE-BY-SIDE UNDER RECIPIENT SELECTION SYSTEM ─── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 font-sans">
+
+        {/* LEFT COLUMN: 1. REMINDER PARAMETERS & AMOUNT CALCULATION BOXES */}
+        <Card className="p-5 border border-[#E5E5E1] bg-white rounded-2xl shadow-xs space-y-5">
+          <h2 className="text-xs font-extrabold text-[#1C1C1A] uppercase tracking-wider border-b border-[#E5E5E1] pb-2">
+            1. Reminder Parameters & Amount Breakdown
+          </h2>
+
+          <div className="grid grid-cols-2 gap-3 text-xs font-sans">
+            <div>
+              <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block mb-1">Chit Group</label>
+              <select
+                value={selectedGroupId}
+                onChange={(e) => setSelectedGroupId(e.target.value)}
+                className="w-full px-3 py-2 bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] font-bold focus:outline-none focus:ring-1 focus:ring-[#2F5D50] cursor-pointer"
+              >
+                <option value="all">All Groups</option>
+                {['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV', 'XV'].map((g) => (
+                  <option key={g} value={g}>
+                    Group {g}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block mb-1">Billing Month</label>
+              <select
+                value={billingMonth}
+                onChange={(e) => setBillingMonth(e.target.value)}
+                className="w-full px-3 py-2 bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] font-bold focus:outline-none focus:ring-1 focus:ring-[#2F5D50] cursor-pointer"
+              >
+                {['August 2026', 'September 2026', 'October 2026', 'November 2026', 'December 2026'].map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="col-span-2">
+              <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block mb-1">Due Date</label>
+              <input
+                type="text"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="w-full px-3 py-2 bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] font-bold focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+              />
+            </div>
+          </div>
+
+          {/* AMOUNT CALCULATION BOXES SECTION */}
+          <div className="space-y-3 pt-3 border-t border-[#E5E5E1]">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-extrabold text-[#1C1C1A] uppercase tracking-wider">
+                Amount Calculation Boxes
+              </span>
+              <span className="text-[10px] font-mono text-[#2F5D50] bg-[#EDF7F0] px-2 py-0.5 rounded-full border border-[#2F5D50]/20 font-bold">
+                Final = (Chit + Pending) - Balance
+              </span>
+            </div>
+
+            <div className="space-y-3 text-xs font-sans">
+              <div className="grid grid-cols-2 gap-3">
+                {/* 1. Chit Amount Box */}
+                <div>
+                  <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block mb-1">
+                    Chit Amount (₹)
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="e.g. 25000"
+                    value={chitAmount}
+                    onChange={(e) => setChitAmount(e.target.value)}
+                    className="w-full px-3 py-2 bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] font-bold font-mono focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+                  />
                 </div>
-                <div className="flex justify-between bg-slate-50 p-3 rounded-xl border border-slate-200">
-                  <span>Selected Recipients:</span>
-                  <span className="font-bold text-slate-900">{recipientMembers.length} Members</span>
-                </div>
-                <div className="flex justify-between bg-slate-50 p-3 rounded-xl border border-slate-200">
-                  <span>Message Language:</span>
-                  <span className="font-bold text-slate-900">{language.toUpperCase()}</span>
-                </div>
-                <div className="flex justify-end gap-2 pt-4">
-                  <Button variant="secondary" size="sm" onClick={() => setIsConfirmOpen(false)}>Cancel</Button>
-                  <Button variant="gold" size="sm" onClick={handleConfirmSend} disabled={isSending}>
-                    {isSending ? 'Sending Payload...' : 'Confirm & Send'}
-                  </Button>
+
+                {/* 2. Pending Amount Box */}
+                <div>
+                  <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block mb-1">
+                    Pending Amount (₹)
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="e.g. 0"
+                    value={groupPendingAmount}
+                    onChange={(e) => setGroupPendingAmount(e.target.value)}
+                    className="w-full px-3 py-2 bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] font-bold font-mono focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+                  />
                 </div>
               </div>
-            </Modal>
-          )}
-        </>
-      ) : (
-        /* SMS CENTER TAB CONTENT */
+
+              {/* 3. Total Amount Box (Calculated: Chit + Pending) */}
+              <div className="p-3 bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-black text-[#6B6B67] uppercase tracking-wider block">
+                    Total Amount (Chit + Pending)
+                  </span>
+                  <span className="text-[11px] text-[#6B6B67] font-mono">
+                    ₹{Number(chitAmount || 0).toLocaleString('en-IN')} + ₹{Number(groupPendingAmount || 0).toLocaleString('en-IN')}
+                  </span>
+                </div>
+                <span className="text-base font-black font-mono text-[#1C1C1A]">
+                  ₹{totalAmount.toLocaleString('en-IN')}
+                </span>
+              </div>
+
+              {/* 4. Balance Amount Box (To Subtract) */}
+              <div>
+                <label className="text-[10px] font-bold text-[#C53030] uppercase tracking-wider block mb-1">
+                  Balance Amount (₹) — To be Subtracted
+                </label>
+                <input
+                  type="number"
+                  placeholder="e.g. 0"
+                  value={balanceAmount}
+                  onChange={(e) => setBalanceAmount(e.target.value)}
+                  className="w-full px-3 py-2 bg-[#FFF5F5] border border-[#F8B4B4] rounded-xl text-[#C53030] font-bold font-mono focus:outline-none focus:ring-1 focus:ring-[#C53030]"
+                />
+              </div>
+
+              {/* 5. Final Amount Box (Calculated: Total - Balance) */}
+              <div className="p-3.5 bg-[#EDF7F0] border border-[#2F5D50]/30 rounded-xl flex items-center justify-between shadow-xs">
+                <div>
+                  <span className="text-[10px] font-black text-[#2F5D50] uppercase tracking-wider block">
+                    Final Payable Amount
+                  </span>
+                  <span className="text-[11px] text-[#2F5D50] font-mono">
+                    ₹{totalAmount.toLocaleString('en-IN')} - ₹{Number(balanceAmount || 0).toLocaleString('en-IN')}
+                  </span>
+                </div>
+                <span className="text-xl font-black font-mono text-[#2F5D50]">
+                  ₹{finalAmount.toLocaleString('en-IN')}
+                </span>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* RIGHT COLUMN: 2. MESSAGE COMPOSER & LIVE RECIPIENT PREVIEW */}
         <div className="space-y-6">
-          {(() => {
-            const activeSmsMembers = members.filter((member) => getActiveChits(member).length > 0);
-            const singleChitMembers = activeSmsMembers.filter((member) => getActiveChits(member).length === 1);
-            const multipleChitMembers = activeSmsMembers.filter((member) => getActiveChits(member).length > 1);
-            const readyToSendMembers = activeSmsMembers.filter((member) => member.phone || member.whatsapp);
-            const previewMember = members[0] || null;
-            const templatePreview = buildBilingualSmsTemplate(previewMember);
+          <Card className="p-5 border border-[#E5E5E1] bg-white rounded-2xl shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-[#E5E5E1] pb-2">
+              <h2 className="text-xs font-extrabold text-[#1C1C1A] uppercase tracking-wider">
+                2. Message Composer
+              </h2>
 
-            return (
-              <>
-                {/* SUMMARY CARDS */}
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <Card className="p-5 border border-slate-200 bg-white rounded-3xl shadow-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Total Chitt Holders</span>
-                      <Users className="h-4 w-4 text-sky-600" />
-                    </div>
-                    <div className="mt-3 text-3xl font-black text-slate-900">
-                      {membersLoading ? <span className="text-sm text-slate-400 font-normal">Loading...</span> : activeSmsMembers.length}
-                    </div>
-                  </Card>
+              <div className="flex items-center gap-1 bg-[#F7F7F5] p-1 rounded-xl text-[11px] font-bold">
+                <button
+                  onClick={() => setLanguage('english')}
+                  className={`px-2 py-0.5 rounded-lg cursor-pointer ${language === 'english' ? 'bg-white text-[#2F5D50] shadow-xs' : 'text-[#6B6B67]'}`}
+                >
+                  EN
+                </button>
+                <button
+                  onClick={() => setLanguage('telugu')}
+                  className={`px-2 py-0.5 rounded-lg cursor-pointer ${language === 'telugu' ? 'bg-white text-[#2F5D50] shadow-xs' : 'text-[#6B6B67]'}`}
+                >
+                  తెలుగు
+                </button>
+              </div>
+            </div>
 
-                  <Card className="p-5 border border-slate-200 bg-white rounded-3xl shadow-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Ready to Send</span>
-                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                    </div>
-                    <div className="mt-3 text-3xl font-black text-slate-900">
-                      {membersLoading ? <span className="text-sm text-slate-400 font-normal">Loading...</span> : readyToSendMembers.length}
-                    </div>
-                  </Card>
+            {/* TEMPLATE SELECTOR */}
+            <div className="space-y-1.5 text-xs">
+              <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block">Message Template</label>
+              <select
+                value={selectedTemplateId}
+                onChange={(e) => setSelectedTemplateId(e.target.value)}
+                className="w-full px-3 py-2 bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] font-bold focus:outline-none focus:ring-1 focus:ring-[#2F5D50] cursor-pointer"
+              >
+                {Object.values(MESSAGE_TEMPLATES).map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.title}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-                  <Card className="p-5 border border-slate-200 bg-white rounded-3xl shadow-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Estimated Messages</span>
-                      <MessageSquareText className="h-4 w-4 text-sky-600" />
-                    </div>
-                    <div className="mt-3 text-3xl font-black text-slate-900">
-                      {membersLoading ? <span className="text-sm text-slate-400 font-normal">Loading...</span> : readyToSendMembers.length}
-                    </div>
-                  </Card>
+            {/* TEXTAREA WITH CHAR COUNTER */}
+            <div className="space-y-1">
+              <div className="flex justify-between items-center text-[10px] font-bold text-[#6B6B67]">
+                <span>EDITABLE MESSAGE CONTENT</span>
+                <span className="font-mono">{charCount} characters</span>
+              </div>
+              <textarea
+                rows={7}
+                value={customTemplateText}
+                onChange={(e) => setCustomTemplateText(e.target.value)}
+                className="w-full p-3 text-xs font-mono bg-[#1C1C1A] text-[#EDF7F0] border border-[#E5E5E1] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#2F5D50] leading-relaxed"
+              ></textarea>
+            </div>
+          </Card>
 
-                  <Card className="p-5 border border-slate-200 bg-white rounded-3xl shadow-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Last Campaign</span>
-                      <Clock3 className="h-4 w-4 text-amber-600" />
-                    </div>
-                    <div className="mt-3 text-xs font-bold text-slate-900">{smsCampaign.lastSent}</div>
-                  </Card>
-                </div>
+          {/* RECIPIENT PREVIEW & SEND BUTTON */}
+          <Card className="p-5 border border-[#E5E5E1] bg-white rounded-2xl shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-[#E5E5E1] pb-2">
+              <h2 className="text-xs font-extrabold text-[#1C1C1A] uppercase tracking-wider">
+                3. Live Message Preview
+              </h2>
+              {selectedPreviewMember && (
+                <Badge variant="info">{selectedPreviewMember.name}</Badge>
+              )}
+            </div>
 
-                {/* PRIMARY DISPATCH PANEL */}
-                <div className="grid gap-6 xl:grid-cols-[1.35fr_0.95fr]">
-                  <Card className="p-6 border border-slate-200 bg-white rounded-3xl shadow-xs space-y-5">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between pb-4 border-b border-slate-100">
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-sky-600">SMS Gateway</p>
-                        <h3 className="mt-1 text-xl font-black text-slate-900">Send Monthly SMS Reminders</h3>
-                        <p className="text-xs text-slate-500 mt-0.5">Dispatches personalized bilingual (English + Telugu) notifications to all registered chitt holders.</p>
-                      </div>
-                      <Badge variant="success">{smsStatus.message}</Badge>
-                    </div>
+            <div className="bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl p-4 font-sans text-xs leading-relaxed text-[#1C1C1A] whitespace-pre-wrap max-h-48 overflow-y-auto">
+              {selectedPreviewMember
+                ? getCompiledMessageForMember(selectedPreviewMember)
+                : 'Select a member from the roster to preview message.'}
+            </div>
 
-                    {/* PROMINENT PRIMARY BUTTON: SEND SMS TO ALL CHITT HOLDERS */}
-                    <div className="pt-2">
-                      <Button
-                        variant="primary"
-                        size="lg"
-                        className="w-full justify-center gap-2 rounded-2xl bg-gradient-to-r from-sky-600 to-blue-700 py-4 text-sm font-extrabold text-white shadow-lg shadow-sky-600/25 transition hover:-translate-y-0.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        onClick={() => setIsSmsConfirmOpen(true)}
-                        disabled={isSendingSms || readyToSendMembers.length === 0}
-                      >
-                        <Send className="h-5 w-5" />
-                        Send SMS to All Chitt Holders ({readyToSendMembers.length} Members)
-                      </Button>
-                    </div>
-
-                    {/* LIVE SENDING PROGRESS INDICATOR STATE */}
-                    {isSendingSms && (
-                      <div className="rounded-2xl border border-sky-200 bg-sky-50/80 p-4 space-y-3 animate-pulse">
-                        <div className="flex items-center justify-between text-xs font-bold text-sky-900">
-                          <span className="flex items-center gap-2">
-                            <LoaderCircle className="h-4 w-4 animate-spin text-sky-600" />
-                            Sending SMS...
-                          </span>
-                          <span className="font-mono text-sm">{smsProgress.current} / {smsProgress.total} sent</span>
-                        </div>
-                        <div className="h-2.5 w-full overflow-hidden rounded-full bg-sky-200">
-                          <div
-                            className="h-full rounded-full bg-sky-600 transition-all duration-200"
-                            style={{ width: `${smsProgress.total ? (smsProgress.current / smsProgress.total) * 100 : 0}%` }}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* COMPLETED SUMMARY STATE */}
-                    {smsCampaign.status === 'completed' && !isSendingSms && (
-                      <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-5 space-y-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 font-black text-emerald-900 text-sm">
-                            <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                            SMS Campaign Completed
-                          </div>
-                          <span className="text-xs font-mono text-emerald-700">{smsCampaign.lastSent}</span>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-3 text-center">
-                          <div className="bg-white border border-emerald-200 rounded-xl p-3">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Sent</span>
-                            <span className="text-xl font-black text-emerald-700">{smsCampaign.sent}</span>
-                          </div>
-                          <div className="bg-white border border-red-200 rounded-xl p-3">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Failed</span>
-                            <span className="text-xl font-black text-red-600">{smsCampaign.failed}</span>
-                          </div>
-                          <div className="bg-white border border-slate-200 rounded-xl p-3">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total</span>
-                            <span className="text-xl font-black text-slate-900">{smsCampaign.total}</span>
-                          </div>
-                        </div>
-
-                        {smsCampaign.failed > 0 && (
-                          <div className="flex flex-wrap gap-2 justify-end pt-2">
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              className="rounded-xl border-red-200 text-red-700 hover:bg-red-50"
-                              onClick={() => setShowFailedModal(true)}
-                            >
-                              View Failed Messages ({smsCampaign.failed})
-                            </Button>
-                            <Button
-                              variant="gold"
-                              size="sm"
-                              className="rounded-xl gap-1.5"
-                              onClick={handleRetryFailedSms}
-                            >
-                              <RotateCcw className="w-3.5 h-3.5" />
-                              Retry Failed
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* BILINGUAL TEMPLATE PREVIEW CARD */}
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Required Message Format (English + Telugu)</span>
-                        <Badge variant="info">Dynamic Member Data</Badge>
-                      </div>
-                      <div className="bg-white border border-slate-200 rounded-xl p-4 text-xs font-sans leading-6 text-slate-900 whitespace-pre-wrap">
-                        {templatePreview}
-                      </div>
-                    </div>
-                  </Card>
-
-                  {/* RECIPIENTS COVERAGE */}
-                  <Card className="p-6 border border-slate-200 bg-white rounded-3xl shadow-xs space-y-4">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Batch Coverage</p>
-                      <Badge variant="success">Active Roster</Badge>
-                    </div>
-
-                    <div className="space-y-3 text-xs">
-                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex justify-between items-center">
-                        <span className="text-slate-600 font-semibold">Single Chit Members</span>
-                        <span className="font-black text-slate-900 text-sm">{singleChitMembers.length}</span>
-                      </div>
-                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex justify-between items-center">
-                        <span className="text-slate-600 font-semibold">Multiple Chit Members</span>
-                        <span className="font-black text-slate-900 text-sm">{multipleChitMembers.length}</span>
-                      </div>
-                    </div>
-
-                    <div className="pt-2 space-y-2">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Registered Mobile Numbers Sample</p>
-                      {activeSmsMembers.slice(0, 5).map((m) => (
-                        <div key={m.id} className="p-2.5 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between text-xs">
-                          <div>
-                            <p className="font-bold text-slate-900 flex items-center gap-1.5">
-                              <span>{m.name}</span>
-                              {m.sharedPhone && (
-                                <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-amber-100 text-amber-800 border border-amber-200">
-                                  Shared
-                                </span>
-                              )}
-                            </p>
-                            <p className="text-[10px] text-slate-500 font-mono">{m.phone}</p>
-                          </div>
-                          <Badge variant={getActiveChits(m).length > 1 ? 'success' : 'info'}>
-                            {getActiveChits(m).length > 1 ? 'Multiple' : 'Single'}
-                          </Badge>
-                        </div>
-                      ))}
-                    </div>
-                  </Card>
-                </div>
-
-                {/* CONFIRMATION DIALOG BEFORE SENDING SMS */}
-                {isSmsConfirmOpen && (
-                  <Modal
-                    isOpen={isSmsConfirmOpen}
-                    onClose={() => setIsSmsConfirmOpen(false)}
-                    title={`Send SMS to ${readyToSendMembers.length} Members?`}
-                    subtitle={`${readyToSendMembers.length} personalized messages will be queued for delivery.`}
-                    maxWidth="max-w-lg"
-                  >
-                    <div className="space-y-4 text-xs text-slate-800">
-                      <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl space-y-1">
-                        <p className="font-bold text-sky-900">SMS Campaign Summary:</p>
-                        <p>• Total Eligible Chitt Holders: <strong>{readyToSendMembers.length}</strong></p>
-                        <p>• Single Chit Holders: <strong>{singleChitMembers.length}</strong></p>
-                        <p>• Multiple Chit Holders: <strong>{multipleChitMembers.length}</strong></p>
-                        <p>• Format: <strong>Bilingual English + Telugu</strong></p>
-                      </div>
-
-                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-700 max-h-40 overflow-y-auto font-sans whitespace-pre-wrap">
-                        {templatePreview}
-                      </div>
-
-                      <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
-                        <Button variant="secondary" size="sm" className="rounded-xl" onClick={() => setIsSmsConfirmOpen(false)}>
-                          Cancel
-                        </Button>
-                        <Button variant="gold" size="sm" className="rounded-xl gap-1.5" onClick={handleStartSmsCampaign}>
-                          <Send className="w-3.5 h-3.5" />
-                          Confirm & Send
-                        </Button>
-                      </div>
-                    </div>
-                  </Modal>
-                )}
-
-                {/* VIEW FAILED MESSAGES MODAL */}
-                {showFailedModal && (
-                  <Modal
-                    isOpen={showFailedModal}
-                    onClose={() => setShowFailedModal(false)}
-                    title={`Failed Messages (${smsCampaign.failedList.length})`}
-                    subtitle="Review delivery failure reasons and retry transmission."
-                    maxWidth="max-w-md"
-                  >
-                    <div className="space-y-4 text-xs">
-                      <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                        {smsCampaign.failedList.map((item) => (
-                          <div key={item.id} className="p-3 bg-red-50 border border-red-200 rounded-xl flex justify-between items-center">
-                            <div>
-                              <p className="font-bold text-red-900">{item.name}</p>
-                              <p className="text-[10px] text-red-700 font-mono">{item.phone}</p>
-                              <p className="text-[10px] text-red-600 italic mt-0.5">{item.reason}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
-                        <Button variant="secondary" size="sm" className="rounded-xl" onClick={() => setShowFailedModal(false)}>
-                          Close
-                        </Button>
-                        <Button variant="gold" size="sm" className="rounded-xl gap-1.5" onClick={handleRetryFailedSms}>
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          Retry Failed Now
-                        </Button>
-                      </div>
-                    </div>
-                  </Modal>
-                )}
-              </>
-            );
-          })()}
+            {/* LARGE PRIMARY ACTION BUTTON: SEND MESSAGE */}
+            <Button
+              variant="primary"
+              size="lg"
+              className="w-full justify-center py-3.5 text-sm font-black bg-[#2F5D50] hover:bg-[#24493F] text-white rounded-xl shadow-xs gap-2 cursor-pointer"
+              onClick={() => handleSendSingleMessage(selectedPreviewMember)}
+              disabled={!selectedPreviewMember || isSendingSingle}
+            >
+              <Send className="w-4 h-4" />
+              <span>{isSendingSingle ? 'Sending Message...' : `Send Message ${selectedPreviewMember ? `to ${selectedPreviewMember.name}` : ''}`}</span>
+            </Button>
+          </Card>
         </div>
+
+      </div>
+
+      {/* ─── MESSAGE HISTORY SECTION (DEDICATED 'messageHistory' COLLECTION) ────── */}
+      <Card className="p-5 border border-[#E5E5E1] bg-white rounded-2xl shadow-xs space-y-4 font-sans">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#E5E5E1]">
+          <div>
+            <h2 className="text-sm font-extrabold text-[#1C1C1A] uppercase tracking-wider flex items-center gap-2">
+              <History className="w-4 h-4 text-[#2F5D50]" />
+              Firestore Message History & Audit Logs
+            </h2>
+            <p className="text-xs text-[#6B6B67] mt-0.5">
+              Independent delivery records stored in <code className="bg-[#F7F7F5] px-1 py-0.5 rounded font-mono text-[#1C1C1A]">messageHistory</code> collection.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <select
+              value={historyStatusFilter}
+              onChange={(e) => setHistoryStatusFilter(e.target.value)}
+              className="rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-1.5 text-xs font-bold text-[#1C1C1A] focus:outline-none cursor-pointer"
+            >
+              <option value="all">All History Statuses</option>
+              <option value="SENT">SENT</option>
+              <option value="PENDING">PENDING</option>
+              <option value="FAILED">FAILED</option>
+              <option value="NOT_CONFIGURED">NOT_CONFIGURED</option>
+            </select>
+
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-xl text-xs gap-1.5 border-[#E5E5E1] text-[#1C1C1A] hover:bg-[#F7F7F5] cursor-pointer font-bold"
+              onClick={refreshHistoryLogs}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${historyLoading ? 'animate-spin text-[#2F5D50]' : ''}`} />
+              Refresh
+            </Button>
+          </div>
+        </div>
+
+        {/* AUDIT LOG TABLE */}
+        <div className="overflow-x-auto border border-[#E5E5E1] rounded-xl">
+          <table className="w-full text-left text-xs font-sans">
+            <thead className="bg-[#F7F7F5] border-b border-[#E5E5E1] text-[10px] font-black uppercase tracking-wider text-[#6B6B67]">
+              <tr>
+                <th className="p-3">Recipient</th>
+                <th className="p-3">Phone</th>
+                <th className="p-3">Channel</th>
+                <th className="p-3">Group</th>
+                <th className="p-3">Status</th>
+                <th className="p-3">Sent At</th>
+                <th className="p-3 text-right">Details</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#E5E5E1]">
+              {historyLogs.length > 0 ? (
+                historyLogs.map((log) => (
+                  <tr key={log.id} className="hover:bg-[#F7F7F5]">
+                    <td className="p-3 font-bold text-[#1C1C1A]">{log.recipientName || log.memberName || 'Member'}</td>
+                    <td className="p-3 font-mono text-[#6B6B67]">+{log.phone}</td>
+                    <td className="p-3 font-mono text-[10px] text-[#2F5D50] font-bold">{log.channel || 'WHATSAPP'}</td>
+                    <td className="p-3 font-medium text-[#6B6B67]">Group {log.groupId || log.chitGroupId || 'I'}</td>
+                    <td className="p-3">
+                      {log.status === 'SENT' || log.status === 'Sent' ? (
+                        <Badge variant="success">SENT ✓</Badge>
+                      ) : log.status === 'NOT_CONFIGURED' ? (
+                        <Badge variant="warning">NOT CONFIGURED</Badge>
+                      ) : (
+                        <Badge variant="error">{log.status || 'FAILED'}</Badge>
+                      )}
+                    </td>
+                    <td className="p-3 text-[#6B6B67] font-mono text-[11px]">
+                      {log.createdAt ? new Date(log.createdAt).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : 'Recent'}
+                    </td>
+                    <td className="p-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => setDetailsLogModal(log)}
+                        className="px-2.5 py-1 bg-[#F7F7F5] hover:bg-[#E5E5E1] text-[#1C1C1A] rounded-lg text-[11px] font-bold cursor-pointer border border-[#E5E5E1]"
+                      >
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={7} className="p-6 text-center text-[#6B6B67]">
+                    No message history records found in `messageHistory` collection.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {/* ─── SCANNABLE QR CODE PAIRING MODAL ─────────────────────────────────────── */}
+      {isQrModalOpen && (
+        <Modal
+          isOpen={isQrModalOpen}
+          onClose={() => setIsQrModalOpen(false)}
+          title="Link WhatsApp Account (Scan QR Code)"
+        >
+          <div className="space-y-4 font-sans text-xs text-center">
+            <div className="p-4 bg-[#F7F7F5] border border-[#E5E5E1] rounded-2xl space-y-3">
+              <h3 className="font-extrabold text-[#1C1C1A] text-sm">Scan QR Code with WhatsApp</h3>
+              <p className="text-[#6B6B67] text-xs">
+                Open WhatsApp on your phone ➔ <strong>Settings</strong> ➔ <strong>Linked Devices</strong> ➔ <strong>Link a Device</strong>.
+              </p>
+
+              {/* QR CODE DISPLAY */}
+              <div className="p-4 bg-white border border-[#E5E5E1] rounded-xl w-60 h-60 mx-auto flex items-center justify-center shadow-xs">
+                {qrGatewayState.qrCodeDataUrl ? (
+                  <img src={qrGatewayState.qrCodeDataUrl} alt="WhatsApp Pairing QR Code" className="w-full h-full object-contain" />
+                ) : (
+                  <div className="space-y-2 text-[#6B6B67]">
+                    <RefreshCw className="w-8 h-8 animate-spin mx-auto text-[#2F5D50]" />
+                    <p className="font-bold text-[11px]">Generating WhatsApp Pairing QR Code...</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-center gap-2 text-[11px] font-bold text-[#2F5D50]">
+                <Smartphone className="w-4 h-4" />
+                <span>Waiting for phone scan... (Auto-connects)</span>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <Button variant="outline" size="sm" onClick={() => setIsQrModalOpen(false)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ─── CONFIRMATION MODAL BEFORE SENDING ─────────────────────────────────── */}
+      {isConfirmModalOpen && (
+        <Modal
+          isOpen={isConfirmModalOpen}
+          onClose={() => setIsConfirmModalOpen(false)}
+          title="Confirm Message Dispatch"
+        >
+          <div className="space-y-4 font-sans text-xs">
+            <div className="p-4 bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-[#6B6B67] font-bold">Total Recipients:</span>
+                <span className="font-extrabold text-[#1C1C1A] text-sm">{selectedCount} Members</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#6B6B67] font-bold">Selected Chit Group:</span>
+                <span className="font-bold text-[#1C1C1A]">Group {selectedGroupId}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#6B6B67] font-bold">Billing Month:</span>
+                <span className="font-bold text-[#1C1C1A]">{billingMonth}</span>
+              </div>
+            </div>
+
+            <p className="text-[#6B6B67]">
+              You are about to send <strong className="text-[#1C1C1A]">{selectedCount}</strong> personalized messages via your linked WhatsApp device.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#E5E5E1]">
+              <Button variant="outline" size="sm" onClick={() => setIsConfirmModalOpen(false)}>
+                Cancel
+              </Button>
+
+              <Button
+                variant="primary"
+                size="sm"
+                className="bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold"
+                onClick={handleExecuteBulkSend}
+              >
+                Confirm Send ({selectedCount} Messages)
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ─── BATCH SUMMARY MODAL ───────────────────────────────────────────────── */}
+      {bulkSummaryModal && (
+        <Modal
+          isOpen={Boolean(bulkSummaryModal)}
+          onClose={() => setBulkSummaryModal(null)}
+          title="Messaging Complete"
+        >
+          <div className="space-y-4 font-sans text-xs">
+            <div className="p-4 bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl space-y-2 text-center">
+              <h3 className="text-base font-black text-[#1C1C1A]">Dispatch Summary</h3>
+              <div className="grid grid-cols-2 gap-3 pt-2 font-mono">
+                <div className="p-3 bg-[#EDF7F0] border border-[#2F5D50]/20 rounded-xl">
+                  <span className="text-[10px] font-bold text-[#2F6B4F] uppercase block">Sent</span>
+                  <span className="text-lg font-black text-[#2F6B4F]">{bulkSummaryModal.sentCount}</span>
+                </div>
+                <div className="p-3 bg-[#FFF7E6] border border-[#B86B14]/20 rounded-xl">
+                  <span className="text-[10px] font-bold text-[#B86B14] uppercase block">Failed / Queued</span>
+                  <span className="text-lg font-black text-[#B86B14]">{bulkSummaryModal.failedCount}</span>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-[#6B6B67] text-center">
+              All {bulkSummaryModal.total} message jobs have been logged to the <code className="bg-[#F7F7F5] px-1 py-0.5 rounded font-mono text-[#1C1C1A]">messageHistory</code> collection.
+            </p>
+
+            <div className="flex justify-end pt-2">
+              <Button variant="outline" size="sm" onClick={() => setBulkSummaryModal(null)}>
+                Close Summary
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ─── AUDIT LOG DETAILS MODAL ─────────────────────────────────────────────────── */}
+      {detailsLogModal && (
+        <Modal
+          isOpen={Boolean(detailsLogModal)}
+          onClose={() => setDetailsLogModal(null)}
+          title="Message Audit Record Details"
+        >
+          <div className="space-y-4 font-sans text-xs">
+            <div className="p-4 bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl space-y-2">
+              <div className="flex justify-between">
+                <span className="text-[#6B6B67] font-semibold">Recipient:</span>
+                <span className="font-bold text-[#1C1C1A]">{detailsLogModal.recipientName || detailsLogModal.memberName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#6B6B67] font-semibold">Phone:</span>
+                <span className="font-bold font-mono text-[#1C1C1A]">+{detailsLogModal.phone}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#6B6B67] font-semibold">Channel:</span>
+                <span className="font-bold font-mono text-[#2F5D50]">{detailsLogModal.channel || 'WHATSAPP'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#6B6B67] font-semibold">Status:</span>
+                <span className="font-bold text-[#1C1C1A]">{detailsLogModal.status || 'SENT'}</span>
+              </div>
+              {detailsLogModal.errorMessage && (
+                <div className="pt-2 border-t border-[#E5E5E1] text-[#C53030]">
+                  <span className="font-bold block mb-0.5">Error Message:</span>
+                  <p className="bg-[#FCEEEE] p-2 rounded-lg font-mono text-[11px]">{detailsLogModal.errorMessage}</p>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <span className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block mb-1">Message Content</span>
+              <div className="p-3 bg-[#1C1C1A] text-[#EDF7F0] rounded-xl font-mono text-[11px] whitespace-pre-wrap max-h-40 overflow-y-auto">
+                {detailsLogModal.message || 'No message content stored.'}
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <Button variant="outline" size="sm" onClick={() => setDetailsLogModal(null)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );

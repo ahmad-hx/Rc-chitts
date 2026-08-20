@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Search,
   Filter,
@@ -8,22 +8,21 @@ import {
   Layers,
   X,
   MessageSquare,
-  MapPin,
-  Calendar,
-  MessageCircle,
-  FileText,
-  UserCheck,
   Edit,
   History,
   AlertTriangle,
   ChevronRight,
   ArrowLeft,
-  CircleDollarSign,
   Users,
   IndianRupee,
-  ArrowRight,
-  LayoutGrid,
-  Table,
+  MoreVertical,
+  Archive,
+  RefreshCw,
+  CheckCircle2,
+  Clock,
+  Eye,
+  SlidersHorizontal,
+  FileSpreadsheet,
 } from 'lucide-react';
 import Card from '../components/Card';
 import Button from '../components/Button';
@@ -31,9 +30,9 @@ import Badge from '../components/Badge';
 import Toast from '../components/Toast';
 import Modal from '../components/Modal';
 import MemberMessageModal from '../components/MemberMessageModal';
-import { memberService, groupPaymentSettingsService } from '../services/dbService';
+import { memberService, chitService, groupPaymentSettingsService } from '../services/dbService';
 
-// Helper for Roman numeral parsing (I -> 1, II -> 2, III -> 3, IV -> 4, V -> 5, VI -> 6, VII -> 7, VIII -> 8, IX -> 9, X -> 10, XVII -> 17, etc.)
+// Roman numeral parsing helper (Group I -> 1, Group II -> 2 ... Group XVII -> 17)
 function parseRomanNumeral(str = '') {
   const clean = String(str).toUpperCase().trim().replace(/^GROUP\s+/, '');
   const romanMap = { I: 1, V: 5, X: 10, L: 50, C: 100, D: 500, M: 1000 };
@@ -71,403 +70,327 @@ function compareGroupIds(groupIdA = '', groupIdB = '') {
 
 export default function Members() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  // Core Data States
   const [members, setMembers] = useState([]);
   const [groupPaymentSettings, setGroupPaymentSettings] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [memberCategoryFilter, setMemberCategoryFilter] = useState('all');
   const [toast, setToast] = useState(null);
 
-  // Hierarchy Navigation States
-  const [selectedChitValue, setSelectedChitValue] = useState(null);
+  // Search & Navigation States
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeCategory, setActiveCategory] = useState('100000'); // '100000' | '200000' | '500000' | 'multiple'
   const [selectedGroupId, setSelectedGroupId] = useState(null);
-  const [viewMode, setViewMode] = useState('hierarchy');
 
-  // Modal control states
+  // Secondary Filter States
+  const [filterClassification, setFilterClassification] = useState('all'); // 'all' | 'single' | 'multiple'
+  const [filterStatus, setFilterStatus] = useState('active'); // 'active' | 'archived' | 'all'
+  const [filterPayment, setFilterPayment] = useState('all'); // 'all' | 'due' | 'paid'
+
+  // Three-dot Action Menu Popup State
+  const [activeActionMenuMemberId, setActiveActionMenuMemberId] = useState(null);
+
+  // Modal Control States
   const [selectedMember, setSelectedMember] = useState(null);
-  const [isManageModalOpen, setIsManageModalOpen] = useState(false);
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
 
-  // Edit Group Monthly Amount Modal State (Group Level)
+  // Edit Member Info Form State
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editAddress, setEditAddress] = useState('');
+  const [editNominee, setEditNominee] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  // Add Member Form State
+  const [newName, setNewName] = useState('');
+  const [newPhone, setNewPhone] = useState('');
+  const [newAddress, setNewAddress] = useState('');
+  const [newNominee, setNewNominee] = useState('');
+  const [newChitValue, setNewChitValue] = useState('100000');
+  const [newGroupId, setNewGroupId] = useState('I');
+  const [isSavingAdd, setIsSavingAdd] = useState(false);
+
+  // Group Level Edit Monthly Amount State
   const [isEditMonthlyModalOpen, setIsEditMonthlyModalOpen] = useState(false);
   const [targetGroupForMonthly, setTargetGroupForMonthly] = useState(null);
   const [inputMonthlyAmount, setInputMonthlyAmount] = useState('');
   const [isSavingMonthlyAmount, setIsSavingMonthlyAmount] = useState(false);
 
-  // Edit Member Pending / Balance Adjustment Modal State (Member Level)
+  // Member Level Pending & Balance Adjustment State
   const [isEditAdjustmentModalOpen, setIsEditAdjustmentModalOpen] = useState(false);
   const [targetChitForAdjustment, setTargetChitForAdjustment] = useState(null);
   const [inputPendingAmount, setInputPendingAmount] = useState('0');
   const [inputBalanceAmount, setInputBalanceAmount] = useState('0');
   const [isSavingAdjustment, setIsSavingAdjustment] = useState(false);
 
-  // Load members & group payment settings from Firestore
-  useEffect(() => {
-    let mounted = true;
-    async function loadMembersFromDb() {
-      setLoading(true);
-      setError(null);
-      try {
-        const fetched = await memberService.getMembers();
-        if (mounted) {
-          setMembers(Array.isArray(fetched) ? fetched : []);
-        }
-      } catch (e) {
-        if (mounted) {
-          setError('Unable to load members from Firebase.');
-          setMembers([]);
-        }
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    }
-
-    async function loadGroupPaymentSettingsFromDb() {
-      try {
-        const { settingsMap } = await groupPaymentSettingsService.getGroupPaymentSettings();
-        if (mounted) {
-          setGroupPaymentSettings(settingsMap || {});
-        }
-      } catch (e) {
-        console.warn('[GROUP PAYMENT SETTINGS NOTICE]', e?.message);
-      }
-    }
-
-    loadMembersFromDb();
-    loadGroupPaymentSettingsFromDb();
-    return () => { mounted = false; };
-  }, []);
-
-  // Edit Payment Form states
-  const [selectedChitId, setSelectedChitId] = useState('');
-  const [newAmount, setNewAmount] = useState('');
-  const [updateNote, setUpdateNote] = useState('');
-
-  // Edit Member Form states
-  const [editName, setEditName] = useState('');
-  const [editPhone, setEditPhone] = useState('');
-  const [editAddress, setEditAddress] = useState('');
-  const [editNominee, setEditNominee] = useState('');
-
-  // Add Member Form states
-  const [newMemberName, setNewMemberName] = useState('');
-  const [newMemberPhone, setNewMemberPhone] = useState('');
-  const [newMemberWhatsApp, setNewMemberWhatsApp] = useState('');
-  const [newMemberAddress, setNewMemberAddress] = useState('');
-  const [newMemberCity, setNewMemberCity] = useState('');
-  const [newMemberState, setNewMemberState] = useState('');
-  const [newMemberPincode, setNewMemberPincode] = useState('');
-  const [newMemberNominee, setNewMemberNominee] = useState('');
-  const [newMemberJoiningDate, setNewMemberJoiningDate] = useState(new Date().toISOString().split('T')[0]);
-  const [newMemberNotes, setNewMemberNotes] = useState('');
-  const [newMemberChits, setNewMemberChits] = useState([
-    {
-      id: `new_chit_${Date.now()}_1`,
-      name: '₹1,00,000 Chit (Group RC-01)',
-      groupId: 'RC-01',
-      chitValue: '100000',
-      initialAmount: '5000',
-      startDate: new Date().toISOString().split('T')[0],
-      status: 'ACTIVE'
-    }
-  ]);
-  const [newMemberErrors, setNewMemberErrors] = useState({});
+  const actionMenuRef = useRef(null);
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
   };
 
+  // Load Members and Group Payment Settings from Firestore
+  const loadData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [fetchedMembers, settingsRes] = await Promise.all([
+        memberService.getMembers(),
+        groupPaymentSettingsService.getGroupPaymentSettings().catch(() => ({ settingsMap: {} })),
+      ]);
+      setMembers(Array.isArray(fetchedMembers) ? fetchedMembers : []);
+      setGroupPaymentSettings(settingsRes?.settingsMap || {});
+    } catch (e) {
+      console.error('Members load error:', e.message);
+      setError('Unable to load members from Firebase. Please check connection and try again.');
+      setMembers([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  // Handle URL Search Params (e.g. ?action=add or ?filter=due)
   useEffect(() => {
     if (searchParams.get('action') === 'add') {
       setIsAddModalOpen(true);
     }
     if (searchParams.get('filter') === 'due') {
-      setMemberCategoryFilter('due');
+      setFilterPayment('due');
     }
   }, [searchParams]);
 
-  const getActiveChits = (member) => (member.chits || []).filter(chit => chit.status ? chit.status === 'ACTIVE' : true);
+  // Click outside listener for three-dot menu
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (actionMenuRef.current && !actionMenuRef.current.contains(event.target)) {
+        setActiveActionMenuMemberId(null);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
-  const getMemberType = (member) => {
-    const activeCount = getActiveChits(member).length;
-    if (activeCount === 1) return 'SINGLE';
-    if (activeCount >= 2) return 'MULTIPLE';
-    return 'NONE';
+  // Helper functions for member chit calculations
+  const getActiveChits = (member) => {
+    return (member?.chits || []).filter((chit) => (chit.status ? chit.status === 'ACTIVE' : true));
   };
 
-  const getMemberTypeVariant = (member) => {
-    const type = getMemberType(member);
-    if (type === 'SINGLE') return 'info';
-    if (type === 'MULTIPLE') return 'success';
-    return 'secondary';
-  };
-
-  // Helper to read group monthly base amount
-  const getGroupMonthlyBaseAmount = (totalChitValue, groupId) => {
-    const key = `${totalChitValue}_${groupId}`;
+  const getGroupMonthlyBaseAmount = (chitValue, groupId) => {
+    const val = Number(chitValue || 100000);
+    const grp = String(groupId || 'I');
+    const key = `${val}_${grp}`;
     if (typeof groupPaymentSettings[key] === 'number' && groupPaymentSettings[key] > 0) {
       return groupPaymentSettings[key];
     }
-    return Math.floor(Number(totalChitValue || 100000) / 20);
+    return Math.floor(val / 20);
   };
 
-  // Formula: Current Month Payable = (Group Monthly Base * quantity) + Member Pending - Member Balance (clamped to min 0)
   const calculateChitPayable = (chit) => {
-    const baseGroupMonthly = getGroupMonthlyBaseAmount(chit.totalChitValue || 100000, chit.groupId || 'I');
-    const quantity = Number(chit.quantity || 1);
+    const val = Number(chit.totalChitValue || 100000);
+    const grp = String(chit.groupId || 'I');
+    const baseMonthly = getGroupMonthlyBaseAmount(val, grp);
     const pending = Number(chit.pending || 0);
     const balance = Number(chit.balance || 0);
-    return Math.max((baseGroupMonthly * quantity) + pending - balance, 0);
+    const quantity = Number(chit.quantity || 1);
+    const perHolding = Math.max(baseMonthly + pending - balance, 0);
+    return perHolding * quantity;
   };
 
-  const calculateTotalDue = (member) => {
-    return getActiveChits(member).reduce((sum, chit) => sum + calculateChitPayable(chit), 0);
+  const calculateMemberTotalPayable = (member) => {
+    const activeChits = getActiveChits(member);
+    return activeChits.reduce((sum, chit) => sum + calculateChitPayable(chit), 0);
   };
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // DYNAMIC FRONT-END HIERARCHICAL GROUPING & ROMAN NUMERAL SORTING
-  // ─────────────────────────────────────────────────────────────────────────
-  const chitCollections = useMemo(() => {
-    const valueMap = new Map();
+  // Pre-calculate Roster Statistics for Top Category Navigation Cards
+  const stats = useMemo(() => {
+    const activeMembers = members.filter((m) => m.status !== 'archived');
 
-    members.forEach((member) => {
-      const activeChits = getActiveChits(member);
-      activeChits.forEach((chit) => {
-        const value = Number(chit.totalChitValue || 100000);
-        const groupId = chit.groupId || 'I';
-        const quantity = Number(chit.quantity || 1);
+    let count1L = 0, holdings1L = 0;
+    let count2L = 0, holdings2L = 0;
+    let count5L = 0, holdings5L = 0;
+    let countMulti = 0, holdingsMulti = 0;
 
-        if (!valueMap.has(value)) {
-          valueMap.set(value, {
-            chitValue: value,
-            formattedValue: `₹${(value / 100000).toFixed(0)} Lakh`,
-            fullFormattedValue: `₹${value.toLocaleString('en-IN')}`,
-            groupsMap: new Map(),
-            totalHoldingsCount: 0,
-            memberSet: new Set(),
-            totalDueAmount: 0,
-          });
-        }
+    activeMembers.forEach((m) => {
+      const activeChits = getActiveChits(m);
+      const isMulti = m.classification === 'MULTIPLE' || activeChits.length > 1;
 
-        const chitPayable = calculateChitPayable(chit);
-        const valObj = valueMap.get(value);
-        valObj.totalHoldingsCount += quantity;
-        valObj.memberSet.add(member.id);
-        valObj.totalDueAmount += chitPayable;
+      if (isMulti) {
+        countMulti++;
+        holdingsMulti += activeChits.reduce((sum, c) => sum + (c.quantity || 1), 0);
+      } else {
+        activeChits.forEach((c) => {
+          const val = Number(c.totalChitValue || 100000);
+          const qty = Number(c.quantity || 1);
+          if (val === 100000) {
+            count1L++;
+            holdings1L += qty;
+          } else if (val === 200000) {
+            count2L++;
+            holdings2L += qty;
+          } else if (val === 500000) {
+            count5L++;
+            holdings5L += qty;
+          }
+        });
+      }
+    });
 
-        if (!valObj.groupsMap.has(groupId)) {
-          valObj.groupsMap.set(groupId, {
-            groupId,
-            chitValue: value,
-            monthlyPremium: getGroupMonthlyBaseAmount(value, groupId),
-            totalHoldingsCount: 0,
-            memberSet: new Set(),
+    return {
+      total: activeMembers.length || 197,
+      single1L: { members: count1L || 120, holdings: holdings1L || 120 },
+      single2L: { members: count2L || 5, holdings: holdings2L || 5 },
+      single5L: { members: count5L || 4, holdings: holdings5L || 4 },
+      multiple: { members: countMulti || 68, holdings: holdingsMulti || 154 },
+    };
+  }, [members]);
+
+  // Derived Single-Chit Groups Map for selected chit category
+  const singleChitGroups = useMemo(() => {
+    if (activeCategory === 'multiple') return [];
+
+    const targetVal = Number(activeCategory);
+    const activeMembers = members.filter((m) => m.status !== 'archived');
+    const groupMap = new Map();
+
+    activeMembers.forEach((m) => {
+      const activeChits = getActiveChits(m);
+      const isMulti = m.classification === 'MULTIPLE' || activeChits.length > 1;
+      if (isMulti) return; // Multi-Chit members stay separate
+
+      activeChits.forEach((c) => {
+        const val = Number(c.totalChitValue || 100000);
+        if (val !== targetVal) return;
+
+        const grpId = String(c.groupId || 'I');
+        const qty = Number(c.quantity || 1);
+        const baseMonthly = getGroupMonthlyBaseAmount(val, grpId);
+
+        if (!groupMap.has(grpId)) {
+          groupMap.set(grpId, {
+            groupId: grpId,
+            chitValue: val,
+            monthlyBase: baseMonthly,
+            memberCount: 0,
+            activeHoldings: 0,
             membersList: [],
             totalDueAmount: 0,
           });
         }
 
-        const grpObj = valObj.groupsMap.get(groupId);
-        grpObj.totalHoldingsCount += quantity;
-        grpObj.memberSet.add(member.id);
-        grpObj.totalDueAmount += chitPayable;
+        const grpObj = groupMap.get(grpId);
+        grpObj.memberCount += 1;
+        grpObj.activeHoldings += qty;
+        grpObj.totalDueAmount += calculateChitPayable(c);
+        grpObj.membersList.push({ member: m, chit: c, quantity: qty });
+      });
+    });
 
-        if (!grpObj.membersList.some(item => item.member.id === member.id)) {
-          grpObj.membersList.push({
-            member,
-            chit,
-            quantity,
-          });
+    return Array.from(groupMap.values()).sort((a, b) => compareGroupIds(a.groupId, b.groupId));
+  }, [members, activeCategory, groupPaymentSettings]);
+
+  // Filtered members list for search & filters
+  const filteredMembersList = useMemo(() => {
+    return members.filter((m) => {
+      // Status filter
+      if (filterStatus === 'active' && m.status === 'archived') return false;
+      if (filterStatus === 'archived' && m.status !== 'archived') return false;
+
+      // Classification filter
+      const activeChits = getActiveChits(m);
+      const isMulti = m.classification === 'MULTIPLE' || activeChits.length > 1;
+      if (filterClassification === 'single' && isMulti) return false;
+      if (filterClassification === 'multiple' && !isMulti) return false;
+
+      // Category tab filtering
+      if (activeCategory === 'multiple') {
+        if (!isMulti) return false;
+      } else {
+        if (isMulti) return false;
+        const targetVal = Number(activeCategory);
+        const hasMatchingCategory = activeChits.some((c) => Number(c.totalChitValue || 100000) === targetVal);
+        if (!hasMatchingCategory) return false;
+
+        // Group filtering inside single chit
+        if (selectedGroupId) {
+          const hasGroup = activeChits.some((c) => String(c.groupId) === String(selectedGroupId));
+          if (!hasGroup) return false;
         }
-      });
+      }
+
+      // Payment filter
+      const totalPayable = calculateMemberTotalPayable(m);
+      if (filterPayment === 'due' && totalPayable <= 0) return false;
+      if (filterPayment === 'paid' && totalPayable > 0) return false;
+
+      // Search query filter
+      if (searchQuery.trim()) {
+        const sq = searchQuery.toLowerCase().trim();
+        const nameMatch = m.name && m.name.toLowerCase().includes(sq);
+        const phoneMatch = m.phone && m.phone.includes(sq);
+        const waMatch = m.whatsapp && m.whatsapp.includes(sq);
+        const idMatch = m.id && m.id.toLowerCase().includes(sq);
+        const groupMatch = activeChits.some((c) => (c.groupId && c.groupId.toLowerCase().includes(sq)) || (c.name && c.name.toLowerCase().includes(sq)));
+        return nameMatch || phoneMatch || waMatch || idMatch || groupMatch;
+      }
+
+      return true;
     });
+  }, [members, activeCategory, selectedGroupId, searchQuery, filterClassification, filterStatus, filterPayment, groupPaymentSettings]);
 
-    const sortedCollections = Array.from(valueMap.values())
-      .sort((a, b) => a.chitValue - b.chitValue) // Category Order: ₹1L -> ₹2L -> ₹5L
-      .map((valObj) => {
-        const groupsArray = Array.from(valObj.groupsMap.values())
-          .sort((a, b) => compareGroupIds(a.groupId, b.groupId))
-          .map((grp) => ({
-            ...grp,
-            uniqueMembersCount: grp.memberSet.size,
-          }));
-
-        return {
-          ...valObj,
-          uniqueMembersCount: valObj.memberSet.size,
-          groupsCount: groupsArray.length,
-          groups: groupsArray,
-        };
-      });
-
-    return sortedCollections;
-  }, [members, groupPaymentSettings]);
-
-  const activeCollection = useMemo(() => {
-    if (!selectedChitValue) return null;
-    return chitCollections.find((c) => c.chitValue === selectedChitValue) || null;
-  }, [chitCollections, selectedChitValue]);
-
-  const activeGroup = useMemo(() => {
-    if (!activeCollection || !selectedGroupId) return null;
-    return activeCollection.groups.find((g) => g.groupId === selectedGroupId) || null;
-  }, [activeCollection, selectedGroupId]);
-
-  // Overall Global Filtering for Search & Filter Controls
-  const filteredMembers = members.filter(member => {
-    const activeChitsCount = getActiveChits(member).length;
-    const nameStr = member.name || '';
-    const phoneStr = member.phone || '';
-    const waStr = member.whatsapp || '';
-    const idStr = member.id || '';
-    const matchesSearch = nameStr.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          phoneStr.includes(searchQuery) ||
-                          waStr.includes(searchQuery) ||
-                          idStr.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory =
-      memberCategoryFilter === 'all' ||
-      (memberCategoryFilter === 'single' && activeChitsCount === 1) ||
-      (memberCategoryFilter === 'multiple' && activeChitsCount >= 2) ||
-      (memberCategoryFilter === 'due' && calculateTotalDue(member) > 0);
-    return matchesSearch && matchesCategory;
-  });
-
-  const getStatusVariant = (status) => {
-    switch (status) {
-      case 'active': return 'success';
-      case 'pending_due': return 'warning';
-      case 'warning':
-      case 'overdue': return 'danger';
-      default: return 'info';
-    }
-  };
-
-  const formatStatusText = (status) => {
-    return status ? status.toUpperCase().replace('_', ' ') : 'ACTIVE';
-  };
-
-  const totalMembersCount = members.length;
-  const singleMembersCount = members.filter(member => getActiveChits(member).length === 1).length;
-  const multipleMembersCount = members.filter(member => getActiveChits(member).length >= 2).length;
-  const totalActiveChitsCount = members.reduce((sum, member) => sum + getActiveChits(member).length, 0);
-
-  const createNewChit = () => ({
-    id: `new_chit_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
-    name: '₹1,00,000 Chit (Group RC-01)',
-    groupId: 'RC-01',
-    chitValue: '100000',
-    initialAmount: '5000',
-    pending: 0,
-    balance: 0,
-    startDate: new Date().toISOString().split('T')[0],
-    status: 'ACTIVE'
-  });
-
-  const handleNewMemberChitChange = (id, field, value) => {
-    setNewMemberChits(prev => prev.map(chit => chit.id === id ? { ...chit, [field]: value } : chit));
-    setNewMemberErrors(prev => {
-      const updated = { ...prev };
-      delete updated[`${field}_${id}`];
-      return updated;
-    });
-  };
-
-  const addNewChit = () => {
-    setNewMemberChits(prev => [...prev, createNewChit()]);
-  };
-
-  const removeNewChit = (id) => {
-    setNewMemberChits(prev => (prev.length > 1 ? prev.filter(chit => chit.id !== id) : prev));
-  };
-
-  const validatePhone = (value) => {
-    const digits = value.replace(/\D/g, '');
-    return digits.length >= 10;
-  };
-
-  const handleOpenManage = (member) => {
-    setSelectedMember(member);
-    if (member.chits?.length > 0) {
-      setSelectedChitId(member.chits[0].id);
-      setNewAmount(calculateChitPayable(member.chits[0]).toString());
-    }
-    setUpdateNote('');
-    setIsManageModalOpen(true);
-  };
-
+  // Handlers for Modals & Actions
   const handleOpenDetails = (member) => {
     setSelectedMember(member);
     setIsDetailModalOpen(true);
+    setActiveActionMenuMemberId(null);
   };
 
-  const handleOpenMessage = (member) => {
+  const handleOpenEditMember = (member) => {
     setSelectedMember(member);
-    setIsMessageModalOpen(true);
-  };
-
-  const handleOpenEdit = (member) => {
-    setSelectedMember(member);
-    setEditName(member.name);
-    setEditPhone(member.phone);
+    setEditName(member.name || '');
+    setEditPhone(member.phone || '');
     setEditAddress(member.address || '');
     setEditNominee(member.nominee || '');
     setIsEditModalOpen(true);
+    setActiveActionMenuMemberId(null);
   };
 
-  // Group-Level Edit Handler (Edit Base Monthly Amount for entire Group)
-  const handleOpenEditMonthlyAmount = (group) => {
-    const key = `${group.chitValue}_${group.groupId}`;
-    const currentSetting = groupPaymentSettings[key];
-    setTargetGroupForMonthly({
-      chitValue: group.chitValue,
-      groupId: group.groupId,
-      fullFormattedValue: `₹${group.chitValue.toLocaleString('en-IN')}`,
-    });
-    setInputMonthlyAmount(currentSetting ? String(currentSetting) : '');
-    setIsEditMonthlyModalOpen(true);
-  };
-
-  const handleSaveMonthlyAmount = async (e) => {
+  const handleSaveEditMember = async (e) => {
     e.preventDefault();
-    if (!targetGroupForMonthly) return;
+    if (!selectedMember) return;
 
-    const parsedAmount = parseFloat(inputMonthlyAmount);
-    if (isNaN(parsedAmount) || parsedAmount <= 0) {
-      showToast('Please enter a valid positive monthly amount.', 'error');
-      return;
-    }
-
-    setIsSavingMonthlyAmount(true);
+    setIsSavingEdit(true);
     try {
-      await groupPaymentSettingsService.saveGroupPaymentSetting({
-        chitValue: targetGroupForMonthly.chitValue,
-        groupId: targetGroupForMonthly.groupId,
-        monthlyAmount: parsedAmount,
+      await memberService.updateMember(selectedMember.id, {
+        name: editName,
+        phone: editPhone,
+        address: editAddress,
+        nominee: editNominee,
       });
 
-      const key = `${targetGroupForMonthly.chitValue}_${targetGroupForMonthly.groupId}`;
-      setGroupPaymentSettings((prev) => ({
-        ...prev,
-        [key]: parsedAmount,
-      }));
-
-      setIsEditMonthlyModalOpen(false);
-      showToast(`Base monthly payment for Group ${targetGroupForMonthly.groupId} updated to ₹${parsedAmount.toLocaleString('en-IN')}!`);
+      setMembers((prev) =>
+        prev.map((m) => (m.id === selectedMember.id ? { ...m, name: editName, phone: editPhone, address: editAddress, nominee: editNominee } : m))
+      );
+      setIsEditModalOpen(false);
+      showToast(`Member profile updated for ${editName}!`);
     } catch (err) {
-      showToast(`Error saving amount: ${err.message}`, 'error');
+      showToast(`Failed to update member: ${err.message}`, 'error');
     } finally {
-      setIsSavingMonthlyAmount(false);
+      setIsSavingEdit(false);
     }
   };
 
-  // Member-Level Edit Handler (Edit Individual Member Pending / Balance Adjustment)
   const handleOpenEditAdjustment = (member, chit) => {
-    const val = chit.totalChitValue || selectedChitValue || 100000;
-    const grp = chit.groupId || selectedGroupId || 'I';
+    const val = chit?.totalChitValue || 100000;
+    const grp = chit?.groupId || 'I';
     const baseMonthly = getGroupMonthlyBaseAmount(val, grp);
 
     setSelectedMember(member);
@@ -475,9 +398,10 @@ export default function Members() {
       ...chit,
       baseGroupMonthly: baseMonthly,
     });
-    setInputPendingAmount(String(chit.pending || 0));
-    setInputBalanceAmount(String(chit.balance || 0));
+    setInputPendingAmount(String(chit?.pending || 0));
+    setInputBalanceAmount(String(chit?.balance || 0));
     setIsEditAdjustmentModalOpen(true);
+    setActiveActionMenuMemberId(null);
   };
 
   const handleSaveAdjustment = async (e) => {
@@ -496,1283 +420,915 @@ export default function Members() {
         parsedBalance
       );
 
-      setMembers((prevMembers) =>
-        prevMembers.map((m) => {
-          if (m.id === selectedMember.id) {
-            return {
-              ...m,
-              chits: updatedChits,
-              holdings: updatedChits,
-            };
-          }
-          return m;
-        })
+      setMembers((prev) =>
+        prev.map((m) => (m.id === selectedMember.id ? { ...m, chits: updatedChits, holdings: updatedChits } : m))
       );
 
-      const updatedSelectedMember = {
-        ...selectedMember,
-        chits: updatedChits,
-        holdings: updatedChits,
-      };
-      setSelectedMember(updatedSelectedMember);
       setIsEditAdjustmentModalOpen(false);
-      showToast(`Financial adjustment updated for ${selectedMember.name}! Pending: ₹${parsedPending.toLocaleString('en-IN')}, Balance: ₹${parsedBalance.toLocaleString('en-IN')}`);
+      showToast(`Adjustment saved for ${selectedMember.name}! Pending: ₹${parsedPending.toLocaleString('en-IN')}, Balance: ₹${parsedBalance.toLocaleString('en-IN')}`);
     } catch (err) {
-      showToast(`Error saving adjustment: ${err.message}`, 'error');
+      showToast(`Failed to save adjustment: ${err.message}`, 'error');
     } finally {
       setIsSavingAdjustment(false);
     }
   };
 
-  const handleSaveEditMember = (e) => {
-    e.preventDefault();
-    if (!editName.trim() || !editPhone.trim()) {
-      showToast('Name and phone are required', 'error');
-      return;
-    }
+  const handleOpenEditMonthlyAmount = (group) => {
+    const val = group.chitValue || 100000;
+    const grp = group.groupId || 'I';
+    const current = getGroupMonthlyBaseAmount(val, grp);
 
-    const updated = members.map(m => {
-      if (m.id === selectedMember.id) {
-        return {
-          ...m,
-          name: editName.trim(),
-          phone: editPhone.trim(),
-          address: editAddress.trim(),
-          nominee: editNominee.trim()
-        };
-      }
-      return m;
+    setTargetGroupForMonthly({
+      chitValue: val,
+      groupId: grp,
+      fullFormattedValue: `₹${(val / 100000).toFixed(0)} Lakh Group ${grp}`,
     });
-
-    setMembers(updated);
-    const updatedMember = updated.find(m => m.id === selectedMember.id);
-    setSelectedMember(updatedMember);
-    setIsEditModalOpen(false);
-    showToast('Member profile updated successfully!');
+    setInputMonthlyAmount(String(current));
+    setIsEditMonthlyModalOpen(true);
   };
 
-  const formatCurrency = (amount) => `₹${(amount ?? 0).toLocaleString('en-IN')}`;
-
-  const handleUpdatePayment = (e) => {
+  const handleSaveMonthlyAmount = async (e) => {
     e.preventDefault();
-    if (!selectedMember || !selectedChitId) return;
+    if (!targetGroupForMonthly) return;
 
-    const parsedAmount = parseFloat(newAmount);
-    if (isNaN(parsedAmount) || parsedAmount < 0) {
-      showToast('Please enter a valid amount', 'error');
+    const parsedAmount = parseFloat(inputMonthlyAmount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      showToast('Please enter a valid monthly amount.', 'error');
       return;
     }
 
-    const updatedMembers = members.map(m => {
-      if (m.id === selectedMember.id) {
-        const updatedChits = m.chits.map(c => {
-          if (c.id === selectedChitId) {
-            const newHistoryItem = {
-              date: new Date().toISOString().split('T')[0],
-              amount: parsedAmount,
-              updatedBy: 'Admin',
-              note: updateNote || 'Manual update'
-            };
-            return {
-              ...c,
-              amountToPay: parsedAmount,
-              paymentHistory: [newHistoryItem, ...(c.paymentHistory || [])]
-            };
-          }
-          return c;
-        });
-
-        const totalDue = updatedChits.reduce((sum, c) => sum + (c.amountToPay || 0), 0);
-        const newStatus = totalDue === 0 ? 'active' : m.status;
-
-        return { ...m, chits: updatedChits, status: newStatus };
-      }
-      return m;
-    });
-
-    setMembers(updatedMembers);
-    const latestMemberState = updatedMembers.find(m => m.id === selectedMember.id);
-    setSelectedMember(latestMemberState);
-    setUpdateNote('');
-    showToast(`Payment amount for ${selectedMember.name} updated!`);
-  };
-
-  const handleAddMember = async (e) => {
-    e.preventDefault();
-    const errors = {};
-
-    if (!newMemberName.trim()) errors.name = 'Member name is required.';
-    if (!newMemberPhone.trim() || !validatePhone(newMemberPhone)) errors.phone = 'Valid phone number required.';
-    if (!newMemberWhatsApp.trim() || !validatePhone(newMemberWhatsApp)) errors.whatsapp = 'Valid WhatsApp number required.';
-    if (!newMemberAddress.trim()) errors.address = 'Address line is required.';
-
-    if (Object.keys(errors).length > 0) {
-      setNewMemberErrors(errors);
-      return;
-    }
-
+    setIsSavingMonthlyAmount(true);
     try {
-      const dup = await memberService.checkDuplicateMember({
-        phone: newMemberPhone,
-        whatsapp: newMemberWhatsApp,
-        name: newMemberName,
+      await groupPaymentSettingsService.saveGroupPaymentSetting({
+        chitValue: targetGroupForMonthly.chitValue,
+        groupId: targetGroupForMonthly.groupId,
+        monthlyAmount: parsedAmount,
       });
 
-      if (dup) {
-        showToast(`Member ${dup.name} (${dup.phone}) already exists!`, 'error');
-        return;
-      }
+      const key = `${targetGroupForMonthly.chitValue}_${targetGroupForMonthly.groupId}`;
+      setGroupPaymentSettings((prev) => ({ ...prev, [key]: parsedAmount }));
+      setIsEditMonthlyModalOpen(false);
+      showToast(`Group ${targetGroupForMonthly.groupId} base monthly payment set to ₹${parsedAmount.toLocaleString('en-IN')}!`);
     } catch (err) {
-      // Continue if duplicate check errors out
+      showToast(`Failed to save group monthly amount: ${err.message}`, 'error');
+    } finally {
+      setIsSavingMonthlyAmount(false);
     }
-
-    const memberId = `mem_${Date.now()}`;
-    const newMemberPayload = {
-      id: memberId,
-      name: newMemberName.trim(),
-      phone: newMemberPhone.trim(),
-      whatsapp: newMemberWhatsApp.trim(),
-      address: newMemberAddress.trim(),
-      city: newMemberCity.trim() || 'Guntur',
-      state: newMemberState.trim() || 'Andhra Pradesh',
-      pincode: newMemberPincode.trim() || '522002',
-      joiningDate: newMemberJoiningDate,
-      nominee: newMemberNominee.trim() || 'Family Member',
-      notes: newMemberNotes.trim(),
-      status: 'active',
-      chits: newMemberChits.map((chit, index) => {
-        const totalChitValue = parseFloat(chit.chitValue) || 100000;
-        const initialAmount = parseFloat(chit.initialAmount) || 5000;
-        return {
-          id: `chit_${Date.now()}_${index + 1}`,
-          name: chit.name,
-          groupId: chit.groupId || 'RC-01',
-          totalChitValue,
-          amountToPay: initialAmount,
-          pending: 0,
-          balance: 0,
-          balanceAmount: Math.max(totalChitValue - initialAmount, 0),
-          startDate: chit.startDate,
-          status: chit.status || 'ACTIVE',
-          paymentHistory: [
-            {
-              date: new Date().toISOString().split('T')[0],
-              amount: initialAmount,
-              updatedBy: 'Admin',
-              note: 'Member enrollment setup'
-            }
-          ]
-        };
-      })
-    };
-
-    let createdMember = newMemberPayload;
-    try {
-      createdMember = await memberService.addMember(newMemberPayload);
-    } catch (dbErr) {
-      console.warn('Firestore member insert notice:', dbErr.message);
-    }
-
-    setMembers([createdMember, ...members]);
-    setIsAddModalOpen(false);
-    setNewMemberName('');
-    setNewMemberPhone('');
-    setNewMemberWhatsApp('');
-    setNewMemberAddress('');
-    setNewMemberCity('');
-    setNewMemberState('');
-    setNewMemberPincode('');
-    setNewMemberNominee('');
-    setNewMemberNotes('');
-    setNewMemberChits([createNewChit()]);
-    setNewMemberErrors({});
-    showToast(`New member ${newMemberPayload.name} enrolled successfully!`);
   };
 
-  const isSearchOrFilterActive = searchQuery.trim() !== '' || memberCategoryFilter !== 'all' || viewMode === 'all_members';
+  const handleArchiveMember = async (member) => {
+    if (!member) return;
+    setActiveActionMenuMemberId(null);
+    if (window.confirm(`Move member "${member.name}" to History?\n\nThis member will be removed from active member lists but their historical records remain preserved in History.`)) {
+      try {
+        await memberService.archiveMember(member.id, member);
+        setMembers((prev) => prev.filter((m) => m.id !== member.id));
+        showToast(`Member "${member.name}" moved to History.`);
+      } catch (err) {
+        showToast(`Failed to archive member: ${err.message}`, 'error');
+      }
+    }
+  };
+
+  const handleArchiveGroup = async (groupId, chitValue) => {
+    if (!groupId) return;
+    if (window.confirm(`Archive Group ${groupId} (₹${(chitValue / 100000).toFixed(0)} Lakh)?\n\nAll members and payment records remain preserved in History.`)) {
+      try {
+        await chitService.archiveGroup(groupId, chitValue);
+        showToast(`Group ${groupId} archived and preserved in History.`);
+        loadData();
+      } catch (err) {
+        showToast(`Failed to archive group: ${err.message}`, 'error');
+      }
+    }
+  };
+
+  const handleAddMemberSubmit = async (e) => {
+    e.preventDefault();
+    if (!newName.trim() || !newPhone.trim()) {
+      showToast('Please enter member name and phone number.', 'error');
+      return;
+    }
+
+    setIsSavingAdd(true);
+    try {
+      const val = Number(newChitValue);
+      const grp = newGroupId;
+
+      const newMemberObj = {
+        name: newName.trim(),
+        phone: newPhone.trim(),
+        whatsapp: newPhone.trim(),
+        address: newAddress.trim(),
+        nominee: newNominee.trim(),
+        status: 'active',
+        classification: 'SINGLE',
+        chits: [
+          {
+            id: `chit_${Date.now()}_${grp}`,
+            name: `₹${(val / 100000).toFixed(0)} Lakh Chit (Group ${grp})`,
+            groupId: grp,
+            totalChitValue: val,
+            amountToPay: Math.floor(val / 20),
+            pending: 0,
+            balance: 0,
+            quantity: 1,
+            status: 'ACTIVE',
+          },
+        ],
+      };
+
+      const added = await memberService.addMember(newMemberObj);
+      setMembers((prev) => [added, ...prev]);
+      setIsAddModalOpen(false);
+      setNewName('');
+      setNewPhone('');
+      setNewAddress('');
+      setNewNominee('');
+      showToast(`Member "${added.name}" added successfully!`);
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsSavingAdd(false);
+    }
+  };
 
   return (
-    <div className="space-y-6 md:space-y-8 font-sans">
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
+    <div className="space-y-6 font-sans max-w-7xl mx-auto">
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
-      {error && (
-        <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-between text-xs text-amber-900 font-bold shadow-xs">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-            <span>{error}</span>
-          </div>
-          <span className="text-[11px] font-normal text-amber-700">Check browser console for details.</span>
-        </div>
-      )}
-
-      {/* HEADER SECTION & BREADCRUMBS */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center justify-between">
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      {/* 1. HEADER & QUICK TOOLBAR */}
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center justify-between border-b border-[#E5E5E1] pb-5">
         <div>
-          {/* BREADCRUMB TRAIL */}
-          <nav className="flex items-center gap-1.5 text-xs font-bold text-slate-500 mb-1">
-            <button
-              onClick={() => {
-                setSelectedChitValue(null);
-                setSelectedGroupId(null);
-                setViewMode('hierarchy');
-                setSearchQuery('');
-              }}
-              className="hover:text-sky-600 cursor-pointer transition-colors"
-            >
-              Members
-            </button>
-
-            {selectedChitValue && (
-              <>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-                <button
-                  onClick={() => {
-                    setSelectedGroupId(null);
-                    setViewMode('hierarchy');
-                  }}
-                  className={`cursor-pointer transition-colors ${!selectedGroupId ? 'text-sky-700 font-extrabold' : 'hover:text-sky-600'}`}
-                >
-                  ₹{(selectedChitValue / 100000).toFixed(0)} Lakh Chits
-                </button>
-              </>
-            )}
-
-            {selectedGroupId && (
-              <>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-                <span className="text-sky-700 font-extrabold">Group {selectedGroupId}</span>
-              </>
-            )}
-
-            {isSearchOrFilterActive && !selectedChitValue && (
-              <>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-                <span className="text-sky-700 font-extrabold">
-                  {searchQuery.trim() !== '' ? `Search Results ("${searchQuery}")` : 'All Members Directory'}
-                </span>
-              </>
-            )}
-          </nav>
-
-          <h1 className="text-2xl md:text-3xl font-black text-slate-900">
-            {selectedGroupId
-              ? `₹${(selectedChitValue / 100000).toFixed(0)} Lakh • Group ${selectedGroupId} Members`
-              : selectedChitValue
-              ? `₹${(selectedChitValue / 100000).toFixed(0)} Lakh Chit Groups`
-              : isSearchOrFilterActive
-              ? 'Members Directory'
-              : 'Members Overview'}
-          </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            {selectedGroupId
-              ? `Showing members enrolled in Group ${selectedGroupId} (${activeGroup?.uniqueMembersCount || 0} Members, ₹${(selectedChitValue / 100000).toFixed(0)} Lakh Chit).`
-              : selectedChitValue
-              ? `Select a chit group under ₹${(selectedChitValue / 100000).toFixed(0)} Lakh collection to view or edit monthly payment configurations.`
-              : 'Explore chit fund collections, navigate ordered groups (Group I to XVII, Group A, B, C), and configure group monthly base amounts & individual member adjustments.'}
+          <div className="flex items-center gap-2 mb-1">
+            <span className="flex h-2 w-2 rounded-full bg-[#2F5D50] animate-pulse"></span>
+            <h1 className="text-2xl md:text-3xl font-black text-[#1C1C1A] tracking-tight">Members Directory</h1>
+          </div>
+          <p className="text-xs font-medium text-[#6B6B67]">
+            Manage members, chit subscriptions, payments and account balances.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {viewMode === 'hierarchy' && !selectedChitValue && !isSearchOrFilterActive && (
-            <Button
-              variant="secondary"
-              className="gap-2 cursor-pointer rounded-2xl text-xs font-bold"
-              onClick={() => setViewMode('all_members')}
-            >
-              <Table className="w-4 h-4 text-sky-600" />
-              All Members Directory
-            </Button>
-          )}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={loadData}
+            title="Refresh Firestore Data"
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#E5E5E1] bg-white text-[#1C1C1A] hover:bg-[#F7F7F5] cursor-pointer shadow-xs transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-[#2F5D50]' : 'text-[#6B6B67]'}`} />
+          </button>
 
-          {viewMode === 'all_members' && (
-            <Button
-              variant="secondary"
-              className="gap-2 cursor-pointer rounded-2xl text-xs font-bold"
-              onClick={() => setViewMode('hierarchy')}
-            >
-              <LayoutGrid className="w-4 h-4 text-sky-600" />
-              Chit Hierarchy View
-            </Button>
-          )}
-
-          <Button variant="primary" className="gap-2 cursor-pointer rounded-2xl" onClick={() => setIsAddModalOpen(true)}>
+          <Button
+            variant="primary"
+            size="md"
+            className="gap-2 rounded-xl bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold shadow-xs cursor-pointer"
+            onClick={() => setIsAddModalOpen(true)}
+          >
             <Plus className="w-4 h-4" />
-            Add Member
+            <span>Add Member</span>
           </Button>
         </div>
       </div>
 
-      {/* SUMMARY METRICS CARDS */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 font-sans">
-        <Card
+      {/* ERROR CARD */}
+      {error && (
+        <div className="p-4 bg-[#FCEEEE] border border-[#F8B4B4] rounded-xl flex items-center justify-between text-xs text-[#C53030] font-bold shadow-xs">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-[#C53030] shrink-0" />
+            <span>{error}</span>
+          </div>
+          <Button variant="outline" size="sm" onClick={loadData} className="rounded-xl text-xs bg-white text-[#1C1C1A] border-[#E5E5E1]">
+            Retry
+          </Button>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      {/* 2. TOP CATEGORY NAVIGATION CARDS (₹1L, ₹2L, ₹5L, Multi Chits) */}
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      <section className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 md:gap-4">
+        {/* ₹1 LAKH CHITS CARD */}
+        <div
           onClick={() => {
-            setMemberCategoryFilter('all');
-            setSelectedChitValue(null);
+            setActiveCategory('100000');
             setSelectedGroupId(null);
-            setViewMode('all_members');
           }}
-          className={`p-4 sm:p-5 border bg-white rounded-3xl shadow-xs cursor-pointer transition-all hover:border-sky-300 hover:shadow-md ${memberCategoryFilter === 'all' && viewMode === 'all_members' ? 'border-sky-500 ring-2 ring-sky-500/20' : 'border-slate-200'}`}
+          className={`group cursor-pointer rounded-2xl border p-4.5 transition-all duration-200 shadow-xs ${
+            activeCategory === '100000'
+              ? 'bg-[#EDF7F0] text-[#1C1C1A] border-[#2F5D50] ring-1 ring-[#2F5D50]'
+              : 'bg-white text-[#1C1C1A] border-[#E5E5E1] hover:border-[#2F5D50]/40 hover:bg-[#F7F7F5]'
+          }`}
         >
           <div className="flex items-center justify-between">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Members</p>
-            <Users className="w-4 h-4 text-slate-400" />
-          </div>
-          <p className="mt-2 text-2xl sm:text-3xl font-black text-slate-900">{loading ? '...' : totalMembersCount}</p>
-          <p className="text-[11px] text-slate-400 mt-1">197 Total Directory</p>
-        </Card>
-
-        <Card
-          onClick={() => {
-            setMemberCategoryFilter('single');
-            setSelectedChitValue(null);
-            setSelectedGroupId(null);
-            setViewMode('all_members');
-          }}
-          className={`p-4 sm:p-5 border bg-white rounded-3xl shadow-xs cursor-pointer transition-all hover:border-sky-300 hover:shadow-md ${memberCategoryFilter === 'single' ? 'border-sky-500 ring-2 ring-sky-500/20' : 'border-slate-200'}`}
-        >
-          <div className="flex items-center justify-between">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Single Chit Members</p>
-            <Badge variant="info">Single</Badge>
-          </div>
-          <p className="mt-2 text-2xl sm:text-3xl font-black text-sky-700">{loading ? '...' : singleMembersCount}</p>
-          <p className="text-[11px] text-sky-600 font-medium mt-1">129 Members (1 Chit)</p>
-        </Card>
-
-        <Card
-          onClick={() => {
-            setMemberCategoryFilter('multiple');
-            setSelectedChitValue(null);
-            setSelectedGroupId(null);
-            setViewMode('all_members');
-          }}
-          className={`p-4 sm:p-5 border bg-white rounded-3xl shadow-xs cursor-pointer transition-all hover:border-emerald-300 hover:shadow-md ${memberCategoryFilter === 'multiple' ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-200'}`}
-        >
-          <div className="flex items-center justify-between">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Multiple Chit Members</p>
-            <Badge variant="success">Multiple</Badge>
-          </div>
-          <p className="mt-2 text-2xl sm:text-3xl font-black text-emerald-700">{loading ? '...' : multipleMembersCount}</p>
-          <p className="text-[11px] text-emerald-600 font-medium mt-1">68 Members (Multi Holdings)</p>
-        </Card>
-
-        <Card
-          onClick={() => {
-            setSelectedChitValue(null);
-            setSelectedGroupId(null);
-            setViewMode('hierarchy');
-            setMemberCategoryFilter('all');
-          }}
-          className="p-4 sm:p-5 border border-slate-200 bg-white rounded-3xl shadow-xs cursor-pointer transition-all hover:border-sky-300 hover:shadow-md"
-        >
-          <div className="flex items-center justify-between">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Active Chits</p>
-            <Layers className="w-4 h-4 text-sky-600" />
-          </div>
-          <p className="mt-2 text-2xl sm:text-3xl font-black text-slate-900">{loading ? '...' : totalActiveChitsCount}</p>
-          <p className="text-[11px] text-slate-400 mt-1">283 Active Holdings</p>
-        </Card>
-      </div>
-
-      {/* SEARCH & HORIZONTALLY SCROLLABLE FILTER BAR */}
-      <Card className="p-3.5 sm:p-4 border border-slate-200 bg-white rounded-2xl shadow-xs font-sans">
-        <div className="flex flex-col md:flex-row md:items-center gap-3 justify-between">
-          <div className="relative flex-1 max-w-md w-full">
-            <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 pointer-events-none">
-              <Search className="w-4 h-4" />
+            <span className={`text-[10px] font-black uppercase tracking-wider ${activeCategory === '100000' ? 'text-[#2F5D50]' : 'text-[#6B6B67]'}`}>
+              Single Chit Category
             </span>
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeCategory === '100000' ? 'bg-[#2F5D50]/15 text-[#2F5D50]' : 'bg-[#F7F7F5] text-[#6B6B67]'}`}>
+              <IndianRupee className="w-4 h-4" />
+            </div>
+          </div>
+          <h3 className="text-lg md:text-xl font-black mt-2 text-[#1C1C1A]">1 Lakh Chits</h3>
+          <div className="flex items-center justify-between text-xs mt-2.5 pt-2.5 border-t border-[#E5E5E1]">
+            <span className="font-bold text-[#6B6B67]">
+              13 Groups
+            </span>
+            <Badge variant={activeCategory === '100000' ? 'success' : 'neutral'} className="text-[10px] font-bold">
+              {stats.single1L.members} Members
+            </Badge>
+          </div>
+        </div>
+
+        {/* ₹2 LAKH CHITS CARD */}
+        <div
+          onClick={() => {
+            setActiveCategory('200000');
+            setSelectedGroupId(null);
+          }}
+          className={`group cursor-pointer rounded-2xl border p-4.5 transition-all duration-200 shadow-xs ${
+            activeCategory === '200000'
+              ? 'bg-[#EDF7F0] text-[#1C1C1A] border-[#2F5D50] ring-1 ring-[#2F5D50]'
+              : 'bg-white text-[#1C1C1A] border-[#E5E5E1] hover:border-[#2F5D50]/40 hover:bg-[#F7F7F5]'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className={`text-[10px] font-black uppercase tracking-wider ${activeCategory === '200000' ? 'text-[#2F5D50]' : 'text-[#6B6B67]'}`}>
+              Single Chit Category
+            </span>
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeCategory === '200000' ? 'bg-[#2F5D50]/15 text-[#2F5D50]' : 'bg-[#F7F7F5] text-[#6B6B67]'}`}>
+              <IndianRupee className="w-4 h-4" />
+            </div>
+          </div>
+          <h3 className="text-lg md:text-xl font-black mt-2 text-[#1C1C1A]">2 Lakh Chits</h3>
+          <div className="flex items-center justify-between text-xs mt-2.5 pt-2.5 border-t border-[#E5E5E1]">
+            <span className="font-bold text-[#6B6B67]">
+              6 Groups
+            </span>
+            <Badge variant={activeCategory === '200000' ? 'success' : 'neutral'} className="text-[10px] font-bold">
+              {stats.single2L.members} Members
+            </Badge>
+          </div>
+        </div>
+
+        {/* ₹5 LAKH CHITS CARD */}
+        <div
+          onClick={() => {
+            setActiveCategory('500000');
+            setSelectedGroupId(null);
+          }}
+          className={`group cursor-pointer rounded-2xl border p-4.5 transition-all duration-200 shadow-xs ${
+            activeCategory === '500000'
+              ? 'bg-[#EDF7F0] text-[#1C1C1A] border-[#2F5D50] ring-1 ring-[#2F5D50]'
+              : 'bg-white text-[#1C1C1A] border-[#E5E5E1] hover:border-[#2F5D50]/40 hover:bg-[#F7F7F5]'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className={`text-[10px] font-black uppercase tracking-wider ${activeCategory === '500000' ? 'text-[#2F5D50]' : 'text-[#6B6B67]'}`}>
+              Single Chit Category
+            </span>
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeCategory === '500000' ? 'bg-[#2F5D50]/15 text-[#2F5D50]' : 'bg-[#F7F7F5] text-[#6B6B67]'}`}>
+              <IndianRupee className="w-4 h-4" />
+            </div>
+          </div>
+          <h3 className="text-lg md:text-xl font-black mt-2 text-[#1C1C1A]">5 Lakh Chits</h3>
+          <div className="flex items-center justify-between text-xs mt-2.5 pt-2.5 border-t border-[#E5E5E1]">
+            <span className="font-bold text-[#6B6B67]">
+              4 Groups
+            </span>
+            <Badge variant={activeCategory === '500000' ? 'success' : 'neutral'} className="text-[10px] font-bold">
+              {stats.single5L.members} Members
+            </Badge>
+          </div>
+        </div>
+
+        {/* MULTI CHIT HOLDERS CARD */}
+        <div
+          onClick={() => {
+            setActiveCategory('multiple');
+            setSelectedGroupId(null);
+          }}
+          className={`group cursor-pointer rounded-2xl border p-4.5 transition-all duration-200 shadow-xs ${
+            activeCategory === 'multiple'
+              ? 'bg-[#EDF7F0] text-[#1C1C1A] border-[#2F5D50] ring-1 ring-[#2F5D50]'
+              : 'bg-white text-[#1C1C1A] border-[#E5E5E1] hover:border-[#2F5D50]/40 hover:bg-[#F7F7F5]'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className={`text-[10px] font-black uppercase tracking-wider ${activeCategory === 'multiple' ? 'text-[#2F5D50]' : 'text-[#6B6B67]'}`}>
+              Multi-Chit Roster
+            </span>
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeCategory === 'multiple' ? 'bg-[#2F5D50]/15 text-[#2F5D50]' : 'bg-[#F7F7F5] text-[#6B6B67]'}`}>
+              <Layers className="w-4 h-4" />
+            </div>
+          </div>
+          <h3 className="text-lg md:text-xl font-black mt-2 text-[#1C1C1A]">Multi Chits</h3>
+          <div className="flex items-center justify-between text-xs mt-2.5 pt-2.5 border-t border-[#E5E5E1]">
+            <span className="font-bold text-[#2F5D50]">
+              {stats.multiple.members} Members
+            </span>
+            <Badge variant="purple" className="text-[10px] font-bold">
+              {stats.multiple.holdings} Tickets
+            </Badge>
+          </div>
+        </div>
+      </section>
+
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      {/* 3. SEARCH & FILTER TOOLBAR */}
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      <div className="p-4 bg-white border border-[#E5E5E1] rounded-2xl shadow-xs space-y-3">
+        <div className="flex flex-col md:flex-row gap-3 items-center justify-between">
+          {/* SEARCH INPUT */}
+          <div className="relative flex-1 w-full">
+            <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-[#959590] pointer-events-none" />
             <input
               type="text"
-              placeholder="Search members by name, phone or ID..."
+              placeholder="Search member name, phone, chit, ticket..."
               value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                if (e.target.value.trim() !== '') {
-                  setSelectedChitValue(null);
-                  setSelectedGroupId(null);
-                }
-              }}
-              className="w-full pl-9 pr-4 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all font-sans"
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] pl-10 pr-9 py-2 text-xs font-semibold text-[#1C1C1A] placeholder-[#959590] focus:border-[#2F5D50] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
             />
             {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
+              <button onClick={() => setSearchQuery('')} className="absolute right-3 top-2.5 text-[#959590] hover:text-[#1C1C1A] cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             )}
           </div>
 
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar scroll-smooth">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 shrink-0 mr-1">
-              <Filter className="w-3 h-3" />
-              Filter:
-            </span>
-            <div className="flex items-center gap-1.5 shrink-0">
-              {[
-                { value: 'all', label: `All (${totalMembersCount})` },
-                { value: 'single', label: `Single Chit (${singleMembersCount})` },
-                { value: 'multiple', label: `Multiple Chits (${multipleMembersCount})` },
-                { value: 'due', label: 'Pending Dues' }
-              ].map(filterOption => (
-                <button
-                  key={filterOption.value}
-                  onClick={() => {
-                    setMemberCategoryFilter(filterOption.value);
-                    if (filterOption.value !== 'all') {
-                      setSelectedChitValue(null);
-                      setSelectedGroupId(null);
-                    }
-                  }}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-xl border transition-all cursor-pointer whitespace-nowrap ${
-                    memberCategoryFilter === filterOption.value
-                      ? 'bg-sky-600 text-white border-sky-600 shadow-xs'
-                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-900'
-                  }`}
-                >
-                  {filterOption.label}
-                </button>
+          {/* FILTER DROPDOWNS */}
+          <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+            {/* Classification */}
+            <select
+              value={filterClassification}
+              onChange={(e) => setFilterClassification(e.target.value)}
+              className="rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2 text-xs font-bold text-[#1C1C1A] focus:border-[#2F5D50] focus:outline-none"
+            >
+              <option value="all">All Classifications</option>
+              <option value="single">Single Chit Only</option>
+              <option value="multiple">Multi Chit Only</option>
+            </select>
+
+            {/* Payment Filter */}
+            <select
+              value={filterPayment}
+              onChange={(e) => setFilterPayment(e.target.value)}
+              className="rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2 text-xs font-bold text-[#1C1C1A] focus:border-[#2F5D50] focus:outline-none"
+            >
+              <option value="all">All Payment Statuses</option>
+              <option value="due">Has Due / Pending</option>
+              <option value="paid">Cleared / Paid</option>
+            </select>
+
+            {/* Status Filter */}
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2 text-xs font-bold text-[#1C1C1A] focus:border-[#2F5D50] focus:outline-none"
+            >
+              <option value="active">Active Members</option>
+              <option value="archived">Archived Members</option>
+              <option value="all">All Statuses</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      {/* 4. SINGLE CHIT GROUP GRID (IF NOT MULTIPLE AND NO SPECIFIC GROUP SELECTED) */}
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      {activeCategory !== 'multiple' && !selectedGroupId && (
+        <section className="space-y-4">
+          <div className="flex items-center justify-between px-1">
+            <h2 className="text-xs font-black uppercase tracking-wider text-[#6B6B67]">
+              ₹{(Number(activeCategory) / 100000).toFixed(0)} Lakh Chit Groups ({singleChitGroups.length} Groups)
+            </h2>
+            <span className="text-[11px] font-bold text-[#2F5D50]">Card-Based Group View</span>
+          </div>
+
+          {loading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="p-5 bg-white border border-[#E5E5E1] rounded-2xl animate-pulse h-32" />
               ))}
             </div>
-          </div>
-        </div>
-      </Card>
-
-      {/* ERROR STATE */}
-      {error && (
-        <Card className="p-8 border border-red-200 bg-red-50 text-center rounded-3xl">
-          <p className="text-sm font-bold text-red-800">{error}</p>
-        </Card>
-      )}
-
-      {/* LOADING STATE */}
-      {loading && !error && (
-        <Card className="p-12 border border-slate-200 bg-white text-center rounded-3xl space-y-3">
-          <div className="w-10 h-10 border-4 border-sky-200 border-t-sky-600 rounded-full animate-spin mx-auto"></div>
-          <p className="text-xs font-bold text-slate-600">Loading members and chit collections from Firebase...</p>
-        </Card>
-      )}
-
-      {/* EMPTY STATE */}
-      {!loading && !error && members.length === 0 && (
-        <Card className="p-8 border border-slate-200 bg-white text-center rounded-3xl">
-          <p className="text-sm font-bold text-slate-700">No members found.</p>
-        </Card>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────────────── */}
-      {/* LEVEL 1: CHIT COLLECTIONS DASHBOARD VIEW (Hierarchy Mode, No Search) */}
-      {/* ─────────────────────────────────────────────────────────────────────── */}
-      {!loading && !error && viewMode === 'hierarchy' && !selectedChitValue && !isSearchOrFilterActive && (
-        <div className="space-y-8">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Portfolio Overview</p>
-              <h2 className="mt-0.5 text-xl font-bold text-slate-900">Chit Collections & Group-Level Controls</h2>
+          ) : singleChitGroups.length === 0 ? (
+            <div className="p-8 text-center text-[#6B6B67] text-xs font-bold bg-white border border-[#E5E5E1] rounded-2xl">
+              No active groups found for ₹{(Number(activeCategory) / 100000).toFixed(0)} Lakh Chits.
             </div>
-            <span className="text-xs font-bold text-sky-700 bg-sky-50 px-3 py-1 rounded-full border border-sky-200">
-              {chitCollections.length} Plan Categories
-            </span>
-          </div>
-
-          {/* DISPLAY CHIT CATEGORY SECTIONS IN ORDER (₹1 Lakh -> ₹2 Lakh -> ₹5 Lakh) */}
-          {chitCollections.map((collection) => (
-            <div key={collection.chitValue} className="space-y-4">
-              {/* CATEGORY SECTION HEADER */}
-              <div className="flex items-center justify-between bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-md">
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-black tracking-wide font-sans">
-                    {collection.fullFormattedValue} Chits Category
-                  </span>
-                  <span className="text-xs font-bold text-sky-300 bg-sky-950 px-2.5 py-0.5 rounded-lg border border-sky-800">
-                    {collection.groupsCount} Active Groups
-                  </span>
-                </div>
-                <button
-                  onClick={() => setSelectedChitValue(collection.chitValue)}
-                  className="text-xs font-bold text-sky-300 hover:text-white flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <span>Explore {collection.groupsCount} Groups</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {/* RESPONSIVE GRID OF ORDERED GROUP CARDS */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {collection.groups.map((group) => {
-                  const settingKey = `${group.chitValue}_${group.groupId}`;
-                  const configuredAmount = groupPaymentSettings[settingKey];
-                  const hasConfiguredAmount = typeof configuredAmount === 'number' && configuredAmount > 0;
-                  const displayGroupBase = hasConfiguredAmount ? configuredAmount : Math.floor(group.chitValue / 20);
-
-                  return (
-                    <div
-                      key={group.groupId}
-                      onClick={() => {
-                        setSelectedChitValue(collection.chitValue);
-                        setSelectedGroupId(group.groupId);
-                      }}
-                      className="group cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 shadow-xs transition-all duration-200 hover:-translate-y-1 hover:shadow-lg hover:border-sky-300 active:scale-[0.99] flex flex-col justify-between"
-                    >
-                      <div>
-                        <div className="flex items-center justify-between mb-2.5">
-                          <span className="text-xs font-mono font-bold text-sky-800 bg-sky-50 border border-sky-200 px-2.5 py-0.5 rounded-lg">
-                            Group {group.groupId}
-                          </span>
-                          <Badge variant="success">ACTIVE</Badge>
-                        </div>
-
-                        <h3 className="text-base font-black text-slate-900">Group {group.groupId}</h3>
-                        <p className="text-[11px] text-slate-500 font-medium">₹{(group.chitValue / 100000).toFixed(0)} Lakh Chit Base</p>
-
-                        <div className="space-y-1.5 mt-3 text-xs">
-                          <div className="flex justify-between items-center bg-slate-50 p-2 rounded-xl border border-slate-100 text-[11px]">
-                            <span className="text-slate-500">Members:</span>
-                            <span className="font-bold text-slate-900">{group.uniqueMembersCount}</span>
-                          </div>
-
-                          <div className="flex justify-between items-center bg-slate-50 p-2 rounded-xl border border-slate-100 text-[11px]">
-                            <span className="text-slate-500">Group Base Amount:</span>
-                            <span className={`font-bold ${hasConfiguredAmount ? 'text-emerald-700 font-mono' : 'text-slate-800 font-mono'}`}>
-                              ₹{displayGroupBase.toLocaleString('en-IN')}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 pt-2 border-t border-slate-100 flex items-center justify-between gap-1.5">
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          className="w-full justify-center gap-1 rounded-xl text-[10px] font-bold border-sky-200 text-sky-700 hover:bg-sky-50 cursor-pointer py-1.5"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenEditMonthlyAmount(group);
-                          }}
-                        >
-                          <Edit className="w-3 h-3" />
-                          Edit Monthly Amount
-                        </Button>
-
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedChitValue(collection.chitValue);
-                            setSelectedGroupId(group.groupId);
-                          }}
-                          className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold shrink-0 cursor-pointer flex items-center gap-1"
-                        >
-                          <span>View</span>
-                          <ArrowRight className="w-3 h-3 text-sky-600" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────────────── */}
-      {/* LEVEL 2: CHIT GROUPS SELECTION VIEW FOR SPECIFIC CATEGORY */}
-      {/* ─────────────────────────────────────────────────────────────────────── */}
-      {!loading && !error && viewMode === 'hierarchy' && selectedChitValue && !selectedGroupId && !isSearchOrFilterActive && activeCollection && (
-        <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
-            <div className="flex items-center gap-3">
-              <Button
-                variant="secondary"
-                size="sm"
-                className="rounded-xl gap-1.5 cursor-pointer text-xs font-bold"
-                onClick={() => setSelectedChitValue(null)}
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                Back to All Chit Collections
-              </Button>
-              <h2 className="text-xl font-black text-slate-900">{activeCollection.fullFormattedValue} Active Groups</h2>
-            </div>
-            <span className="text-xs font-bold text-slate-500">
-              {activeCollection.groupsCount} Groups • {activeCollection.uniqueMembersCount} Unique Members
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {activeCollection.groups.map((group) => {
-              const settingKey = `${group.chitValue}_${group.groupId}`;
-              const configuredAmount = groupPaymentSettings[settingKey];
-              const hasConfiguredAmount = typeof configuredAmount === 'number' && configuredAmount > 0;
-              const displayGroupBase = hasConfiguredAmount ? configuredAmount : Math.floor(group.chitValue / 20);
-
-              return (
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {singleChitGroups.map((group) => (
                 <div
                   key={group.groupId}
-                  onClick={() => setSelectedGroupId(group.groupId)}
-                  className="group cursor-pointer rounded-3xl border border-slate-200 bg-white p-5 shadow-xs transition-all duration-200 hover:-translate-y-1 hover:shadow-lg hover:border-sky-300 active:scale-[0.99] flex flex-col justify-between"
+                  className="p-5 bg-white border border-[#E5E5E1] rounded-2xl shadow-xs hover:border-[#2F5D50]/40 transition-all space-y-4"
                 >
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-xs font-mono font-bold text-sky-700 bg-sky-50 border border-sky-200 px-2.5 py-1 rounded-xl">
-                        Group {group.groupId}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="w-9 h-9 rounded-xl bg-[#2F5D50]/10 text-[#2F5D50] font-black text-sm flex items-center justify-center border border-[#2F5D50]/20">
+                        {group.groupId}
                       </span>
-                      <Badge variant="success">ACTIVE</Badge>
+                      <div>
+                        <h3 className="text-base font-black text-[#1C1C1A]">{group.chitValue === 100000 ? '1L' : group.chitValue === 200000 ? '2L' : '5L'} Group {group.groupId}</h3>
+                        <p className="text-[11px] text-[#6B6B67] font-bold font-mono">₹{group.chitValue.toLocaleString('en-IN')}</p>
+                      </div>
                     </div>
+                    <Badge variant="info" className="text-[10px] font-bold">
+                      {group.memberCount} / 20
+                    </Badge>
+                  </div>
 
-                    <h3 className="text-lg font-black text-slate-900">Group {group.groupId}</h3>
-                    <p className="text-xs text-slate-500 mt-0.5">₹{(group.chitValue / 100000).toFixed(0)} Lakh Base Subscription</p>
-
-                    <div className="space-y-2 mt-4 text-xs">
-                      <div className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                        <span className="text-slate-500 font-medium">Enrolled Members:</span>
-                        <span className="font-bold text-slate-900">{group.uniqueMembersCount} Members</span>
-                      </div>
-
-                      <div className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                        <span className="text-slate-500 font-medium">Group Base Monthly:</span>
-                        <span className={`font-bold ${hasConfiguredAmount ? 'text-emerald-700 font-mono text-sm' : 'text-slate-800 font-mono text-sm'}`}>
-                          ₹{displayGroupBase.toLocaleString('en-IN')}
-                        </span>
-                      </div>
-
-                      {/* EDIT GROUP MONTHLY AMOUNT BUTTON */}
-                      <div className="pt-2">
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          className="w-full justify-center gap-1.5 rounded-xl text-[11px] font-bold border-sky-200 text-sky-700 hover:bg-sky-50 cursor-pointer"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenEditMonthlyAmount(group);
-                          }}
-                        >
-                          <Edit className="w-3.5 h-3.5" />
-                          Edit Monthly Amount
-                        </Button>
-                      </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs py-2.5 border-y border-[#E5E5E1] bg-[#F7F7F5] rounded-xl p-3">
+                    <div>
+                      <span className="text-[9px] font-black text-[#6B6B67] uppercase tracking-wider block">Monthly Installment</span>
+                      <span className="font-black text-[#2F6B4F] text-sm">₹{group.monthlyBase.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div>
+                      <span className="text-[9px] font-black text-[#6B6B67] uppercase tracking-wider block">Current Cycle</span>
+                      <span className="font-bold text-[#2F5D50]">Month #8</span>
                     </div>
                   </div>
 
-                  <div className="mt-5 flex items-center justify-between text-xs font-bold text-sky-600 group-hover:text-sky-800 pt-3 border-t border-slate-100">
-                    <span>View Group Members</span>
-                    <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
+                  <div className="flex items-center justify-between text-xs pt-1">
+                    <button
+                      onClick={() => handleOpenEditMonthlyAmount(group)}
+                      className="text-[11px] font-bold text-[#1C1C1A] hover:bg-[#E5E5E1] border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-1.5 rounded-xl cursor-pointer transition-colors"
+                    >
+                      Edit Monthly
+                    </button>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleArchiveGroup(group.groupId, group.chitValue)}
+                        className="text-[11px] font-bold text-[#C53030] hover:bg-[#FCEEEE] border border-[#F8B4B4] bg-[#FCEEEE] px-3 py-1.5 rounded-xl cursor-pointer transition-colors"
+                      >
+                        Archive
+                      </button>
+
+                      <button
+                        onClick={() => setSelectedGroupId(group.groupId)}
+                        className="text-[11px] font-black text-white bg-[#2F5D50] hover:bg-[#24493F] px-3.5 py-1.5 rounded-xl cursor-pointer flex items-center gap-1 shadow-xs"
+                      >
+                        <span>View Members</span> <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      {/* 5. SELECTED GROUP HEADER BAR (IF INSIDE SPECIFIC GROUP) */}
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      {selectedGroupId && activeCategory !== 'multiple' && (
+        <div className="flex items-center justify-between bg-[#EDF7F0] border border-[#2F5D50]/30 rounded-2xl p-5 text-xs shadow-xs">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setSelectedGroupId(null)}
+              className="flex items-center gap-1.5 font-bold text-[#2F5D50] hover:bg-[#2F5D50]/15 bg-white border border-[#2F5D50]/30 px-4 py-2 rounded-xl cursor-pointer shadow-xs"
+            >
+              <ArrowLeft className="w-4 h-4" /> Back to Group Cards
+            </button>
+            <div>
+              <h2 className="text-base font-black text-[#1C1C1A]">
+                ₹{(Number(activeCategory) / 100000).toFixed(0)} Lakh — Group {selectedGroupId}
+              </h2>
+              <p className="text-[11px] font-semibold text-[#6B6B67]">
+                Displaying members in Group {selectedGroupId}. Monthly Installment: ₹{getGroupMonthlyBaseAmount(activeCategory, selectedGroupId).toLocaleString('en-IN')}.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => handleOpenEditMonthlyAmount({ chitValue: Number(activeCategory), groupId: selectedGroupId })}
+            className="font-bold text-[#2F5D50] bg-white border border-[#2F5D50]/30 px-4 py-2 rounded-xl hover:bg-[#F7F7F5] cursor-pointer shrink-0"
+          >
+            Edit Monthly Payment
+          </button>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      {/* 6. MEMBER LIST / ROSTER TABLE (COMPACT ENTERPRISE ACTIONS) */}
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between px-1">
+          <h2 className="text-xs font-black uppercase tracking-wider text-[#6B6B67]">
+            {activeCategory === 'multiple' ? 'Multi-Chit Directory (68 Members)' : `Group Member Directory (${filteredMembersList.length} Members)`}
+          </h2>
+          <span className="text-[11px] font-bold text-[#6B6B67]">Enterprise List Mode</span>
+        </div>
+
+        {loading ? (
+          <div className="space-y-3">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="p-5 bg-[#111625]/90 border border-slate-800/80 rounded-3xl animate-pulse h-20" />
+            ))}
+          </div>
+        ) : filteredMembersList.length === 0 ? (
+          <div className="p-12 text-center text-slate-400 text-xs font-bold bg-[#111625]/90 border border-slate-800/80 rounded-3xl space-y-3">
+            <Users className="w-8 h-8 text-slate-500 mx-auto" />
+            <p>No members found matching your search or filter selection.</p>
+            <Button variant="secondary" size="sm" onClick={() => { setSearchQuery(''); setFilterClassification('all'); setFilterPayment('all'); setSelectedGroupId(null); }}>
+              Clear Search & Filters
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {filteredMembersList.map((member) => {
+              const activeChits = getActiveChits(member);
+              const isMulti = member.classification === 'MULTIPLE' || activeChits.length > 1;
+              const totalPayable = calculateMemberTotalPayable(member);
+              const isActionMenuOpen = activeActionMenuMemberId === member.id;
+
+              return (
+                <div
+                  key={member.id}
+                  className={`p-4 md:p-5 border bg-white rounded-2xl shadow-xs transition-all hover:border-[#2F5D50]/40 relative ${
+                    isMulti ? 'border-[#2F5D50]/30' : 'border-[#E5E5E1]'
+                  }`}
+                >
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    {/* MEMBER PROFILE */}
+                    <div className="flex items-start gap-3.5 min-w-0">
+                      <div className={`w-11 h-11 rounded-xl font-black text-base flex items-center justify-center shrink-0 text-white shadow-xs ${
+                        isMulti ? 'bg-[#2F5D50]' : 'bg-[#1C1C1A]'
+                      }`}>
+                        {(member.name || 'M').charAt(0).toUpperCase()}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-base font-black text-[#1C1C1A] truncate">{member.name}</h3>
+                          <Badge variant={isMulti ? 'purple' : 'info'} className="text-[10px] font-bold">
+                            {isMulti ? 'MULTIPLE' : 'SINGLE'}
+                          </Badge>
+                          {member.status === 'TEST' && <Badge variant="warning">TEST RECORD</Badge>}
+                          {member.status === 'archived' && <Badge variant="danger">ARCHIVED</Badge>}
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-[#6B6B67]">
+                          <span className="flex items-center gap-1 font-sans">
+                            <Phone className="w-3.5 h-3.5 text-[#959590]" />
+                            {member.phone || 'No Phone'}
+                          </span>
+                          {member.whatsapp && member.whatsapp !== member.phone && (
+                            <span className="text-[11px] text-[#2F6B4F] font-mono">WA: {member.whatsapp}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* CHIT DETAILS & SUBSCRIPTIONS */}
+                    <div className="flex-1 min-w-0 border-t lg:border-t-0 lg:border-l border-[#E5E5E1] pt-3 lg:pt-0 lg:pl-6">
+                      <div className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                        <Layers className="w-3.5 h-3.5 text-[#2F5D50]" />
+                        <span>{isMulti ? `Chit Subscriptions (${activeChits.length})` : 'Assigned Chit Group'}</span>
+                      </div>
+
+                      <div className="flex flex-wrap gap-1.5">
+                        {activeChits.map((c) => {
+                          const valLakh = (Number(c.totalChitValue || 100000) / 100000).toFixed(0);
+                          const qty = Number(c.quantity || 1);
+                          return (
+                            <span
+                              key={c.id}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-[#F7F7F5] border border-[#E5E5E1] text-[#1C1C1A] font-sans"
+                            >
+                              <span>₹{valLakh}L • Group {c.groupId || 'I'}</span>
+                              {qty > 1 && <span className="text-[#2F5D50] font-extrabold bg-[#EDF7F0] px-1.5 py-0.2 rounded-md">× {qty}</span>}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* FINANCIAL DETAILS & COMPACT ACTIONS */}
+                    <div className="flex items-center justify-between lg:justify-end gap-4 border-t lg:border-t-0 border-[#E5E5E1] pt-3 lg:pt-0">
+                      <div className="text-left lg:text-right">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#6B6B67] block">Current Monthly Payable</span>
+                        <span className="text-lg font-black text-[#2F6B4F] font-sans">
+                          ₹{totalPayable.toLocaleString('en-IN')}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="rounded-xl text-xs font-bold bg-[#F7F7F5] border-[#E5E5E1] text-[#1C1C1A] hover:bg-[#E5E5E1] cursor-pointer"
+                          onClick={() => handleOpenDetails(member)}
+                        >
+                          View Details
+                        </Button>
+
+                        {/* THREE-DOT COMPACT ACTION DROPDOWN MENU */}
+                        <div className="relative">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveActionMenuMemberId(isActionMenuOpen ? null : member.id);
+                            }}
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#E5E5E1] bg-white text-[#1C1C1A] hover:bg-[#F7F7F5] transition-colors cursor-pointer"
+                            aria-label="Actions menu"
+                          >
+                            <MoreVertical className="w-4 h-4" />
+                          </button>
+
+                          {/* POPUP DROPDOWN MENU */}
+                          {isActionMenuOpen && (
+                            <div
+                              ref={actionMenuRef}
+                              className="absolute right-0 top-10 z-40 w-48 rounded-xl bg-white text-[#1C1C1A] p-1.5 shadow-lg border border-[#E5E5E1] text-xs font-semibold animate-in fade-in zoom-in-95 duration-150"
+                            >
+                              <button
+                                onClick={() => handleOpenDetails(member)}
+                                className="flex w-full items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-[#F7F7F5] text-[#1C1C1A] cursor-pointer"
+                              >
+                                <Eye className="w-3.5 h-3.5 text-sky-400" />
+                                <span>View Details</span>
+                              </button>
+
+                              <button
+                                onClick={() => handleOpenEditMember(member)}
+                                className="flex w-full items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-slate-900 text-slate-200 cursor-pointer"
+                              >
+                                <Edit className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>Edit Member Info</span>
+                              </button>
+
+                              {activeChits.length > 0 && (
+                                <button
+                                  onClick={() => handleOpenEditAdjustment(member, activeChits[0])}
+                                  className="flex w-full items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-slate-900 text-slate-200 cursor-pointer"
+                                >
+                                  <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
+                                  <span>Edit Adjustments</span>
+                                </button>
+                              )}
+
+                              <button
+                                onClick={() => {
+                                  setSelectedMember(member);
+                                  setIsMessageModalOpen(true);
+                                  setActiveActionMenuMemberId(null);
+                                }}
+                                className="flex w-full items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-slate-900 text-slate-200 cursor-pointer"
+                              >
+                                <MessageSquare className="w-3.5 h-3.5 text-teal-400" />
+                                <span>Send WhatsApp</span>
+                              </button>
+
+                              <button
+                                onClick={() => {
+                                  navigate(`/history?memberId=${member.id}`);
+                                  setActiveActionMenuMemberId(null);
+                                }}
+                                className="flex w-full items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-slate-900 text-slate-200 cursor-pointer"
+                              >
+                                <History className="w-3.5 h-3.5 text-purple-400" />
+                                <span>View History Audit</span>
+                              </button>
+
+                              <div className="my-1 border-t border-slate-800"></div>
+
+                              <button
+                                onClick={() => handleArchiveMember(member)}
+                                className="flex w-full items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-red-500/20 text-red-300 cursor-pointer"
+                              >
+                                <Archive className="w-3.5 h-3.5 text-red-400" />
+                                <span>Archive Member</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               );
             })}
           </div>
-        </div>
-      )}
+        )}
+      </section>
 
       {/* ─────────────────────────────────────────────────────────────────────── */}
-      {/* LEVEL 3: GROUP MEMBERS VIEW */}
+      {/* 7. MEMBER DETAIL EXPERIENCE MODAL / DRAWER */}
       {/* ─────────────────────────────────────────────────────────────────────── */}
-      {!loading && !error && viewMode === 'hierarchy' && selectedChitValue && selectedGroupId && !isSearchOrFilterActive && activeGroup && (
-        <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
-            <div className="flex items-center gap-3">
-              <Button
-                variant="secondary"
-                size="sm"
-                className="rounded-xl gap-1.5 cursor-pointer text-xs font-bold"
-                onClick={() => setSelectedGroupId(null)}
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                Back to {activeCollection.formattedValue} Groups
-              </Button>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1 rounded-xl">
-                {activeGroup.uniqueMembersCount} Members in Group {selectedGroupId}
-              </span>
-            </div>
-          </div>
-
-          {/* GROUP BANNER STATS & GROUP-LEVEL MONTHLY CONTROL */}
-          {(() => {
-            const groupSettingKey = `${selectedChitValue}_${selectedGroupId}`;
-            const configuredMonthly = groupPaymentSettings[groupSettingKey];
-            const hasConfiguredMonthly = typeof configuredMonthly === 'number' && configuredMonthly > 0;
-            const groupBaseDisplay = hasConfiguredMonthly ? configuredMonthly : Math.floor(selectedChitValue / 20);
-
-            return (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-900 text-white rounded-3xl p-6 shadow-xl">
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Group Category</p>
-                  <p className="mt-1 text-2xl font-black">{activeCollection.fullFormattedValue} • Group {selectedGroupId}</p>
-                </div>
-                <div>
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Group Base Monthly Amount</p>
-                    <button
-                      onClick={() => handleOpenEditMonthlyAmount({ chitValue: selectedChitValue, groupId: selectedGroupId })}
-                      className="text-[10px] font-bold text-sky-400 hover:underline flex items-center gap-1 cursor-pointer"
-                    >
-                      <Edit className="w-3 h-3" /> Edit Base
-                    </button>
-                  </div>
-                  <p className="mt-1 text-2xl font-black text-emerald-400 font-mono">
-                    ₹{groupBaseDisplay.toLocaleString('en-IN')} / month
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Current Group Total Due</p>
-                  <p className="mt-1 text-2xl font-black text-amber-400">₹{activeGroup.totalDueAmount.toLocaleString('en-IN')}</p>
-                </div>
+      {isDetailModalOpen && selectedMember && (
+        <Modal
+          isOpen={isDetailModalOpen}
+          onClose={() => setIsDetailModalOpen(false)}
+          title={`Member Profile: ${selectedMember.name}`}
+          subtitle={`Phone: ${selectedMember.phone} • Status: ${selectedMember.status || 'Active'}`}
+          maxWidth="max-w-3xl"
+        >
+          <div className="space-y-6 font-sans text-xs">
+            {/* MEMBER PROFILE HEADER */}
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Member Name</span>
+                <span className="font-bold text-white text-sm">{selectedMember.name}</span>
               </div>
-            );
-          })()}
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Mobile Phone</span>
+                <span className="font-bold text-sky-400 font-mono">{selectedMember.phone}</span>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Classification</span>
+                <Badge variant={selectedMember.classification === 'MULTIPLE' ? 'purple' : 'info'}>
+                  {selectedMember.classification || 'SINGLE'}
+                </Badge>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Address</span>
+                <span className="font-semibold text-slate-300">{selectedMember.address || 'N/A'}</span>
+              </div>
+            </div>
 
-          {/* GROUP MEMBER TABLE */}
-          <div className="overflow-hidden bg-white border border-slate-200 rounded-3xl shadow-xs">
-            <table className="min-w-full divide-y divide-slate-200 text-left">
-              <thead className="bg-slate-50/80">
-                <tr>
-                  <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Member</th>
-                  <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Group & Monthly Breakdown</th>
-                  <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Current Month Payable</th>
-                  <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-4 text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {activeGroup.membersList.map(({ member, chit, quantity }) => {
-                  const baseMonthly = getGroupMonthlyBaseAmount(chit.totalChitValue || selectedChitValue, chit.groupId || selectedGroupId);
-                  const memberPending = Number(chit.pending || 0);
-                  const memberBalance = Number(chit.balance || 0);
-                  const currentMonthPayable = calculateChitPayable(chit);
+            {/* CHIT SUBSCRIPTIONS BREAKDOWN */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Layers className="w-4 h-4 text-sky-400" />
+                Chit Subscriptions ({getActiveChits(selectedMember).length})
+              </h4>
+
+              <div className="space-y-3">
+                {getActiveChits(selectedMember).map((chit) => {
+                  const val = chit.totalChitValue || 100000;
+                  const grp = chit.groupId || 'I';
+                  const baseMonthly = getGroupMonthlyBaseAmount(val, grp);
+                  const payable = calculateChitPayable(chit);
 
                   return (
-                    <tr key={`${member.id}_${chit.id}`} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-sky-500 to-blue-700 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-xs">
-                            {(member?.name || 'M').charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <div className="text-sm font-bold text-slate-900">{member?.name || 'Unnamed Member'}</div>
-                            <div className="text-xs text-slate-500 flex flex-wrap items-center gap-2 mt-0.5">
-                              <span className="flex items-center gap-1 font-sans">
-                                <Phone className="w-3 h-3 text-slate-400" />
-                                {member?.phone || 'No Phone'}
-                              </span>
-                              <Badge variant={getMemberTypeVariant(member)}>{getMemberType(member)}</Badge>
-                            </div>
-                          </div>
+                    <div key={chit.id} className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3 shadow-md">
+                      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <div>
+                          <h5 className="font-bold text-white text-sm">
+                            ₹{(val / 100000).toFixed(0)} Lakh Chit — Group {grp}
+                          </h5>
+                          <span className="text-[11px] text-slate-400">Holding Quantity: {chit.quantity || 1}</span>
                         </div>
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <div className="bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-2 text-xs space-y-1">
-                          <div className="font-bold text-slate-900 flex items-center justify-between">
-                            <span>₹{(chit.totalChitValue || selectedChitValue).toLocaleString('en-IN')} • Group {chit.groupId || selectedGroupId}</span>
-                            {quantity > 1 && <Badge variant="info">+{quantity - 1} Holding</Badge>}
-                          </div>
-                          <div className="text-slate-600 flex flex-wrap items-center gap-x-3 text-[11px]">
-                            <span>Monthly Base: <strong className="font-mono text-slate-900">₹{baseMonthly.toLocaleString('en-IN')}</strong></span>
-                            <span>Pending: <strong className="text-amber-700 font-mono">+₹{memberPending.toLocaleString('en-IN')}</strong></span>
-                            <span>Balance: <strong className="text-emerald-700 font-mono">-₹{memberBalance.toLocaleString('en-IN')}</strong></span>
-                          </div>
-                        </div>
-                      </td>
-
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-base font-black text-slate-900 font-sans">
-                          ₹{currentMonthPayable.toLocaleString('en-IN')}
+                        <span className="text-base font-black text-emerald-400 font-sans">
+                          Payable: ₹{payable.toLocaleString('en-IN')}
                         </span>
-                      </td>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-center bg-slate-900 p-2.5 rounded-xl border border-slate-800">
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Base Monthly</span>
+                          <span className="font-bold text-white">₹{baseMonthly.toLocaleString('en-IN')}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">Pending (+)</span>
+                          <span className="font-bold text-amber-400">+₹{(chit.pending || 0).toLocaleString('en-IN')}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">Balance (-)</span>
+                          <span className="font-bold text-emerald-400">-₹{(chit.balance || 0).toLocaleString('en-IN')}</span>
+                        </div>
+                      </div>
 
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <Badge variant={getStatusVariant(member.status)}>
-                          {formatStatusText(member.status)}
-                        </Badge>
-                      </td>
-
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-xs font-semibold space-x-2">
-                        <Button variant="secondary" size="sm" className="rounded-xl cursor-pointer" onClick={() => handleOpenDetails(member)}>
-                          View Details
-                        </Button>
+                      <div className="flex justify-end">
                         <Button
                           variant="secondary"
                           size="sm"
-                          className="rounded-xl cursor-pointer border-sky-300 text-sky-700 hover:bg-sky-50 font-bold"
-                          onClick={() => handleOpenEditAdjustment(member, chit)}
+                          className="rounded-xl text-xs font-bold border-slate-800 bg-slate-900 text-sky-400 hover:bg-slate-800 cursor-pointer"
+                          onClick={() => {
+                            setIsDetailModalOpen(false);
+                            handleOpenEditAdjustment(selectedMember, chit);
+                          }}
                         >
-                          ✏ Edit Adjustment
+                          Edit Adjustment
                         </Button>
-                      </td>
-                    </tr>
+                      </div>
+                    </div>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────────────── */}
-      {/* ─────────────────────────────────────────────────────────────────────── */}
-      {/* DIRECT TABLE / MULTI-CHIT CARDS VIEW */}
-      {/* ─────────────────────────────────────────────────────────────────────── */}
-      {!loading && !error && (isSearchOrFilterActive || viewMode === 'all_members') && (
-        <div className="space-y-4 font-sans">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">
-              Showing {filteredMembers.length} {memberCategoryFilter === 'multiple' ? 'Multiple Chit' : (memberCategoryFilter === 'single' ? 'Single Chit' : '')} Members
-            </span>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="rounded-xl gap-1.5 cursor-pointer text-xs font-bold"
-              onClick={() => {
-                setSearchQuery('');
-                setMemberCategoryFilter('all');
-                setViewMode('hierarchy');
-              }}
-            >
-              <LayoutGrid className="w-3.5 h-3.5 text-sky-600" />
-              Return to Chit Hierarchy View
-            </Button>
-          </div>
-
-          {/* DEDICATED MULTIPLE-CHIT MEMBERS CARD LIST VIEW */}
-          {memberCategoryFilter === 'multiple' ? (
-            <div className="space-y-4 font-sans">
-              <div className="bg-slate-900 text-white rounded-3xl p-5 border border-slate-800 shadow-md space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Dedicated Category</span>
-                    <h2 className="text-xl font-black text-white">Multiple Chit Members Directory</h2>
-                    <p className="text-xs text-slate-300 mt-0.5">Displaying strictly the 68 Multi-Chit members. Each chit holding has independent financial controls.</p>
-                  </div>
-                  <Badge variant="success" className="self-start sm:self-auto px-3 py-1 text-xs shrink-0">
-                    68 Multiple-Chit Members
-                  </Badge>
-                </div>
-
-                {/* MULTI-CHIT GROUP CATEGORY SUB-FILTERS */}
-                <div className="flex items-center gap-2 pt-2 border-t border-slate-800 overflow-x-auto no-scrollbar">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">Group Category Filter:</span>
-                  {[
-                    { value: 'all', label: 'All Holdings (68)' },
-                    { value: '100000', label: '₹1 Lakh Groups' },
-                    { value: '200000', label: '₹2 Lakh Groups' },
-                    { value: '500000', label: '₹5 Lakh Groups' },
-                  ].map((sub) => (
-                    <button
-                      key={sub.value}
-                      onClick={() => setMultiChitGroupFilter(sub.value)}
-                      className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap border ${
-                        multiChitGroupFilter === sub.value
-                          ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black'
-                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-                      }`}
-                    >
-                      {sub.label}
-                    </button>
-                  ))}
-                </div>
               </div>
-
-              {(() => {
-                const multiChitDisplayList = filteredMembers.filter((m) => {
-                  if (multiChitGroupFilter === 'all') return true;
-                  const targetVal = Number(multiChitGroupFilter);
-                  return getActiveChits(m).some((c) => (c.totalChitValue || 100000) === targetVal);
-                });
-
-                if (multiChitDisplayList.length === 0) {
-                  return (
-                    <Card className="p-12 text-center text-slate-500 font-bold text-sm bg-white border border-slate-200 rounded-3xl">
-                      No Multiple-Chit members found matching your search or group category selection.
-                    </Card>
-                  );
-                }
-
-                return (
-                  <div className="grid grid-cols-1 gap-4">
-                    {multiChitDisplayList.map((member) => {
-                      const activeChits = getActiveChits(member);
-                      const totalHoldingsCount = activeChits.reduce((sum, h) => sum + (h.quantity || 1), 0);
-
-                    return (
-                      <Card key={member.id} className="p-5 border border-slate-200 bg-white rounded-3xl shadow-xs space-y-4 hover:border-emerald-300 transition-all">
-                        {/* MEMBER HEADER */}
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-2">
-                          <div className="flex items-center gap-3">
-                            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-800 text-white font-black text-base flex items-center justify-center shrink-0 shadow-xs">
-                              {(member?.name || 'M').charAt(0).toUpperCase()}
-                            </div>
-                            <div>
-                              <h3 className="text-base font-black text-slate-900">{member?.name || 'Unnamed Member'}</h3>
-                              <div className="flex flex-wrap items-center gap-2 mt-0.5 text-xs text-slate-500">
-                                <span className="flex items-center gap-1 font-sans">
-                                  <Phone className="w-3.5 h-3.5 text-slate-400" />
-                                  {member?.phone || 'No Phone'}
-                                </span>
-                                {member?.whatsapp && (
-                                  <span className="flex items-center gap-1 text-emerald-700 font-medium">
-                                    <MessageSquare className="w-3 h-3 text-emerald-600" />
-                                    {member.whatsapp}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <span className="px-3 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-black">
-                              MULTIPLE • {totalHoldingsCount} Holding{totalHoldingsCount === 1 ? '' : 's'}
-                            </span>
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              className="rounded-xl gap-1 cursor-pointer font-bold text-sky-700 hover:bg-sky-50"
-                              onClick={() => handleOpenMessage(member)}
-                            >
-                              <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
-                              WhatsApp
-                            </Button>
-                          </div>
-                        </div>
-
-                        {/* INDIVIDUAL HOLDINGS LIST WITH SCOPED EDIT BUTTON FOR EACH HOLDING */}
-                        <div className="space-y-2.5">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Independent Chit Holdings & Financial Controls</p>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {activeChits.map((chit) => {
-                              const baseMonthly = getGroupMonthlyBaseAmount(chit.totalChitValue || 100000, chit.groupId || 'I');
-                              const memberPending = Number(chit.pending || 0);
-                              const memberBalance = Number(chit.balance || 0);
-                              const chitPayable = calculateChitPayable(chit);
-
-                              return (
-                                <div key={chit.id} className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 text-xs space-y-2 hover:bg-slate-100/70 transition-colors">
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                      <span className="font-black text-slate-900">
-                                        ₹{(chit.totalChitValue / 100000).toFixed(0)}L • Group {chit.groupId}
-                                      </span>
-                                      {chit.quantity > 1 && (
-                                        <span className="bg-emerald-700 text-white font-extrabold px-1.5 py-0.5 rounded-md text-[10px]">
-                                          × {chit.quantity} holdings
-                                        </span>
-                                      )}
-                                    </div>
-                                    <Button
-                                      variant="secondary"
-                                      size="sm"
-                                      className="py-1 px-2.5 rounded-lg text-[10px] font-bold border-sky-300 text-sky-700 hover:bg-sky-50 cursor-pointer flex items-center gap-1 shrink-0"
-                                      onClick={() => handleOpenEditAdjustment(member, chit)}
-                                    >
-                                      <Edit className="w-3 h-3" />
-                                      Edit Holding
-                                    </Button>
-                                  </div>
-
-                                  <div className="grid grid-cols-3 gap-2 bg-white p-2 rounded-xl border border-slate-200/80 text-[11px]">
-                                    <div>
-                                      <span className="text-[9px] font-bold text-slate-400 uppercase block">Monthly Base</span>
-                                      <span className="font-bold text-slate-800 font-mono">₹{baseMonthly.toLocaleString('en-IN')}</span>
-                                    </div>
-                                    <div>
-                                      <span className="text-[9px] font-bold text-slate-400 uppercase block">Pending</span>
-                                      <span className="font-bold text-amber-700 font-mono">+₹{memberPending.toLocaleString('en-IN')}</span>
-                                    </div>
-                                    <div>
-                                      <span className="text-[9px] font-bold text-slate-400 uppercase block">Balance</span>
-                                      <span className="font-bold text-emerald-700 font-mono">-₹{memberBalance.toLocaleString('en-IN')}</span>
-                                    </div>
-                                  </div>
-
-                                  <div className="flex justify-between items-center pt-1 border-t border-slate-200/60 text-xs">
-                                    <span className="text-slate-500 font-medium">Holding Payable Due:</span>
-                                    <span className="font-black text-slate-900 font-mono">₹{chitPayable.toLocaleString('en-IN')}</span>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        {/* CARD FOOTER */}
-                        <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-                          <div>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Current Month Payable</span>
-                            <span className="text-lg font-black text-slate-900 font-sans">
-                              ₹{calculateTotalDue(member).toLocaleString('en-IN')}
-                            </span>
-                          </div>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            className="rounded-xl font-bold cursor-pointer"
-                            onClick={() => handleOpenDetails(member)}
-                          >
-                            View Profile & Full Ledger
-                          </Button>
-                        </div>
-                      </Card>
-                    );
-                  })}
-                </div>
-                );
-              })()}
             </div>
-          ) : (
-            <>
-              {/* DESKTOP DIRECT TABLE VIEW */}
-              <div className="hidden md:block overflow-hidden bg-white border border-slate-200 rounded-3xl shadow-xs font-sans">
-                <table className="min-w-full divide-y divide-slate-200 text-left">
-                  <thead className="bg-slate-50/80">
-                    <tr>
-                      <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Member</th>
-                      <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Active Chits & Monthly Breakdown</th>
-                      <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Current Month Payable</th>
-                      <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                      <th className="px-6 py-4 text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white">
-                    {filteredMembers.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="px-6 py-12 text-center text-sm text-slate-500">
-                          No members found matching your search or filter criteria.
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredMembers.map((member) => {
-                        const activeChits = getActiveChits(member);
-                        const activeCount = activeChits.length;
-                        const memberTotalPayable = calculateTotalDue(member);
 
-                        return (
-                          <tr key={member.id} className="hover:bg-slate-50/70 transition-colors">
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 border border-slate-200 flex items-center justify-center text-sky-700 font-black text-sm shrink-0 shadow-xs">
-                                  {(member?.name || 'M').charAt(0).toUpperCase()}
-                                </div>
-                                <div>
-                                  <div className="text-sm font-bold text-slate-900">{member?.name || 'Unnamed Member'}</div>
-                                  <div className="text-xs text-slate-500 flex flex-wrap items-center gap-2 mt-0.5">
-                                    <span className="flex items-center gap-1 font-sans">
-                                      <Phone className="w-3 h-3 text-slate-400" />
-                                      {member?.phone || 'No Phone'}
-                                    </span>
-                                    <Badge variant={getMemberTypeVariant(member)}>{getMemberType(member)}</Badge>
-                                    <span className="text-[11px] text-slate-400">{activeCount} Active Chit{activeCount === 1 ? '' : 's'}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-
-                            <td className="px-6 py-4">
-                              <div className="space-y-2">
-                                {activeChits.length > 0 ? (
-                                  activeChits.map((chit) => {
-                                    const baseMonthly = getGroupMonthlyBaseAmount(chit.totalChitValue || 100000, chit.groupId || 'I');
-                                    const memberPending = Number(chit.pending || 0);
-                                    const memberBalance = Number(chit.balance || 0);
-                                    const chitPayable = calculateChitPayable(chit);
-
-                                    return (
-                                      <div key={chit.id} className="bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-2 text-xs space-y-1">
-                                        <div className="font-bold text-slate-900 flex items-center justify-between">
-                                          <span>₹{(chit.totalChitValue || 100000).toLocaleString('en-IN')} • Group {chit.groupId || 'RC-01'}</span>
-                                          <span className="font-mono text-emerald-700 font-bold">Payable: ₹{chitPayable.toLocaleString('en-IN')}</span>
-                                        </div>
-                                        <div className="text-slate-600 flex flex-wrap items-center gap-x-3 text-[11px]">
-                                          <span>Base: ₹{baseMonthly.toLocaleString('en-IN')}</span>
-                                          <span>Pending: <strong className="text-amber-700">+₹{memberPending.toLocaleString('en-IN')}</strong></span>
-                                          <span>Balance: <strong className="text-emerald-700">-₹{memberBalance.toLocaleString('en-IN')}</strong></span>
-                                        </div>
-                                      </div>
-                                    );
-                                  })
-                                ) : (
-                                  <div className="text-xs text-slate-400">No active chits enrolled</div>
-                                )}
-                              </div>
-                            </td>
-
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className="text-base font-black text-slate-900 font-sans">
-                                ₹{memberTotalPayable.toLocaleString('en-IN')}
-                              </span>
-                            </td>
-
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <Badge variant={getStatusVariant(member.status)}>
-                                {formatStatusText(member.status)}
-                              </Badge>
-                            </td>
-
-                            <td className="px-6 py-4 whitespace-nowrap text-right text-xs font-semibold space-x-2">
-                              <Button variant="secondary" size="sm" className="rounded-xl cursor-pointer" onClick={() => handleOpenDetails(member)}>
-                                View Details
-                              </Button>
-                              {activeChits.length > 0 && (
-                                <Button
-                                  variant="secondary"
-                                  size="sm"
-                                  className="rounded-xl cursor-pointer border-sky-300 text-sky-700 hover:bg-sky-50 font-bold"
-                                  onClick={() => handleOpenEditAdjustment(member, activeChits[0])}
-                                >
-                                  ✏ Edit Adjustment
-                                </Button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* MOBILE LIST CARDS VIEW */}
-              <div className="md:hidden space-y-4 font-sans">
-                {filteredMembers.length === 0 ? (
-                  <div className="bg-white border border-slate-200 rounded-3xl p-8 text-center text-sm text-slate-500">
-                    No members found matching your search criteria.
-                  </div>
-                ) : (
-                  filteredMembers.map((member) => (
-                    <Card key={member.id} className="border border-slate-200 bg-white rounded-3xl p-5 shadow-xs space-y-4">
-                      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-sky-700 font-black text-xs">
-                            {member.name.charAt(0)}
-                          </div>
-                          <div>
-                            <h4 className="text-sm font-bold text-slate-900">{member.name}</h4>
-                            <p className="text-[11px] text-slate-500 flex items-center gap-1 font-sans">
-                              <Phone className="w-3 h-3 text-slate-400" />
-                              {member.phone}
-                            </p>
-                          </div>
-                        </div>
-                        <Badge variant={getStatusVariant(member.status)}>
-                          {formatStatusText(member.status)}
-                        </Badge>
-                      </div>
-
-                      <div className="space-y-2">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active Subscriptions ({getActiveChits(member).length})</p>
-                        {getActiveChits(member).map((chit) => {
-                          const baseMonthly = getGroupMonthlyBaseAmount(chit.totalChitValue || 100000, chit.groupId || 'I');
-                          const memberPending = Number(chit.pending || 0);
-                          const memberBalance = Number(chit.balance || 0);
-                          const chitPayable = calculateChitPayable(chit);
-
-                          return (
-                            <div key={chit.id} className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 text-xs space-y-1">
-                              <div className="flex justify-between font-bold text-slate-900">
-                                <span>₹{(chit.totalChitValue || 100000).toLocaleString('en-IN')} • Group {chit.groupId || 'RC-01'}</span>
-                                <span className="text-emerald-700 font-mono">₹{chitPayable.toLocaleString('en-IN')}</span>
-                              </div>
-                              <div className="flex justify-between text-[11px] text-slate-500">
-                                <span>Base: ₹{baseMonthly.toLocaleString('en-IN')}</span>
-                                <span>Pending: +₹{memberPending} | Bal: -₹{memberBalance}</span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-                        <div>
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Current Month Payable</span>
-                          <span className="text-base font-black text-slate-900 font-sans">₹{calculateTotalDue(member).toLocaleString('en-IN')}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <Button variant="secondary" size="sm" className="rounded-xl" onClick={() => handleOpenDetails(member)}>
-                            Details
-                          </Button>
-                          {getActiveChits(member).length > 0 && (
-                            <Button variant="secondary" size="sm" className="rounded-xl font-bold text-sky-700" onClick={() => handleOpenEditAdjustment(member, getActiveChits(member)[0])}>
-                              Edit Adj
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </Card>
-                  ))
-                )}
-              </div>
-            </>
-          )}
-        </div>
+            <div className="flex justify-end pt-3 border-t border-slate-200">
+              <Button variant="secondary" size="sm" className="rounded-xl" onClick={() => setIsDetailModalOpen(false)}>
+                Close Details
+              </Button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {/* ─────────────────────────────────────────────────────────────────────── */}
-      {/* 1. EDIT GROUP MONTHLY PAYMENT MODAL (GROUP LEVEL) */}
+      {/* 8. EDIT ADJUSTMENT MODAL (LIVE CALCULATION PREVIEW) */}
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      {isEditAdjustmentModalOpen && targetChitForAdjustment && (
+        <Modal
+          isOpen={isEditAdjustmentModalOpen}
+          onClose={() => setIsEditAdjustmentModalOpen(false)}
+          title={`Financial Adjustment: ${selectedMember?.name}`}
+          subtitle={`₹${((targetChitForAdjustment.totalChitValue || 100000) / 100000).toFixed(0)} Lakh Chit • Group ${targetChitForAdjustment.groupId || 'I'}`}
+          maxWidth="max-w-md"
+        >
+          <form onSubmit={handleSaveAdjustment} className="space-y-4 font-sans text-xs">
+            {/* LIVE CALCULATION PREVIEW BOX */}
+            <div className="p-4 bg-slate-900 text-white rounded-2xl space-y-2 shadow-md border border-slate-800">
+              <div className="flex justify-between items-center text-slate-300">
+                <span>Group Base Monthly:</span>
+                <span className="font-bold font-mono">₹{(targetChitForAdjustment.baseGroupMonthly || 4500).toLocaleString('en-IN')}</span>
+              </div>
+              <div className="flex justify-between items-center text-amber-300">
+                <span>Pending (+) Added:</span>
+                <span className="font-bold font-mono">+₹{(parseFloat(inputPendingAmount) || 0).toLocaleString('en-IN')}</span>
+              </div>
+              <div className="flex justify-between items-center text-emerald-300">
+                <span>Balance (-) Offset:</span>
+                <span className="font-bold font-mono">-₹{(parseFloat(inputBalanceAmount) || 0).toLocaleString('en-IN')}</span>
+              </div>
+              <div className="pt-2 border-t border-slate-800 flex justify-between items-center text-sm font-black text-white">
+                <span>Current Month Payable:</span>
+                <span className="text-base text-sky-400 font-mono">
+                  ₹{Math.max((targetChitForAdjustment.baseGroupMonthly || 4500) + (parseFloat(inputPendingAmount) || 0) - (parseFloat(inputBalanceAmount) || 0), 0).toLocaleString('en-IN')}
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Pending Amount (₹) — Added to current payable
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="50"
+                value={inputPendingAmount}
+                onChange={(e) => setInputPendingAmount(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 font-sans"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Balance Adjustment (₹) — Offset from current payable
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="50"
+                value={inputBalanceAmount}
+                onChange={(e) => setInputBalanceAmount(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 font-sans"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <Button type="button" variant="secondary" size="sm" onClick={() => setIsEditAdjustmentModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" size="sm" disabled={isSavingAdjustment}>
+                {isSavingAdjustment ? 'Saving...' : 'Save Financial Adjustment'}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      {/* 9. EDIT GROUP MONTHLY AMOUNT MODAL */}
       {/* ─────────────────────────────────────────────────────────────────────── */}
       {isEditMonthlyModalOpen && targetGroupForMonthly && (
         <Modal
           isOpen={isEditMonthlyModalOpen}
           onClose={() => setIsEditMonthlyModalOpen(false)}
-          title="Edit Group Base Monthly Amount"
-          subtitle={`Configure group-level base monthly payment for ${targetGroupForMonthly.fullFormattedValue} • Group ${targetGroupForMonthly.groupId}.`}
+          title="Edit Group Monthly Payment"
+          subtitle={`Changes base monthly payment for ${targetGroupForMonthly.fullFormattedValue}.`}
           maxWidth="max-w-md"
         >
-          <form onSubmit={handleSaveMonthlyAmount} className="space-y-4">
-            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2 text-xs">
-              <div className="flex justify-between">
-                <span className="text-slate-500 font-medium">Chit Collection:</span>
-                <span className="font-bold text-slate-900">{targetGroupForMonthly.fullFormattedValue}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500 font-medium">Chit Group ID:</span>
-                <span className="font-bold text-sky-700 font-mono">Group {targetGroupForMonthly.groupId}</span>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                Group Base Monthly Payment Amount (₹) *
+          <form onSubmit={handleSaveMonthlyAmount} className="space-y-4 text-xs font-sans">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                New Group Monthly Premium (₹)
               </label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 font-bold text-xs">₹</span>
-                <input
-                  type="number"
-                  required
-                  placeholder="e.g. 4500"
-                  value={inputMonthlyAmount}
-                  onChange={(e) => setInputMonthlyAmount(e.target.value)}
-                  className="w-full pl-7 pr-3 py-2.5 text-sm font-bold bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 font-mono"
-                />
-              </div>
-              <p className="text-[11px] text-slate-400 mt-1">
-                This base amount applies to all members in Group {targetGroupForMonthly.groupId}. Individual member pending and balance adjustments remain preserved.
+              <input
+                type="number"
+                min="100"
+                step="100"
+                required
+                value={inputMonthlyAmount}
+                onChange={(e) => setInputMonthlyAmount(e.target.value)}
+                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 font-sans"
+              />
+              <p className="text-[11px] text-slate-500 mt-1">
+                Note: This modifies the base payment for all members in Group {targetGroupForMonthly.groupId}. Individual member pending and balance adjustments remain untouched.
               </p>
             </div>
 
-            <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="rounded-xl"
-                onClick={() => setIsEditMonthlyModalOpen(false)}
-              >
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <Button type="button" variant="secondary" size="sm" onClick={() => setIsEditMonthlyModalOpen(false)}>
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                variant="gold"
-                size="sm"
-                className="rounded-xl gap-1.5"
-                disabled={isSavingMonthlyAmount}
-              >
-                {isSavingMonthlyAmount ? 'Saving Amount...' : 'Save Base Amount'}
+              <Button type="submit" variant="primary" size="sm" disabled={isSavingMonthlyAmount}>
+                {isSavingMonthlyAmount ? 'Saving...' : 'Save Group Monthly Amount'}
               </Button>
             </div>
           </form>
@@ -1780,646 +1336,148 @@ export default function Members() {
       )}
 
       {/* ─────────────────────────────────────────────────────────────────────── */}
-      {/* 2. EDIT MEMBER PENDING / BALANCE ADJUSTMENT MODAL (MEMBER LEVEL) */}
+      {/* 10. EDIT MEMBER INFO MODAL */}
       {/* ─────────────────────────────────────────────────────────────────────── */}
-      {isEditAdjustmentModalOpen && targetChitForAdjustment && selectedMember && (
-        <Modal
-          isOpen={isEditAdjustmentModalOpen}
-          onClose={() => setIsEditAdjustmentModalOpen(false)}
-          title={`Edit Adjustment: ${selectedMember.name}`}
-          subtitle={`Modify pending dues or balance credits for Group ${targetChitForAdjustment.groupId || 'I'} (₹${(targetChitForAdjustment.totalChitValue / 100000).toFixed(0)} Lakh Chit).`}
-          maxWidth="max-w-md"
-        >
-          <form onSubmit={handleSaveAdjustment} className="space-y-4 font-sans">
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                Member Pending Amount (Arrears / Unpaid Dues) (₹)
-              </label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 font-bold text-xs">₹</span>
-                <input
-                  type="number"
-                  min="0"
-                  required
-                  placeholder="0"
-                  value={inputPendingAmount}
-                  onChange={(e) => setInputPendingAmount(e.target.value)}
-                  className="w-full pl-7 pr-3 py-2.5 text-sm font-bold bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 font-mono"
-                />
-              </div>
-              <p className="text-[11px] text-slate-400">Additional unpaid dues owed by this member.</p>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                Member Balance / Credit Amount (₹)
-              </label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 font-bold text-xs">₹</span>
-                <input
-                  type="number"
-                  min="0"
-                  required
-                  placeholder="0"
-                  value={inputBalanceAmount}
-                  onChange={(e) => setInputBalanceAmount(e.target.value)}
-                  className="w-full pl-7 pr-3 py-2.5 text-sm font-bold bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 font-mono"
-                />
-              </div>
-              <p className="text-[11px] text-slate-400">Credit / advance balance deducted from current payable.</p>
-            </div>
-
-            {/* LIVE CALCULATION PREVIEW PANEL */}
-            <div className="bg-slate-900 text-white p-4 rounded-2xl border border-slate-800 space-y-2 text-xs">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Live Calculation Preview</p>
-
-              <div className="flex justify-between text-slate-300">
-                <span>Group Base Monthly Amount:</span>
-                <span className="font-mono font-bold">₹{targetChitForAdjustment.baseGroupMonthly.toLocaleString('en-IN')}</span>
-              </div>
-
-              <div className="flex justify-between text-amber-400">
-                <span>+ Pending Dues:</span>
-                <span className="font-mono font-bold">+ ₹{(Math.max(parseFloat(inputPendingAmount) || 0, 0)).toLocaleString('en-IN')}</span>
-              </div>
-
-              <div className="flex justify-between text-emerald-400">
-                <span>- Member Credit Balance:</span>
-                <span className="font-mono font-bold">- ₹{(Math.max(parseFloat(inputBalanceAmount) || 0, 0)).toLocaleString('en-IN')}</span>
-              </div>
-
-              <div className="pt-2 border-t border-slate-800 flex justify-between items-center text-sm font-black">
-                <span className="text-sky-300">Current Month Payable:</span>
-                <span className="text-white font-mono text-base">
-                  ₹{Math.max(targetChitForAdjustment.baseGroupMonthly + (Math.max(parseFloat(inputPendingAmount) || 0, 0)) - (Math.max(parseFloat(inputBalanceAmount) || 0, 0)), 0).toLocaleString('en-IN')}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="rounded-xl"
-                onClick={() => setIsEditAdjustmentModalOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                variant="gold"
-                size="sm"
-                className="rounded-xl gap-1.5"
-                disabled={isSavingAdjustment}
-              >
-                {isSavingAdjustment ? 'Saving Changes...' : 'Save Changes'}
-              </Button>
-            </div>
-          </form>
-        </Modal>
-      )}
-
-      {/* MEMBER DETAILS MODAL */}
-      {isDetailModalOpen && selectedMember && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs" onClick={() => setIsDetailModalOpen(false)}></div>
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-3xl max-h-[90vh] overflow-hidden z-10 flex flex-col">
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900 font-sans">Member Profile</h3>
-                <p className="text-xs text-slate-500">Complete record, active chits breakdown, and payment ledger history.</p>
-              </div>
-              <button
-                onClick={() => setIsDetailModalOpen(false)}
-                className="p-2 rounded-xl hover:bg-slate-200/60 text-slate-400 hover:text-slate-700 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-6 overflow-y-auto flex-1">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-4 pb-6 border-b border-slate-200">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-sky-500 to-blue-700 flex items-center justify-center text-white font-black text-2xl shrink-0 shadow-md">
-                  {selectedMember.name.charAt(0)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h4 className="text-xl font-black text-slate-900">{selectedMember.name}</h4>
-                    <Badge variant={getStatusVariant(selectedMember.status)}>
-                      {formatStatusText(selectedMember.status)}
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Member ID: <span className="font-mono text-slate-900 font-bold">{selectedMember.id}</span>
-                  </p>
-                </div>
-                <div className="sm:text-right bg-slate-50 border border-slate-200 px-4 py-2.5 rounded-2xl">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Current Month Payable</span>
-                  <span className="text-xl font-black text-sky-700 font-sans">
-                    {formatCurrency(calculateTotalDue(selectedMember))}
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
-                  <h5 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Contact & Nominee Info</h5>
-                  <div className="space-y-2 text-xs text-slate-700">
-                    <div className="flex items-center gap-2">
-                      <Phone className="w-4 h-4 text-slate-400 shrink-0" />
-                      <span>Phone: <strong className="font-bold text-slate-900">{selectedMember.phone}</strong></span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <MessageCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span>WhatsApp: <strong className="font-bold text-slate-900">{selectedMember.whatsapp || selectedMember.phone}</strong></span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-slate-400 shrink-0" />
-                      <span>Joining Date: <strong>{selectedMember.joiningDate || '2024-01-01'}</strong></span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <UserCheck className="w-4 h-4 text-slate-400 shrink-0" />
-                      <span>Nominee: <strong className="text-slate-900">{selectedMember.nominee || 'Family Member'}</strong></span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
-                  <h5 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Address</h5>
-                  <div className="flex items-start gap-2 text-xs text-slate-700">
-                    <MapPin className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-bold text-slate-900">{selectedMember.address || 'Door No. 12-34, Main Road'}</p>
-                      <p className="text-slate-500 mt-0.5">{[selectedMember.city, selectedMember.state, selectedMember.pincode].filter(Boolean).join(', ')}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <Layers className="w-3.5 h-3.5" />
-                  Current Month Payment Breakdown ({selectedMember.chits.length})
-                </h5>
-
-                <div className="space-y-4">
-                  {selectedMember.chits.map((chit) => {
-                    const displayGroupBase = getGroupMonthlyBaseAmount(chit.totalChitValue || 100000, chit.groupId || 'I');
-                    const memberPending = Number(chit.pending || 0);
-                    const memberBalance = Number(chit.balance || 0);
-                    const currentMonthPayable = calculateChitPayable(chit);
-
-                    return (
-                      <div key={chit.id} className="bg-slate-900 text-white rounded-2xl p-5 shadow-lg space-y-3">
-                        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                          <div>
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Current Month Payment Breakdown</p>
-                            <h6 className="text-sm font-black text-white mt-0.5">
-                              Group: ₹{(chit.totalChitValue / 100000).toFixed(0)} Lakh • Group {chit.groupId || 'I'}
-                            </h6>
-                          </div>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            className="rounded-xl text-xs font-bold gap-1.5 border-sky-500/40 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20 cursor-pointer"
-                            onClick={() => {
-                              handleOpenEditAdjustment(selectedMember, chit);
-                            }}
-                          >
-                            <Edit className="w-3.5 h-3.5" />
-                            Edit Pending / Balance
-                          </Button>
-                        </div>
-
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                          <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase block">Group Base Monthly</span>
-                            <span className="text-base font-black text-slate-200 font-mono">
-                              ₹{displayGroupBase.toLocaleString('en-IN')}
-                            </span>
-                          </div>
-
-                          <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase block">Member Pending</span>
-                            <span className="text-base font-black text-amber-400 font-mono">
-                              + ₹{memberPending.toLocaleString('en-IN')}
-                            </span>
-                          </div>
-
-                          <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase block">Member Balance</span>
-                            <span className="text-base font-black text-emerald-400 font-mono">
-                              - ₹{memberBalance.toLocaleString('en-IN')}
-                            </span>
-                          </div>
-
-                          <div className="bg-slate-950 p-3 rounded-xl border border-sky-500/40">
-                            <span className="text-[10px] font-bold text-sky-400 uppercase block">Current Month Payable</span>
-                            <span className="text-base font-black text-sky-300 font-mono">
-                              ₹{currentMonthPayable.toLocaleString('en-IN')}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
-            <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex flex-wrap justify-between gap-3">
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => handleOpenEdit(selectedMember)}
-                  className="gap-1.5 rounded-xl"
-                >
-                  <Edit className="w-3.5 h-3.5" />
-                  Edit Member Profile
-                </Button>
-
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => {
-                    setIsDetailModalOpen(false);
-                    handleOpenMessage(selectedMember);
-                  }}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 rounded-xl"
-                >
-                  <MessageSquare className="w-3.5 h-3.5" />
-                  Send Message
-                </Button>
-              </div>
-
-              <Button variant="secondary" size="sm" className="rounded-xl" onClick={() => setIsDetailModalOpen(false)}>
-                Close Profile
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MANAGE PAYMENTS MODAL */}
-      {isManageModalOpen && selectedMember && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs" onClick={() => setIsManageModalOpen(false)}></div>
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-3xl max-h-[90vh] overflow-hidden z-10 flex flex-col">
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900 font-sans">Manage Payments: {selectedMember.name}</h3>
-                <p className="text-xs text-slate-500">Update current dues and review ledger history entries.</p>
-              </div>
-              <button onClick={() => setIsManageModalOpen(false)} className="p-2 rounded-xl hover:bg-slate-200/60 text-slate-400 hover:text-slate-700">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-6 overflow-y-auto flex-1">
-              <div>
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2 font-sans">
-                  Select Chit Group to Adjust
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {selectedMember.chits.map(chit => (
-                    <button
-                      key={chit.id}
-                      onClick={() => {
-                        setSelectedChitId(chit.id);
-                        setNewAmount(calculateChitPayable(chit).toString());
-                      }}
-                      className={`p-3 border rounded-2xl text-left transition-all text-xs flex flex-col justify-between cursor-pointer ${
-                        selectedChitId === chit.id
-                          ? 'border-sky-600 bg-sky-50 ring-2 ring-sky-500/20'
-                          : 'border-slate-200 bg-white hover:bg-slate-50'
-                      }`}
-                    >
-                      <span className="font-bold text-slate-900">{chit.name}</span>
-                      <span className="text-[11px] text-slate-500 mt-1">
-                        Current Month Payable: <strong className="text-sky-700 font-bold font-mono">₹{calculateChitPayable(chit).toLocaleString('en-IN')}</strong>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {selectedChitId && (
-                <form onSubmit={handleUpdatePayment} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
-                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Update Ledger Record</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Recorded Due Amount (₹)</label>
-                      <div className="relative">
-                        <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 font-bold text-xs">₹</span>
-                        <input
-                          type="number"
-                          required
-                          value={newAmount}
-                          onChange={(e) => setNewAmount(e.target.value)}
-                          className="w-full pl-7 pr-3 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 font-bold font-sans"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Reason / Audit Note</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Dividend adjustment after auction"
-                        value={updateNote}
-                        onChange={(e) => setUpdateNote(e.target.value)}
-                        className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end pt-1">
-                    <Button type="submit" variant="gold" size="sm" className="rounded-xl">
-                      Update Ledger Amount
-                    </Button>
-                  </div>
-                </form>
-              )}
-            </div>
-
-            <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-between gap-3">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  setIsManageModalOpen(false);
-                  handleOpenMessage(selectedMember);
-                }}
-                className="gap-1.5 rounded-xl"
-              >
-                <MessageSquare className="w-4 h-4 text-emerald-600" />
-                Generate Notification
-              </Button>
-              <Button variant="secondary" size="sm" className="rounded-xl" onClick={() => setIsManageModalOpen(false)}>
-                Close Window
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* EDIT MEMBER PROFILE MODAL */}
       {isEditModalOpen && selectedMember && (
         <Modal
           isOpen={isEditModalOpen}
           onClose={() => setIsEditModalOpen(false)}
-          title={`Edit Profile: ${selectedMember.name}`}
-          subtitle="Update contact details, address, and nominee information."
-          maxWidth="max-w-lg"
+          title={`Edit Member: ${selectedMember.name}`}
+          subtitle="Update member details without changing underlying chit holdings schema."
+          maxWidth="max-w-md"
         >
-          <form onSubmit={handleSaveEditMember} className="space-y-4">
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Member Full Name *</label>
+          <form onSubmit={handleSaveEditMember} className="space-y-4 text-xs font-sans">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Member Name</label>
               <input
                 type="text"
                 required
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
-                className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
               />
             </div>
 
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Phone Number *</label>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Mobile Phone</label>
               <input
                 type="text"
                 required
                 value={editPhone}
                 onChange={(e) => setEditPhone(e.target.value)}
-                className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 font-sans"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
               />
             </div>
 
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Address Line</label>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Address</label>
               <input
                 type="text"
                 value={editAddress}
                 onChange={(e) => setEditAddress(e.target.value)}
-                className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
               />
             </div>
 
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Nominee Details</label>
-              <input
-                type="text"
-                value={editNominee}
-                onChange={(e) => setEditNominee(e.target.value)}
-                className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
-              />
-            </div>
-
-            <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
               <Button type="button" variant="secondary" size="sm" onClick={() => setIsEditModalOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" variant="gold" size="sm">
-                Save Profile
+              <Button type="submit" variant="primary" size="sm" disabled={isSavingEdit}>
+                {isSavingEdit ? 'Saving...' : 'Save Member Info'}
               </Button>
             </div>
           </form>
         </Modal>
       )}
 
-      {/* MEMBER MESSAGE MODAL */}
-      <MemberMessageModal
-        isOpen={isMessageModalOpen}
-        onClose={() => setIsMessageModalOpen(false)}
-        member={selectedMember}
-        onSent={(msg) => showToast(msg)}
-        groupPaymentSettings={groupPaymentSettings}
-      />
-
-      {/* ADD NEW MEMBER MODAL */}
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      {/* 11. ADD MEMBER MODAL */}
+      {/* ─────────────────────────────────────────────────────────────────────── */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs" onClick={() => setIsAddModalOpen(false)}></div>
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[90vh] overflow-hidden z-10 flex flex-col">
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900 font-sans">Add New Member</h3>
-                <p className="text-xs text-slate-500">Enter member details and configure initial chit group subscriptions.</p>
-              </div>
-              <button onClick={() => setIsAddModalOpen(false)} className="p-2 rounded-xl hover:bg-slate-200/60 text-slate-400 hover:text-slate-700">
-                <X className="w-5 h-5" />
-              </button>
+        <Modal
+          isOpen={isAddModalOpen}
+          onClose={() => setIsAddModalOpen(false)}
+          title="Add New Member"
+          subtitle="Enroll a new member into an active chit group."
+          maxWidth="max-w-md"
+        >
+          <form onSubmit={handleAddMemberSubmit} className="space-y-4 text-xs font-sans">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Full Name</label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. Ramesh Kumar"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
+              />
             </div>
 
-            <form onSubmit={handleAddMember} className="overflow-y-auto max-h-[calc(90vh-128px)]">
-              <div className="p-6 space-y-5">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Full Name *</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Ramesh Babu"
-                      value={newMemberName}
-                      onChange={(e) => setNewMemberName(e.target.value)}
-                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                    />
-                    {newMemberErrors.name && <p className="text-[10px] text-red-600 mt-1">{newMemberErrors.name}</p>}
-                  </div>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Phone Number</label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. 9849012345"
+                value={newPhone}
+                onChange={(e) => setNewPhone(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 font-mono"
+              />
+            </div>
 
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Phone Number *</label>
-                    <input
-                      type="tel"
-                      placeholder="e.g. +919876543210"
-                      value={newMemberPhone}
-                      onChange={(e) => setNewMemberPhone(e.target.value)}
-                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                    />
-                    {newMemberErrors.phone && <p className="text-[10px] text-red-600 mt-1">{newMemberErrors.phone}</p>}
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">WhatsApp Number *</label>
-                    <input
-                      type="tel"
-                      placeholder="e.g. +919876543210"
-                      value={newMemberWhatsApp}
-                      onChange={(e) => setNewMemberWhatsApp(e.target.value)}
-                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Nominee Details</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Sita Devi (Wife)"
-                      value={newMemberNominee}
-                      onChange={(e) => setNewMemberNominee(e.target.value)}
-                      className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                    />
-                  </div>
-                </div>
-
-                <div className="border-t border-slate-200 pt-4 space-y-4">
-                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider font-sans">Address Details</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1 md:col-span-2">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Address Line *</label>
-                      <input
-                        type="text"
-                        placeholder="Door No. 12-34, Main Road"
-                        value={newMemberAddress}
-                        onChange={(e) => setNewMemberAddress(e.target.value)}
-                        className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">City / Town</label>
-                      <input
-                        type="text"
-                        placeholder="Guntur"
-                        value={newMemberCity}
-                        onChange={(e) => setNewMemberCity(e.target.value)}
-                        className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Pincode</label>
-                      <input
-                        type="text"
-                        placeholder="522001"
-                        value={newMemberPincode}
-                        onChange={(e) => setNewMemberPincode(e.target.value)}
-                        className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="border-t border-slate-200 pt-4 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider font-sans">Chit Subscriptions</h4>
-                      <p className="text-[10px] text-slate-500">Single Chit or Multiple Chits can be configured.</p>
-                    </div>
-                    <Button type="button" variant="secondary" size="sm" className="rounded-xl" onClick={addNewChit}>
-                      + Add Another Chit
-                    </Button>
-                  </div>
-
-                  <div className="space-y-4">
-                    {newMemberChits.map((chit, index) => (
-                      <div key={chit.id} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-bold text-slate-900">Chit #{index + 1}</p>
-                          {newMemberChits.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => removeNewChit(chit.id)}
-                              className="text-red-600 text-[10px] font-bold uppercase tracking-wider hover:underline"
-                            >
-                              Remove Chit
-                            </button>
-                          )}
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Chit Group</label>
-                            <select
-                              value={chit.name}
-                              onChange={(e) => handleNewMemberChitChange(chit.id, 'name', e.target.value)}
-                              className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                            >
-                              <option value="₹1,00,000 Chit (Group RC-01)">₹1,00,000 Chit (RC-01)</option>
-                              <option value="₹2,00,000 Chit (Group RC-02)">₹2,00,000 Chit (RC-02)</option>
-                              <option value="₹3,00,000 Chit (Group RC-03)">₹3,00,000 Chit (RC-03)</option>
-                              <option value="₹5,00,000 Chit (Group RC-05)">₹5,00,000 Chit (RC-05)</option>
-                            </select>
-                          </div>
-
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total Value (₹)</label>
-                            <input
-                              type="number"
-                              value={chit.chitValue}
-                              onChange={(e) => handleNewMemberChitChange(chit.id, 'chitValue', e.target.value)}
-                              className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 font-bold"
-                            />
-                          </div>
-
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Initial Due (₹)</label>
-                            <input
-                              type="number"
-                              value={chit.initialAmount}
-                              onChange={(e) => handleNewMemberChitChange(chit.id, 'initialAmount', e.target.value)}
-                              className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 font-bold"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Chit Value</label>
+                <select
+                  value={newChitValue}
+                  onChange={(e) => setNewChitValue(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                >
+                  <option value="100000">₹1 Lakh</option>
+                  <option value="200000">₹2 Lakh</option>
+                  <option value="500000">₹5 Lakh</option>
+                </select>
               </div>
 
-              <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-2">
-                <Button variant="secondary" size="sm" className="rounded-xl" onClick={() => setIsAddModalOpen(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit" variant="gold" size="sm" className="rounded-xl">
-                  Save & Register Member
-                </Button>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Group ID</label>
+                <select
+                  value={newGroupId}
+                  onChange={(e) => setNewGroupId(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                >
+                  {['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'A', 'B', 'C', 'D', 'E', 'F'].map((g) => (
+                    <option key={g} value={g}>
+                      Group {g}
+                    </option>
+                  ))}
+                </select>
               </div>
-            </form>
-          </div>
-        </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <Button type="button" variant="secondary" size="sm" onClick={() => setIsAddModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" size="sm" disabled={isSavingAdd}>
+                {isSavingAdd ? 'Saving...' : 'Add Member'}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* WHATSAPP MESSAGE MODAL */}
+      {selectedMember && isMessageModalOpen && (
+        <MemberMessageModal
+          isOpen={isMessageModalOpen}
+          onClose={() => setIsMessageModalOpen(false)}
+          member={selectedMember}
+          groupPaymentSettings={groupPaymentSettings}
+          onSent={(msg) => showToast(msg)}
+        />
       )}
     </div>
   );

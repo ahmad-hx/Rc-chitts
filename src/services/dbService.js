@@ -10,8 +10,8 @@ import {
   where,
   serverTimestamp,
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { auth, db, storage } from '../firebase';
+import { auth, db } from '../firebase';
+import { historyService } from './historyService';
 
 // Helper to normalize phone numbers for deduplication
 function normalizePhone(value = '') {
@@ -271,6 +271,39 @@ export const memberService = {
       throw new Error('Unable to update member pending/balance adjustment in Firebase.');
     }
   },
+
+  async archiveMember(memberId, memberData = null) {
+    await ensureAuthReady();
+    try {
+      const docRef = doc(db, 'members', memberId);
+      await updateDoc(docRef, {
+        status: 'archived',
+        archivedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      // Log event into History collection asynchronously
+      try {
+        await historyService.logHistoryEvent({
+          category: 'Member',
+          action: 'MEMBER_ARCHIVED',
+          title: `Member Archived: ${memberData?.name || memberId}`,
+          details: `Member ${memberData?.name || memberId} (${memberData?.phone || 'No phone'}) was archived and moved to History.`,
+          entityId: memberId,
+          entityType: 'MEMBER',
+          previousData: memberData,
+          memberId: memberId,
+        });
+      } catch (logErr) {
+        console.warn('History logging notice:', logErr?.message);
+      }
+
+      return true;
+    } catch (err) {
+      console.error('Firestore archiveMember error:', err.message);
+      throw new Error('Unable to archive member in Firebase.');
+    }
+  },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -370,6 +403,41 @@ export const chitService = {
     } catch (err) {
       console.error('Firestore associateHolding error:', err.message);
       throw new Error('Unable to save holding to Firebase.');
+    }
+  },
+
+  async archiveGroup(groupId, chitValue = 100000, groupData = null) {
+    await ensureAuthReady();
+    try {
+      const docId = `group_${groupId}_${chitValue}`;
+      const docRef = doc(db, 'chits', docId);
+      await setDoc(docRef, {
+        status: 'ARCHIVED',
+        archivedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+
+      // Log event into History collection
+      try {
+        await historyService.logHistoryEvent({
+          category: 'Group',
+          action: 'GROUP_ARCHIVED',
+          title: `Chit Group Archived: ₹${(chitValue / 100000).toFixed(0)} Lakh Group ${groupId}`,
+          details: `Chit group ₹${(chitValue / 100000).toFixed(0)} Lakh Group ${groupId} was archived and moved to History.`,
+          entityId: docId,
+          entityType: 'GROUP',
+          groupId: groupId,
+          chitValue: chitValue,
+          previousData: groupData,
+        });
+      } catch (logErr) {
+        console.warn('History logging notice:', logErr?.message);
+      }
+
+      return true;
+    } catch (err) {
+      console.error('Firestore archiveGroup error:', err.message);
+      throw new Error('Unable to archive chit group in Firebase.');
     }
   },
 };

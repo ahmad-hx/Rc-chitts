@@ -15,6 +15,7 @@ import Members from './pages/Members';
 import ChitsPlaceholder from './pages/ChitsPlaceholder';
 import PaymentsPlaceholder from './pages/PaymentsPlaceholder';
 import WhatsAppPlaceholder from './pages/WhatsAppPlaceholder';
+import History from './pages/History';
 import SettingsPlaceholder from './pages/SettingsPlaceholder';
 
 import AdminLayout from './layouts/AdminLayout';
@@ -183,6 +184,19 @@ function App() {
               isAuthenticated ? (
                 <AdminLayout onLogout={handleLogout}>
                   <WhatsAppPlaceholder />
+                </AdminLayout>
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            }
+          />
+
+          <Route
+            path="/history"
+            element={
+              isAuthenticated ? (
+                <AdminLayout onLogout={handleLogout}>
+                  <History />
                 </AdminLayout>
               ) : (
                 <Navigate to="/login" replace />

@@ -9,9 +9,13 @@ export function getAdminUpiConfig() {
   const savedUpiId = typeof window !== 'undefined' ? localStorage.getItem('admin_upi_id') : null;
   const savedPayeeName = typeof window !== 'undefined' ? localStorage.getItem('admin_payee_name') : null;
 
+  const upiId = (savedUpiId || import.meta.env?.VITE_ADMIN_UPI_ID || '').trim();
+  const payeeName = (savedPayeeName || import.meta.env?.VITE_ADMIN_PAYEE_NAME || 'Raghavendra Chitts').trim();
+
   return {
-    upiId: savedUpiId || import.meta.env?.VITE_ADMIN_UPI_ID || 'raghavendrachitts@upi',
-    payeeName: savedPayeeName || 'Raghavendra Chitts',
+    isConfigured: Boolean(upiId),
+    upiId,
+    payeeName,
   };
 }
 

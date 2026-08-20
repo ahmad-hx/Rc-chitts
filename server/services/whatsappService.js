@@ -1,5 +1,13 @@
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load environment variables from both server/.env and root .env
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config();
 
 export const ADMIN_WHATSAPP_NUMBER = '9705184411';
@@ -21,23 +29,155 @@ function normalizePhoneNumber(value) {
   return `91${digits}`;
 }
 
-export function getWhatsAppConfig() {
-  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN || '';
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || '';
-  const businessAccountId = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '';
+export async function verifyMetaConnection() {
+  const accessToken = (process.env.WHATSAPP_ACCESS_TOKEN || process.env.META_WHATSAPP_ACCESS_TOKEN || '').trim();
+  const phoneNumberId = (process.env.WHATSAPP_PHONE_NUMBER_ID || process.env.META_PHONE_NUMBER_ID || '').trim();
+  const businessAccountId = (process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || process.env.META_BUSINESS_ACCOUNT_ID || '').trim();
+  const rawPhoneNumber = (process.env.WHATSAPP_BUSINESS_PHONE || ADMIN_WHATSAPP_NUMBER || '').trim();
 
-  const isValidToken = Boolean(accessToken && !accessToken.includes('YOUR_WHATSAPP_ACCESS_TOKEN_HERE'));
-  const isValidPhoneId = Boolean(phoneNumberId && !phoneNumberId.includes('YOUR_PHONE_NUMBER_ID_HERE'));
-  const isConfigured = isValidToken && isValidPhoneId;
+  const isPlaceholderToken = !accessToken ||
+    accessToken.startsWith('YOUR_') ||
+    accessToken.includes('HERE') ||
+    accessToken.includes('PLACEHOLDER') ||
+    accessToken.length < 15;
+
+  const isPlaceholderPhoneId = !phoneNumberId ||
+    phoneNumberId.startsWith('YOUR_') ||
+    phoneNumberId.includes('HERE') ||
+    phoneNumberId.includes('PLACEHOLDER') ||
+    !/^\d+$/.test(phoneNumberId);
+
+  const missing = [];
+  if (isPlaceholderToken) missing.push('WHATSAPP_ACCESS_TOKEN');
+  if (isPlaceholderPhoneId) missing.push('WHATSAPP_PHONE_NUMBER_ID');
+
+  if (missing.length > 0) {
+    return {
+      adminNumber: ADMIN_WHATSAPP_NUMBER,
+      businessPhoneNumber: rawPhoneNumber,
+      phoneNumberIdDisplay: isPlaceholderPhoneId ? 'Not Configured (Missing ID)' : 'Configured ✓',
+      businessAccountIdDisplay: businessAccountId && !businessAccountId.startsWith('YOUR_') ? 'Configured ✓' : 'Not Configured',
+      configured: false,
+      isConfigured: false,
+      connected: false,
+      missing,
+      provider: 'META_CLOUD_API',
+      status: 'NOT_CONFIGURED',
+      statusText: '🔴 Gateway Not Configured',
+      statusReason: `Meta WhatsApp credentials (${missing.join(', ')}) need to be configured on the server.`,
+      lastChecked: new Date().toISOString(),
+      recommendedEngine: 'Meta Official Cloud API',
+      accessToken: !isPlaceholderToken ? 'configured' : 'missing',
+      phoneNumberId: !isPlaceholderPhoneId ? 'configured' : 'missing',
+      businessAccountId: businessAccountId && !businessAccountId.startsWith('YOUR_') ? 'configured' : 'missing',
+    };
+  }
+
+
+  // Perform REAL API connection check to Meta Graph API
+  try {
+    const metaRes = await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}?fields=id,verified_name,display_phone_number`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    const data = await metaRes.json();
+
+    if (metaRes.ok && data?.id) {
+      return {
+        adminNumber: ADMIN_WHATSAPP_NUMBER,
+        businessPhoneNumber: data.display_phone_number || rawPhoneNumber,
+        phoneNumberIdDisplay: 'Configured ✓',
+        businessAccountIdDisplay: businessAccountId ? 'Configured ✓' : 'Configured ✓ (Via Meta WABA)',
+        isConfigured: true,
+        connected: true,
+        status: 'CONNECTED',
+        statusText: '🟢 Gateway Connected',
+        verifiedName: data.verified_name || 'Raghavendra Chitts Official',
+        statusReason: 'Real Meta WhatsApp Business Cloud API connection verified successfully.',
+        lastChecked: new Date().toISOString(),
+        recommendedEngine: 'Meta Official Cloud API',
+        accessToken: 'configured',
+        phoneNumberId: 'configured',
+        businessAccountId: 'configured',
+      };
+    }
+
+    return {
+      adminNumber: ADMIN_WHATSAPP_NUMBER,
+      businessPhoneNumber: rawPhoneNumber,
+      phoneNumberIdDisplay: 'Configured (Invalid)',
+      businessAccountIdDisplay: businessAccountId ? 'Configured (Invalid)' : 'Not Configured',
+      isConfigured: true,
+      connected: false,
+      status: 'CONFIG_ERROR',
+      statusText: '🟠 Gateway Configuration Error',
+      statusReason: data?.error?.message || `Meta API verification rejected token or phone number ID (HTTP ${metaRes.status}).`,
+      lastChecked: new Date().toISOString(),
+      recommendedEngine: 'Meta Official Cloud API',
+      accessToken: 'invalid',
+      phoneNumberId: 'configured',
+      businessAccountId: 'missing',
+    };
+  } catch (err) {
+    return {
+      adminNumber: ADMIN_WHATSAPP_NUMBER,
+      businessPhoneNumber: rawPhoneNumber,
+      phoneNumberIdDisplay: 'Configured',
+      businessAccountIdDisplay: 'Configured',
+      isConfigured: true,
+      connected: false,
+      status: 'CONFIG_ERROR',
+      statusText: '🟠 Network Error',
+      statusReason: `Could not reach Meta Graph API server: ${err.message}`,
+      lastChecked: new Date().toISOString(),
+      recommendedEngine: 'Meta Official Cloud API',
+      accessToken: 'configured',
+      phoneNumberId: 'configured',
+      businessAccountId: 'configured',
+    };
+  }
+}
+
+export function getWhatsAppConfig() {
+  const accessToken = (process.env.WHATSAPP_ACCESS_TOKEN || process.env.META_WHATSAPP_ACCESS_TOKEN || '').trim();
+  const phoneNumberId = (process.env.WHATSAPP_PHONE_NUMBER_ID || process.env.META_PHONE_NUMBER_ID || '').trim();
+  const businessAccountId = (process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || process.env.META_BUSINESS_ACCOUNT_ID || '').trim();
+  const rawPhoneNumber = (process.env.WHATSAPP_BUSINESS_PHONE || ADMIN_WHATSAPP_NUMBER || '').trim();
+
+  const isPlaceholderToken = !accessToken ||
+    accessToken.startsWith('YOUR_') ||
+    accessToken.includes('HERE') ||
+    accessToken.includes('PLACEHOLDER') ||
+    accessToken.length < 15;
+
+  const isPlaceholderPhoneId = !phoneNumberId ||
+    phoneNumberId.startsWith('YOUR_') ||
+    phoneNumberId.includes('HERE') ||
+    phoneNumberId.includes('PLACEHOLDER') ||
+    !/^\d+$/.test(phoneNumberId);
+
+  const isConfigured = !isPlaceholderToken && !isPlaceholderPhoneId;
 
   return {
     adminNumber: ADMIN_WHATSAPP_NUMBER,
+    businessPhoneNumber: rawPhoneNumber,
+    phoneNumberIdDisplay: !isPlaceholderPhoneId ? 'Configured ✓' : 'Not Configured (Missing ID)',
+    businessAccountIdDisplay: businessAccountId && !businessAccountId.startsWith('YOUR_') ? 'Configured ✓' : 'Not Configured',
     isConfigured,
-    accessToken: isValidToken ? 'configured' : 'missing',
-    phoneNumberId: isValidPhoneId ? 'configured' : 'missing',
-    businessAccountId: businessAccountId ? 'configured' : 'missing',
+    connected: false, // Default until verifyMetaConnection is executed
+    status: isConfigured ? 'UNVERIFIED' : 'NOT_CONFIGURED',
+    statusText: isConfigured ? '🟠 Unverified Connection' : '🔴 Gateway Disconnected',
+    lastChecked: new Date().toISOString(),
+    recommendedEngine: 'Meta Official Cloud API',
+    accessToken: !isPlaceholderToken ? 'configured' : 'missing',
+    phoneNumberId: !isPlaceholderPhoneId ? 'configured' : 'missing',
+    businessAccountId: businessAccountId && !businessAccountId.startsWith('YOUR_') ? 'configured' : 'missing',
   };
 }
+
 
 function getLanguageCode(language = 'english') {
   if (language === 'telugu') return 'te';
@@ -94,54 +234,83 @@ export function buildMemberMessage(member, language = 'english+telugu') {
   return buildMultipleChitMessage(member, activeChits, normalized);
 }
 
-export async function sendWhatsAppMessage({ to, message, language = 'english' }) {
+export const MetaCloudProvider = {
+  name: 'Meta Official Cloud API',
+  async sendMessage({ to, message, language = 'english' }) {
+    const phoneNumberId = (process.env.WHATSAPP_PHONE_NUMBER_ID || process.env.META_PHONE_NUMBER_ID || '').trim();
+    const accessToken = (process.env.WHATSAPP_ACCESS_TOKEN || process.env.META_WHATSAPP_ACCESS_TOKEN || '').trim();
+
+    const response = await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to,
+        type: 'text',
+        text: {
+          body: message,
+        },
+        preview_url: false,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return {
+        status: 'failed',
+        reason: data?.error?.message || 'Meta WhatsApp Cloud API request rejected.',
+        phoneNumber: to,
+      };
+    }
+
+    return {
+      status: 'sent',
+      messageId: data?.messages?.[0]?.id || null,
+      phoneNumber: to,
+    };
+  },
+};
+
+export const TwilioProvider = {
+  name: 'Twilio API for WhatsApp',
+  async sendMessage({ to, message }) {
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    if (!accountSid || !authToken) {
+      return {
+        status: 'failed',
+        reason: 'Twilio credentials (TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN) are missing from server environment.',
+        phoneNumber: to,
+      };
+    }
+    return {
+      status: 'failed',
+      reason: 'Twilio API provider adapter is ready for optional configuration.',
+      phoneNumber: to,
+    };
+  },
+};
+
+export async function sendWhatsAppMessage({ to, message, language = 'english', provider = 'meta_cloud_api' }) {
   const config = getWhatsAppConfig();
 
   if (!config.isConfigured) {
     return {
       status: 'not_configured',
-      message: 'WhatsApp API is not configured. Add WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, and WHATSAPP_BUSINESS_ACCOUNT_ID to the backend environment first.',
+      message: 'WhatsApp API is not configured. Add WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID to server/.env.',
       adminNumber: ADMIN_WHATSAPP_NUMBER,
     };
   }
 
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
-
-  const response = await fetch(`https://graph.facebook.com/v20.0/${phoneNumberId}/messages`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to,
-      type: 'text',
-      text: {
-        body: message,
-      },
-      preview_url: false,
-      ...(language === 'telugu' ? { template: { name: 'hello_world', language: { code: 'en_US' } } } : {}),
-    }),
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    return {
-      status: 'failed',
-      reason: data?.error?.message || 'WhatsApp message failed to send.',
-      phoneNumber: to,
-    };
-  }
-
-  return {
-    status: 'sent',
-    messageId: data?.messages?.[0]?.id || null,
-    phoneNumber: to,
-  };
+  const selectedProvider = provider === 'twilio' ? TwilioProvider : MetaCloudProvider;
+  const outcome = await selectedProvider.sendMessage({ to, message, language });
+  return outcome;
 }
+
 
 export async function sendWhatsAppBroadcast({ members = [], language = 'english+telugu', target = 'all' }) {
   const config = getWhatsAppConfig();
@@ -260,4 +429,61 @@ export async function sendSingleWhatsAppMessage({ member, recipient, message, la
     memberName: member?.name || 'Member',
   };
 }
+
+export async function sendTestWhatsAppMessage({ recipient, message }) {
+  const accessToken = (process.env.WHATSAPP_ACCESS_TOKEN || process.env.META_WHATSAPP_ACCESS_TOKEN || '').trim();
+  const phoneNumberId = (process.env.WHATSAPP_PHONE_NUMBER_ID || process.env.META_PHONE_NUMBER_ID || '').trim();
+
+  const cleanRecipient = normalizePhoneNumber(recipient || '');
+
+  if (!cleanRecipient) {
+    return {
+      success: false,
+      status: 'INVALID_NUMBER',
+      message: 'The recipient phone number is invalid. Enter a valid mobile number (e.g. 9876543210).',
+    };
+  }
+
+  const isPlaceholderToken = !accessToken || accessToken.startsWith('YOUR_') || accessToken.includes('HERE') || accessToken.length < 15;
+  const isPlaceholderPhoneId = !phoneNumberId || phoneNumberId.startsWith('YOUR_') || !/^\d+$/.test(phoneNumberId);
+
+  const missing = [];
+  if (isPlaceholderToken) missing.push('WHATSAPP_ACCESS_TOKEN');
+  if (isPlaceholderPhoneId) missing.push('WHATSAPP_PHONE_NUMBER_ID');
+
+  if (missing.length > 0) {
+    return {
+      success: false,
+      status: 'NOT_CONFIGURED',
+      missing,
+      message: `Meta WhatsApp credentials (${missing.join(', ')}) are not configured in server/.env.`,
+      recipient: cleanRecipient,
+    };
+  }
+
+  const testMessage = message && message.trim()
+    ? message.trim()
+    : 'Hello from Raghavendra Chitts. This is a live test WhatsApp message from Meta Official Cloud API.';
+
+  const outcome = await sendWhatsAppMessage({ to: cleanRecipient, message: testMessage, language: 'english' });
+
+  if (outcome.status === 'sent') {
+    return {
+      success: true,
+      status: 'SENT',
+      recipient: cleanRecipient,
+      messageId: outcome.messageId,
+      message: `Test WhatsApp message submitted successfully to +${cleanRecipient}.`,
+    };
+  }
+
+  return {
+    success: false,
+    status: 'FAILED',
+    recipient: cleanRecipient,
+    message: outcome.reason || 'Meta WhatsApp could not accept the message.',
+  };
+}
+
+
 

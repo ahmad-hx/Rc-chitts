@@ -94,44 +94,45 @@ export default function Login({ onLogin }) {
   };
 
   return (
-    <div className="login-shell relative min-h-screen overflow-hidden px-4 py-8 sm:px-6">
-      <div className="relative z-10 mx-auto flex min-h-[calc(100vh-4rem)] max-w-5xl items-center justify-center">
+    <div className="min-h-screen bg-[#1C1C1A] relative overflow-hidden px-4 py-8 sm:px-6 flex items-center justify-center font-sans">
+      <div className="relative z-10 mx-auto w-full max-w-md">
         <div
-          className={`w-full max-w-md transition-all duration-700 ease-out ${
+          className={`w-full transition-all duration-700 ease-out ${
             loginSuccess ? 'pointer-events-none scale-[0.97] opacity-0' : 'opacity-100 scale-100'
           }`}
         >
-          <div className="mb-7 text-center">
-            <div className="mb-4 flex justify-center">
-              <Logo size="lg" showText={false} className="drop-shadow-[0_12px_35px_rgba(56,189,248,0.32)]" />
+          <div className="mb-6 text-center">
+            <div className="mb-3 flex justify-center">
+              <Logo size="lg" showText={false} />
             </div>
 
-            <div className="flex items-center justify-center gap-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-sky-200/90">
-              <ShieldCheck className="h-3.5 w-3.5 text-amber-300" />
+            <div className="flex items-center justify-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.25em] text-[#D8D8D3]">
+              <ShieldCheck className="h-4 w-4 text-[#2F6B4F]" />
               Private Admin Portal
             </div>
           </div>
 
-          <div className="glass-panel rounded-[28px] p-5 sm:p-6">
+          <div className="bg-white border border-[#E5E5E1] rounded-2xl p-6 sm:p-8 shadow-xl">
             <div className="mb-6 text-center">
-              <h1 className="text-3xl font-black tracking-tight text-white">Raghavendra Chitts</h1>
+              <h1 className="text-2xl font-black tracking-tight text-[#1C1C1A]">Raghavendra Chitts</h1>
+              <p className="text-xs text-[#6B6B67] mt-1">Enterprise Admin Authentication</p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
-                <div className="flex items-start gap-2 rounded-2xl border border-red-400/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-100">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-300" />
+                <div className="flex items-start gap-2 rounded-xl border border-[#F2D4D4] bg-[#FCEEEE] p-3 text-xs font-bold text-[#A33A3A]">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#A33A3A]" />
                   <span>{error}</span>
                 </div>
               )}
 
-              <div className="space-y-2">
-                <label htmlFor="username" className="block text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-300">
+              <div className="space-y-1.5">
+                <label htmlFor="username" className="block text-[10px] font-extrabold uppercase tracking-wider text-[#6B6B67]">
                   Admin Email
                 </label>
 
                 <div className="relative">
-                  <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
+                  <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-[#959590]">
                     <User className="h-4 w-4" />
                   </span>
 
@@ -146,18 +147,18 @@ export default function Login({ onLogin }) {
                       setUsername(e.target.value);
                       setError('');
                     }}
-                    className="w-full rounded-2xl border border-slate-600/60 bg-slate-950/40 py-3 pl-10 pr-4 text-sm text-white placeholder:text-slate-400 outline-none transition-all duration-200 focus:border-sky-400 focus:ring-4 focus:ring-sky-400/20"
+                    className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] py-2.5 pl-10 pr-4 text-xs font-bold text-[#1C1C1A] placeholder:text-[#959590] outline-none transition-all focus:border-[#2F5D50] focus:bg-white focus:ring-1 focus:ring-[#2F5D50]"
                   />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label htmlFor="password" className="block text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-300">
+              <div className="space-y-1.5">
+                <label htmlFor="password" className="block text-[10px] font-extrabold uppercase tracking-wider text-[#6B6B67]">
                   Password
                 </label>
 
                 <div className="relative">
-                  <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
+                  <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-[#959590]">
                     <Lock className="h-4 w-4" />
                   </span>
 
@@ -172,13 +173,13 @@ export default function Login({ onLogin }) {
                       setPassword(e.target.value);
                       setError('');
                     }}
-                    className="w-full rounded-2xl border border-slate-600/60 bg-slate-950/40 py-3 pl-10 pr-11 text-sm text-white placeholder:text-slate-400 outline-none transition-all duration-200 focus:border-sky-400 focus:ring-4 focus:ring-sky-400/20"
+                    className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] py-2.5 pl-10 pr-11 text-xs font-bold text-[#1C1C1A] placeholder:text-[#959590] outline-none transition-all focus:border-[#2F5D50] focus:bg-white focus:ring-1 focus:ring-[#2F5D50]"
                   />
 
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400 transition-colors hover:text-white focus:outline-none"
+                    className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-[#959590] hover:text-[#1C1C1A] focus:outline-none cursor-pointer"
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -187,13 +188,13 @@ export default function Login({ onLogin }) {
               </div>
 
               <div className="flex items-center justify-between gap-3 pt-1">
-                <label htmlFor="remember-me" className="flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-200">
+                <label htmlFor="remember-me" className="flex cursor-pointer items-center gap-2 text-xs font-bold text-[#1C1C1A]">
                   <input
                     id="remember-me"
                     type="checkbox"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
-                    className="h-4 w-4 rounded border-slate-500 bg-slate-950/40 text-sky-400 focus:ring-sky-400/30"
+                    className="h-4 w-4 rounded border-[#E5E5E1] text-[#2F5D50] focus:ring-[#2F5D50] cursor-pointer"
                   />
                   Remember me
                 </label>
@@ -202,7 +203,7 @@ export default function Login({ onLogin }) {
               <Button
                 type="submit"
                 variant="primary"
-                className="w-full rounded-2xl bg-gradient-to-r from-sky-500 via-blue-600 to-indigo-600 px-5 py-3.5 text-base font-semibold text-white shadow-[0_14px_28px_rgba(59,130,246,0.38)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_32px_rgba(59,130,246,0.42)] active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70"
+                className="w-full rounded-xl bg-[#2F5D50] hover:bg-[#24493F] px-5 py-3 text-sm font-bold text-white transition-all cursor-pointer disabled:opacity-40"
                 disabled={loading}
               >
                 {loading ? 'Signing In...' : 'Sign In'}
@@ -211,13 +212,8 @@ export default function Login({ onLogin }) {
           </div>
 
           <div className="mt-6 text-center">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.22em] text-slate-300">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-              Private System
-            </div>
-
-            <p className="mt-3 text-[10px] text-slate-400">
-              Authorized Personnel Only. Actions are logged.
+            <p className="text-[10px] font-semibold text-[#959590]">
+              Authorized Personnel Only • Secure Admin System
             </p>
           </div>
         </div>

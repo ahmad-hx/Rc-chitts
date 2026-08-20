@@ -2,6 +2,10 @@
 .env
 .env.local
 .env.*.local
+server/.env
+server/.env.local
+server/.env.*
+server/auth_info_baileys/
 functions/.env
 functions/.env.local
 functions/.secret.local
