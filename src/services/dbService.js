@@ -59,16 +59,21 @@ export const memberService = {
       const members = [];
       querySnapshot.forEach((docSnap) => {
         const rawData = docSnap.data() || {};
-        const rawChits = rawData.chits || rawData.holdings || [];
+        let rawChits = rawData.chits || rawData.holdings || rawData.assignedChits || rawData.assignedChit;
 
-        const chits = Array.isArray(rawChits)
+        if (rawChits && !Array.isArray(rawChits)) {
+          rawChits = [rawChits];
+        }
+
+        let chits = Array.isArray(rawChits)
           ? rawChits.map((c) => {
-              const val = Number(c?.totalChitValue || c?.totalValue || c?.chitValue || 100000);
+              const val = Number(c?.totalChitValue || c?.totalValue || c?.chitValue || rawData.totalChitValue || rawData.chitValue || 100000);
               const qty = Number(c?.quantity || 1);
+              const gId = String(c?.groupId || c?.group || c?.chitGroup || rawData.groupId || rawData.group || rawData.chitGroup || 'I');
               return {
-                id: c?.id || `chit_${docSnap.id}_${c?.groupId || 'I'}`,
-                name: c?.name || `₹${(val / 100000).toFixed(0)} Lakh Chit (Group ${c?.groupId || 'I'})`,
-                groupId: c?.groupId || 'I',
+                id: c?.id || `chit_${docSnap.id}_${gId}`,
+                name: c?.name || `₹${(val / 100000).toFixed(0)} Lakh Chit (Group ${gId})`,
+                groupId: gId,
                 totalChitValue: val,
                 amountToPay: Number(c?.amountToPay || Math.floor(val / 20)),
                 pending: Number(c?.pending || 0),
@@ -80,14 +85,34 @@ export const memberService = {
             })
           : [];
 
+        // If no embedded chits array, but group fields exist on root member doc:
+        if (chits.length === 0 && (rawData.group || rawData.groupId || rawData.chitGroup || rawData.chitId)) {
+          const gId = String(rawData.group || rawData.groupId || rawData.chitGroup || 'I');
+          const val = Number(rawData.chitValue || rawData.totalChitValue || rawData.totalValue || 100000);
+          chits = [{
+            id: `chit_${docSnap.id}_${gId}`,
+            name: `₹${(val / 100000).toFixed(0)} Lakh Chit (Group ${gId})`,
+            groupId: gId,
+            totalChitValue: val,
+            amountToPay: Number(rawData.amountToPay || rawData.monthlyAmount || Math.floor(val / 20)),
+            pending: Number(rawData.pending || rawData.pendingAmount || 0),
+            balance: Number(rawData.balance || rawData.balanceAmount || 0),
+            balanceAmount: Number(rawData.balanceAmount || val),
+            quantity: Number(rawData.quantity || 1),
+            status: rawData.status || 'ACTIVE',
+          }];
+        }
+
         const calculatedTotalChitValue = chits.reduce((sum, c) => sum + (c.totalChitValue * c.quantity), 0);
 
         const memberObj = {
           id: docSnap.id,
           memberKey: rawData.memberKey || docSnap.id,
-          name: rawData.name || 'Unnamed Member',
-          phone: rawData.phone || '',
-          whatsapp: rawData.whatsapp || rawData.phone || '',
+          name: rawData.name || rawData.memberName || rawData.fullName || 'Unnamed Member',
+          phone: rawData.phone || rawData.phoneNumber || rawData.mobile || rawData.whatsappNumber || rawData.whatsapp || '',
+          whatsapp: rawData.whatsapp || rawData.whatsappNumber || rawData.phone || rawData.phoneNumber || rawData.mobile || '',
+          group: rawData.group || rawData.groupId || rawData.chitGroup || (chits[0]?.groupId) || '',
+          groupId: rawData.groupId || rawData.group || rawData.chitGroup || (chits[0]?.groupId) || '',
           sharedPhone: Boolean(rawData.sharedPhone),
           sharedPhoneWith: rawData.sharedPhoneWith || [],
           phoneNumbers: rawData.phoneNumbers || (rawData.phone ? [rawData.phone] : []),
@@ -96,7 +121,7 @@ export const memberService = {
           chits,
           holdings: chits,
           totalHoldings: rawData.totalHoldings || chits.reduce((sum, c) => sum + c.quantity, 0),
-          classification: rawData.classification || (chits.reduce((sum, c) => sum + c.quantity, 0) > 1 ? 'MULTIPLE' : 'SINGLE'),
+          classification: rawData.classification || rawData.memberType || (chits.reduce((sum, c) => sum + c.quantity, 0) > 1 ? 'MULTIPLE' : 'SINGLE'),
           calculatedTotalChitValue,
         };
 

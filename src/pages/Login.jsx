@@ -6,6 +6,7 @@ import {
   User,
   AlertCircle,
   ShieldCheck,
+  CheckCircle2,
 } from 'lucide-react';
 
 import Logo from '../components/Logo';
@@ -13,6 +14,7 @@ import Button from '../components/Button';
 
 import {
   signInWithEmailAndPassword,
+  sendPasswordResetEmail,
   setPersistence,
   browserLocalPersistence,
   browserSessionPersistence,
@@ -29,12 +31,17 @@ export default function Login({ onLogin }) {
   const [loading, setLoading] = useState(false);
   const [loginSuccess, setLoginSuccess] = useState(false);
 
+  // Password reset states
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState('');
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (loading) return;
 
     setError('');
+    setResetSuccess('');
     setLoading(true);
 
     const email = username.trim();
@@ -93,6 +100,56 @@ export default function Login({ onLogin }) {
     }
   };
 
+  const handleForgotPassword = async () => {
+    if (loading || resetLoading) return;
+
+    setError('');
+    setResetSuccess('');
+
+    const email = username.trim();
+
+    if (!email) {
+      setError('Enter your admin email first, then click Forgot Password.');
+      return;
+    }
+
+    setResetLoading(true);
+
+    try {
+      await sendPasswordResetEmail(auth, email);
+      setResetSuccess(
+        'Password reset link sent. Please check your email inbox and spam folder.'
+      );
+    } catch (err) {
+      console.error('Firebase password reset error:', err);
+
+      switch (err.code) {
+        case 'auth/user-not-found':
+          setError('No admin account found with this email address.');
+          break;
+
+        case 'auth/invalid-email':
+          setError('Please enter a valid email address.');
+          break;
+
+        case 'auth/too-many-requests':
+          setError('Too many requests. Please try again later.');
+          break;
+
+        case 'auth/network-request-failed':
+          setError('Network error. Please check your internet connection.');
+          break;
+
+        default:
+          setError(
+            'Unable to send password reset email. Please check the email address.'
+          );
+      }
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#1C1C1A] relative overflow-hidden px-4 py-8 sm:px-6 flex items-center justify-center font-sans">
       <div className="relative z-10 mx-auto w-full max-w-md">
@@ -126,6 +183,13 @@ export default function Login({ onLogin }) {
                 </div>
               )}
 
+              {resetSuccess && (
+                <div className="flex items-start gap-2 rounded-xl border border-[#C6F6D5] bg-[#EDF7F0] p-3 text-xs font-bold text-[#2F5D50]">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#2F5D50]" />
+                  <span>{resetSuccess}</span>
+                </div>
+              )}
+
               <div className="space-y-1.5">
                 <label htmlFor="username" className="block text-[10px] font-extrabold uppercase tracking-wider text-[#6B6B67]">
                   Admin Email
@@ -146,6 +210,7 @@ export default function Login({ onLogin }) {
                     onChange={(e) => {
                       setUsername(e.target.value);
                       setError('');
+                      setResetSuccess('');
                     }}
                     className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] py-2.5 pl-10 pr-4 text-xs font-bold text-[#1C1C1A] placeholder:text-[#959590] outline-none transition-all focus:border-[#2F5D50] focus:bg-white focus:ring-1 focus:ring-[#2F5D50]"
                   />
@@ -172,6 +237,7 @@ export default function Login({ onLogin }) {
                     onChange={(e) => {
                       setPassword(e.target.value);
                       setError('');
+                      setResetSuccess('');
                     }}
                     className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] py-2.5 pl-10 pr-11 text-xs font-bold text-[#1C1C1A] placeholder:text-[#959590] outline-none transition-all focus:border-[#2F5D50] focus:bg-white focus:ring-1 focus:ring-[#2F5D50]"
                   />
@@ -198,6 +264,15 @@ export default function Login({ onLogin }) {
                   />
                   Remember me
                 </label>
+
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  disabled={resetLoading || loading}
+                  className="text-xs font-bold text-[#2F5D50] hover:text-[#24493F] hover:underline focus:outline-none focus:ring-1 focus:ring-[#2F5D50] rounded px-1 py-0.5 transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  {resetLoading ? 'Sending link...' : 'Forgot Password?'}
+                </button>
               </div>
 
               <Button
@@ -221,3 +296,4 @@ export default function Login({ onLogin }) {
     </div>
   );
 }
+

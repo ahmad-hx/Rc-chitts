@@ -183,8 +183,11 @@ export function filterRecipients(members = [], { searchQuery = '', categoryFilte
     if (categoryFilter === '500000' && !activeChits.some((c) => Number(c.totalChitValue || 100000) === 500000)) return false;
 
     // Group filter
-    if (groupFilter !== 'all') {
-      const hasGroup = activeChits.some((c) => String(c.groupId || '').toLowerCase() === String(groupFilter).toLowerCase());
+    if (groupFilter && groupFilter !== 'all') {
+      const gf = String(groupFilter).toLowerCase();
+      const hasGroupInChits = activeChits.some((c) => String(c.groupId || c.group || '').toLowerCase() === gf);
+      const rootGroup = String(m.groupId || m.group || m.chitGroup || '').toLowerCase();
+      const hasGroup = hasGroupInChits || rootGroup === gf;
       if (!hasGroup) return false;
     }
 

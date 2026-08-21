@@ -34,6 +34,40 @@ import {
 } from '../services/whatsappService';
 import { memberService, chitService } from '../services/dbService';
 
+function parseRomanNumeral(str = '') {
+  const clean = String(str).toUpperCase().trim().replace(/^GROUP\s+/, '');
+  const romanMap = { I: 1, V: 5, X: 10, L: 50, C: 100, D: 500, M: 1000 };
+  let num = 0;
+  for (let i = 0; i < clean.length; i++) {
+    const current = romanMap[clean[i]] || 0;
+    const next = romanMap[clean[i + 1]] || 0;
+    if (current < next) {
+      num -= current;
+    } else {
+      num += current;
+    }
+  }
+  return num > 0 ? num : 999;
+}
+
+function compareGroupIds(groupIdA = '', groupIdB = '') {
+  const cleanA = String(groupIdA).trim().toUpperCase();
+  const cleanB = String(groupIdB).trim().toUpperCase();
+
+  const romanPattern = /^(M{0,4}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3}))$/i;
+  const rawA = cleanA.replace(/^GROUP\s+/, '');
+  const rawB = cleanB.replace(/^GROUP\s+/, '');
+
+  const isRomanA = rawA.length > 0 && romanPattern.test(rawA);
+  const isRomanB = rawB.length > 0 && romanPattern.test(rawB);
+
+  if (isRomanA && isRomanB) {
+    return parseRomanNumeral(rawA) - parseRomanNumeral(rawB);
+  }
+
+  return cleanA.localeCompare(cleanB, undefined, { numeric: true, sensitivity: 'base' });
+}
+
 function getActiveChits(member) {
   return (member?.chits || []).filter((chit) => (chit.status ? chit.status === 'ACTIVE' : true));
 }
@@ -67,7 +101,7 @@ export default function WhatsAppPlaceholder() {
   const [customTemplateText, setCustomTemplateText] = useState(MESSAGE_TEMPLATES.PAYMENT_REMINDER.englishText);
 
   // Parameter Inputs
-  const [selectedGroupId, setSelectedGroupId] = useState('I');
+  const [selectedGroupId, setSelectedGroupId] = useState('all');
   const [billingMonth, setBillingMonth] = useState('August 2026');
   const [dueDate, setDueDate] = useState('15th of Month');
   const [chitAmount, setChitAmount] = useState('25000');
@@ -91,6 +125,39 @@ export default function WhatsAppPlaceholder() {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [groupFilter, setGroupFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+
+  // Sync group selection between filters and parameters
+  const handleGroupFilterChange = (val) => {
+    setGroupFilter(val);
+    setSelectedGroupId(val);
+  };
+
+  // Dynamically extract all unique group IDs from loaded Firestore chits and members data
+  const availableGroups = useMemo(() => {
+    const groupsSet = new Set();
+
+    (chits || []).forEach((c) => {
+      if (c.groupId) groupsSet.add(String(c.groupId).trim());
+      if (c.group) groupsSet.add(String(c.group).trim());
+    });
+
+    (members || []).forEach((m) => {
+      if (m.group) groupsSet.add(String(m.group).trim());
+      if (m.groupId) groupsSet.add(String(m.groupId).trim());
+      if (m.chitGroup) groupsSet.add(String(m.chitGroup).trim());
+
+      const activeChits = m.chits || m.holdings || [];
+      if (Array.isArray(activeChits)) {
+        activeChits.forEach((c) => {
+          if (c.groupId) groupsSet.add(String(c.groupId).trim());
+          if (c.group) groupsSet.add(String(c.group).trim());
+          if (c.chitGroup) groupsSet.add(String(c.chitGroup).trim());
+        });
+      }
+    });
+
+    return Array.from(groupsSet).filter(Boolean).sort(compareGroupIds);
+  }, [chits, members]);
 
   // Selection States
   const [selectedMemberIds, setSelectedMemberIds] = useState([]);
@@ -152,10 +219,24 @@ export default function WhatsAppPlaceholder() {
 
         if (mounted) {
           const list = Array.isArray(fetchedMembers) ? fetchedMembers : [];
+          const chitsList = Array.isArray(fetchedChits) ? fetchedChits : [];
           setMembers(list);
-          setChits(Array.isArray(fetchedChits) ? fetchedChits : []);
+          setChits(chitsList);
 
+          // Extract groups for diagnostic logging
+          const groupsSet = new Set();
+          chitsList.forEach((c) => c.groupId && groupsSet.add(String(c.groupId)));
+          list.forEach((m) => {
+            if (m.groupId) groupsSet.add(String(m.groupId));
+            if (m.group) groupsSet.add(String(m.group));
+            (m.chits || []).forEach((c) => c.groupId && groupsSet.add(String(c.groupId)));
+          });
+          const uniqueGroups = Array.from(groupsSet).sort(compareGroupIds);
+
+          console.log('Total members loaded:', list.length);
+          console.log('Available groups:', uniqueGroups);
           if (list.length > 0) {
+            console.log('Sample member data:', list[0]);
             setSelectedPreviewMember(list[0]);
           }
         }
@@ -163,7 +244,7 @@ export default function WhatsAppPlaceholder() {
         if (mounted) {
           showToast('Failed to load member records from Firebase.', 'error');
         }
-      } fontally: {
+      } finally {
         if (mounted) setLoading(false);
       }
     }
@@ -215,10 +296,11 @@ export default function WhatsAppPlaceholder() {
 
   // Filtered Recipients List
   const filteredRecipients = useMemo(() => {
+    const effectiveGroupFilter = groupFilter !== 'all' ? groupFilter : selectedGroupId;
     return filterRecipients(members, {
       searchQuery,
       categoryFilter,
-      groupFilter: groupFilter !== 'all' ? groupFilter : selectedGroupId,
+      groupFilter: effectiveGroupFilter,
       statusFilter,
     });
   }, [members, searchQuery, categoryFilter, groupFilter, selectedGroupId, statusFilter]);
@@ -596,11 +678,11 @@ export default function WhatsAppPlaceholder() {
             {/* Group Filter */}
             <select
               value={groupFilter}
-              onChange={(e) => setGroupFilter(e.target.value)}
+              onChange={(e) => handleGroupFilterChange(e.target.value)}
               className="rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-1.5 font-bold text-[#1C1C1A] focus:outline-none cursor-pointer"
             >
               <option value="all">All Groups</option>
-              {['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'A', 'B', 'C'].map((g) => (
+              {availableGroups.map((g) => (
                 <option key={g} value={g}>
                   Group {g}
                 </option>
@@ -676,6 +758,19 @@ export default function WhatsAppPlaceholder() {
                   const activeChits = getActiveChits(member);
                   const isMulti = member.classification === 'MULTIPLE' || activeChits.length > 1;
 
+                  // Extract group display name(s) dynamically
+                  const grpSet = new Set();
+                  activeChits.forEach((c) => {
+                    if (c.groupId) grpSet.add(String(c.groupId));
+                    else if (c.group) grpSet.add(String(c.group));
+                  });
+                  if (grpSet.size === 0) {
+                    const rootGrp = member.groupId || member.group || member.chitGroup;
+                    if (rootGrp) grpSet.add(String(rootGrp));
+                  }
+                  const groupArr = Array.from(grpSet);
+                  const groupText = groupArr.length > 0 ? groupArr.map((g) => `Group ${g}`).join(', ') : 'N/A';
+
                   return (
                     <tr
                       key={member.id}
@@ -706,7 +801,7 @@ export default function WhatsAppPlaceholder() {
                         {norm ? `+${norm}` : <span className="text-[#C53030]">No Phone</span>}
                       </td>
 
-                      <td className="p-3 text-[#6B6B67] font-medium">Group {selectedGroupId}</td>
+                      <td className="p-3 text-[#6B6B67] font-medium">{groupText}</td>
 
                       <td className="p-3">
                         <Badge variant={isMulti ? 'purple' : 'info'} className="text-[10px] font-bold">
@@ -753,11 +848,11 @@ export default function WhatsAppPlaceholder() {
               <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block mb-1">Chit Group</label>
               <select
                 value={selectedGroupId}
-                onChange={(e) => setSelectedGroupId(e.target.value)}
+                onChange={(e) => handleGroupFilterChange(e.target.value)}
                 className="w-full px-3 py-2 bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] font-bold focus:outline-none focus:ring-1 focus:ring-[#2F5D50] cursor-pointer"
               >
                 <option value="all">All Groups</option>
-                {['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV', 'XV'].map((g) => (
+                {availableGroups.map((g) => (
                   <option key={g} value={g}>
                     Group {g}
                   </option>

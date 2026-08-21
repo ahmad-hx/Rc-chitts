@@ -19,7 +19,13 @@ import { initWhatsAppQrGateway, getWhatsAppGatewayState, sendWhatsAppMessageViaQ
 const app = express();
 const port = process.env.PORT || 3001;
 
-app.use(cors());
+app.use(cors({
+  origin: [
+    'http://localhost:5173',
+    'https://raghavendra-chitts-c0822.web.app'
+  ],
+  methods: ['GET', 'POST'],
+}));
 app.use(express.json({ limit: '2mb' }));
 
 app.get('/api/health', async (req, res) => {
