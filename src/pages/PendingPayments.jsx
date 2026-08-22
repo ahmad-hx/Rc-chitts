@@ -25,7 +25,7 @@ import Badge from '../components/Badge';
 import Toast from '../components/Toast';
 import Modal from '../components/Modal';
 import { useBillingMonth } from '../context/BillingMonthContext';
-import { memberService, chitService, monthlyRecordService } from '../services/dbService';
+import { memberService, chitService, paymentService, monthlyRecordService } from '../services/dbService';
 import {
   sendSingleWhatsAppMessage,
   normalizeWhatsAppNumber,
@@ -47,6 +47,7 @@ export default function PendingPayments() {
   // Core Data States
   const [members, setMembers] = useState([]);
   const [chits, setChits] = useState([]);
+  const [payments, setPayments] = useState([]);
   const [adjustmentsMap, setAdjustmentsMap] = useState({});
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
@@ -75,14 +76,16 @@ export default function PendingPayments() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [mList, cList, adjData] = await Promise.all([
+      const [mList, cList, pList, adjData] = await Promise.all([
         memberService.getMembers().catch(() => []),
         chitService.getChits().catch(() => []),
+        paymentService.getPayments().catch(() => []),
         monthlyRecordService.getMonthlyAdjustments(selectedMonth).catch(() => ({ adjustmentsMap: {} })),
       ]);
 
       setMembers(Array.isArray(mList) ? mList : []);
       setChits(Array.isArray(cList) ? cList : []);
+      setPayments(Array.isArray(pList) ? pList : []);
       setAdjustmentsMap(adjData.adjustmentsMap || {});
     } catch (err) {
       showToast('Error loading payment data from Firebase.', 'error');
@@ -155,12 +158,61 @@ export default function PendingPayments() {
         
         let paidAmount = 0;
         let pendingAmount = reqChitAmount;
-        let balanceAmount = Number(c.balance || 0);
+        let balanceAmount = Number(c.balance || c.balanceAmount || 0);
 
         if (existingAdj) {
           paidAmount = Number(existingAdj.paidAmount || 0);
           pendingAmount = Number(existingAdj.pendingAmount);
           balanceAmount = Number(existingAdj.balanceAmount || 0);
+        } else {
+          // Sum actual paid transactions for this selectedMonth, member & chit group
+          let paidFromTxns = 0;
+          const mPhoneClean = (m.phone || m.whatsapp || '').replace(/\D/g, '');
+          const mNameClean = (m.name || '').trim().toLowerCase();
+          const cleanGroupStr = gId.replace(/^GROUP\s+/i, '').toUpperCase();
+
+          (payments || []).forEach((p) => {
+            const pStatus = String(p.status || 'cleared').toLowerCase();
+            if (pStatus === 'failed' || pStatus === 'cancelled') return;
+
+            // Check billing month match
+            let pMonth = p.billingMonth;
+            if (!pMonth && p.date) {
+              try {
+                const d = new Date(p.date);
+                if (!isNaN(d.getTime())) {
+                  pMonth = d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+                }
+              } catch (_) {}
+            }
+
+            if (pMonth && String(pMonth).trim().toLowerCase() !== String(selectedMonth).trim().toLowerCase()) {
+              return; // Different billing month
+            }
+
+            // Check member match
+            const pMemId = p.memberId;
+            const pMemName = (p.member || '').trim().toLowerCase();
+            const pPhoneClean = (p.phone || '').replace(/\D/g, '');
+
+            const isMemMatch =
+              (pMemId && pMemId === m.id) ||
+              (mPhoneClean && pPhoneClean && (mPhoneClean.endsWith(pPhoneClean) || pPhoneClean.endsWith(mPhoneClean))) ||
+              (mNameClean && pMemName && (mNameClean === pMemName || mNameClean.includes(pMemName) || pMemName.includes(mNameClean)));
+
+            if (!isMemMatch) return;
+
+            // Check group match
+            const pGrp = String(p.group || p.groupId || '').trim().toUpperCase().replace(/^GROUP\s+/, '');
+            const isGrpMatch = !pGrp || pGrp === 'ALL' || cleanGroupStr === pGrp || cleanGroupStr.includes(pGrp) || pGrp.includes(cleanGroupStr);
+
+            if (isGrpMatch) {
+              paidFromTxns += Number(p.amount || 0);
+            }
+          });
+
+          paidAmount = paidFromTxns;
+          pendingAmount = Math.max(reqChitAmount - paidAmount, 0);
         }
 
         // Apply live edited overrides if available
@@ -175,9 +227,9 @@ export default function PendingPayments() {
         }
 
         // Determine Status based on required prompt rules:
-        // PAID: Paid >= Required Chit Amount (Pending = 0)
-        // FULL PENDING: Paid = 0 (Pending = Required Chit Amount)
-        // PARTIAL: Paid > 0 && Paid < Required Chit Amount (Pending = Required - Paid)
+        // PAID: Paid >= Required Chit Amount (Pending = 0) -> NOT shown in Pending Payments!
+        // FULL PENDING: Paid = 0 (Pending = Required Chit Amount) -> Section A
+        // PARTIAL: Paid > 0 && Paid < Required Chit Amount (Pending = Required - Paid) -> Section B
         let status = 'PENDING';
         if (pendingAmount <= 0 || paidAmount >= reqChitAmount) {
           status = 'PAID';
@@ -211,7 +263,7 @@ export default function PendingPayments() {
     });
 
     return rows;
-  }, [members, adjustmentsMap, editedAmounts, selectedGroupId, selectedMonth, searchQuery]);
+  }, [members, chits, payments, adjustmentsMap, editedAmounts, selectedGroupId, selectedMonth, searchQuery]);
 
   // Separate Rows into Section A (Full Pending) and Section B (Partial Payments)
   const fullPendingRows = useMemo(() => {

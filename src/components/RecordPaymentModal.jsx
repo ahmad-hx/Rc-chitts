@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import Modal from './Modal';
 import Button from './Button';
 import { IndianRupee } from 'lucide-react';
-import { memberService } from '../services/dbService';
+import { memberService, paymentService } from '../services/dbService';
+import { useBillingMonth } from '../context/BillingMonthContext';
 
 export default function RecordPaymentModal({ isOpen, onClose, onRecord, members: passedMembers }) {
+  const { selectedMonth } = useBillingMonth();
   const [members, setMembers] = useState(passedMembers || []);
   const [selectedMemberId, setSelectedMemberId] = useState('');
   const [selectedGroupId, setSelectedGroupId] = useState('RC-01');
@@ -29,7 +31,7 @@ export default function RecordPaymentModal({ isOpen, onClose, onRecord, members:
 
   const member = members.find(m => m.id === selectedMemberId) || members[0];
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const parsedAmount = parseFloat(amount);
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
@@ -39,15 +41,22 @@ export default function RecordPaymentModal({ isOpen, onClose, onRecord, members:
 
     const newTxn = {
       id: `TXN-${Math.floor(100 + Math.random() * 900)}`,
+      memberId: member?.id || '',
       member: member?.name || 'Member',
       phone: member?.phone || '',
       group: selectedGroupId,
+      groupId: selectedGroupId,
       amount: parsedAmount,
+      billingMonth: selectedMonth || 'August 2026',
       date: new Date().toISOString().split('T')[0],
       type: paymentMethod,
       status: 'cleared',
       note: note || 'Quick payment record'
     };
+
+    try {
+      await paymentService.addPayment(newTxn);
+    } catch (_) {}
 
     onRecord?.(newTxn);
     onClose();
