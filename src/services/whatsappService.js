@@ -16,6 +16,19 @@ import { functions, auth } from '../firebase';
 export const ADMIN_WHATSAPP_NUMBER = '9705184411';
 export const ADMIN_CONTACT_NUMBER = ADMIN_WHATSAPP_NUMBER;
 
+const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+export const WHATSAPP_API_BASE_URL =
+  import.meta.env.VITE_WHATSAPP_API_URL ||
+  (isLocalhost
+    ? ''
+    : 'https://raghavendra-chitts-whatsapp.onrender.com');
+
+export function getWhatsAppApiUrl(path) {
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  return `${WHATSAPP_API_BASE_URL}${cleanPath}`;
+}
+
 export const WA_STATUS = {
   QUEUED: 'QUEUED',
   PROCESSING: 'PROCESSING',
@@ -101,7 +114,7 @@ export async function sendSingleWhatsAppMessage({ member, recipient, message, la
       } catch (_) {}
     }
 
-    const response = await fetch('/api/whatsapp/send', {
+    const response = await fetch(getWhatsAppApiUrl('/api/whatsapp/send'), {
       method: 'POST',
       headers,
       body: JSON.stringify({ member, recipient: norm, message, language }),
@@ -143,7 +156,7 @@ export async function sendSingleWhatsAppMessage({ member, recipient, message, la
  */
 export async function getWhatsAppConfigStatus() {
   try {
-    const res = await fetch('/api/whatsapp/config');
+    const res = await fetch(getWhatsAppApiUrl('/api/whatsapp/config'));
     if (res.ok) {
       const data = await res.json();
       return data;
@@ -158,6 +171,52 @@ export async function getWhatsAppConfigStatus() {
     adminNumber: ADMIN_WHATSAPP_NUMBER,
     message: 'WhatsApp delivery provider is not configured.',
   };
+}
+
+export async function getWhatsAppHealth() {
+  try {
+    const res = await fetch(getWhatsAppApiUrl('/api/health'));
+    if (res.ok) return await res.json();
+  } catch (_) {}
+  return { ok: false };
+}
+
+export async function getWhatsAppStatus() {
+  try {
+    const res = await fetch(getWhatsAppApiUrl('/api/whatsapp/status'));
+    if (res.ok) return await res.json();
+  } catch (_) {}
+  return { ok: false };
+}
+
+export async function getWhatsAppQrStatus() {
+  try {
+    const res = await fetch(getWhatsAppApiUrl('/api/whatsapp/qr'));
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        ok: data.ok ?? true,
+        connected: Boolean(data.connected),
+        status: data.status || (data.connected ? 'CONNECTED' : (data.qrCodeDataUrl ? 'QR_READY' : 'INITIALIZING')),
+        userPhone: data.userPhone || '9705184411',
+        userName: data.userName || 'Raghavendra Chitts',
+        lastConnected: data.lastConnected || null,
+        error: data.error || null,
+        qrCodeDataUrl: data.qrCodeDataUrl || null,
+      };
+    }
+  } catch (err) {
+    return { ok: false, connected: false, status: 'ERROR', error: 'Unable to connect to WhatsApp Gateway', qrCodeDataUrl: null };
+  }
+  return { ok: false, connected: false, status: 'ERROR', error: 'Unable to connect to WhatsApp Gateway', qrCodeDataUrl: null };
+}
+
+export async function disconnectWhatsAppGateway() {
+  try {
+    const res = await fetch(getWhatsAppApiUrl('/api/whatsapp/disconnect'), { method: 'POST' });
+    if (res.ok) return await res.json();
+  } catch (_) {}
+  return { ok: false };
 }
 
 export async function testConnection() {

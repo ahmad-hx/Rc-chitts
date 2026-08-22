@@ -562,3 +562,162 @@ export const groupPaymentSettingsService = {
     }
   },
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MONTHLY RECORD SERVICE (Separate collection: monthlyAdjustments)
+// Preserves historical month-by-month pending payments, paid amounts & balances
+// ─────────────────────────────────────────────────────────────────────────────
+export const monthlyRecordService = {
+  async getMonthlyAdjustments(billingMonth = null) {
+    await ensureAuthReady();
+    try {
+      const qSnap = await getDocs(collection(db, 'monthlyAdjustments'));
+      const adjustmentsMap = {};
+      const adjustmentsList = [];
+
+      qSnap.forEach((docSnap) => {
+        const data = docSnap.data() || {};
+        const monthMatch = !billingMonth || data.billingMonth === billingMonth;
+        if (monthMatch) {
+          const key = `${data.memberId}_${data.groupId}_${data.billingMonth}`;
+          adjustmentsMap[key] = {
+            id: docSnap.id,
+            memberId: data.memberId,
+            memberName: data.memberName,
+            groupId: data.groupId,
+            billingMonth: data.billingMonth,
+            chitAmount: Number(data.chitAmount || 0),
+            paidAmount: Number(data.paidAmount || 0),
+            pendingAmount: Number(data.pendingAmount || 0),
+            balanceAmount: Number(data.balanceAmount || 0),
+            status: data.status || 'PENDING',
+            updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : data.updatedAt || new Date().toISOString(),
+          };
+          adjustmentsList.push(adjustmentsMap[key]);
+        }
+      });
+
+      return { adjustmentsMap, adjustmentsList };
+    } catch (err) {
+      console.error('Firestore getMonthlyAdjustments error:', err.message);
+      return { adjustmentsMap: {}, adjustmentsList: [] };
+    }
+  },
+
+  async saveMonthlyAdjustment({ memberId, memberName, groupId, billingMonth, chitAmount, paidAmount, pendingAmount, balanceAmount, status }) {
+    await ensureAuthReady();
+    const cleanMonthKey = String(billingMonth || 'August 2026').replace(/\s+/g, '_');
+    const docId = `${memberId}_${groupId}_${cleanMonthKey}`;
+    const docRef = doc(db, 'monthlyAdjustments', docId);
+
+    const docData = {
+      memberId,
+      memberName: memberName || 'Member',
+      groupId: String(groupId),
+      billingMonth,
+      chitAmount: Number(chitAmount || 0),
+      paidAmount: Number(paidAmount || 0),
+      pendingAmount: Number(pendingAmount || 0),
+      balanceAmount: Number(balanceAmount || 0),
+      status: status || (Number(pendingAmount) === 0 ? 'PAID' : (Number(paidAmount) > 0 ? 'PARTIAL' : 'PENDING')),
+      updatedAt: serverTimestamp(),
+      updatedBy: auth.currentUser?.email || 'Admin',
+    };
+
+    try {
+      await setDoc(docRef, docData, { merge: true });
+      return { id: docId, ...docData };
+    } catch (err) {
+      console.error('Firestore saveMonthlyAdjustment error:', err.message);
+      throw new Error(`Failed to save monthly adjustment: ${err.message}`);
+    }
+  },
+
+  async bulkSaveMonthlyAdjustments(recordsList) {
+    await ensureAuthReady();
+    if (!Array.isArray(recordsList) || recordsList.length === 0) return [];
+    
+    const results = [];
+    for (const rec of recordsList) {
+      try {
+        const saved = await this.saveMonthlyAdjustment(rec);
+        results.push(saved);
+      } catch (err) {
+        console.warn('Bulk save record warning:', err.message);
+      }
+    }
+    return results;
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUCTION SERVICE (Separate collection: auctions)
+// Preserves historical month-by-month auction winner marks per member & group
+// ─────────────────────────────────────────────────────────────────────────────
+export const auctionService = {
+  async getAuctions(billingMonth = null) {
+    await ensureAuthReady();
+    try {
+      const qSnap = await getDocs(collection(db, 'auctions'));
+      const auctionsMap = {};
+      const auctionsList = [];
+
+      qSnap.forEach((docSnap) => {
+        const data = docSnap.data() || {};
+        const monthMatch = !billingMonth || data.billingMonth === billingMonth;
+        if (monthMatch && data.isAuctioned) {
+          const key = `${data.memberId}_${data.groupId}_${data.billingMonth}`;
+          auctionsMap[key] = {
+            id: docSnap.id,
+            memberId: data.memberId,
+            memberName: data.memberName,
+            groupId: data.groupId,
+            billingMonth: data.billingMonth,
+            isAuctioned: true,
+            bidAmount: Number(data.bidAmount || 0),
+            dividend: Number(data.dividend || 0),
+            updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : data.updatedAt || new Date().toISOString(),
+          };
+          auctionsList.push(auctionsMap[key]);
+        }
+      });
+
+      return { auctionsMap, auctionsList };
+    } catch (err) {
+      console.error('Firestore getAuctions error:', err.message);
+      return { auctionsMap: {}, auctionsList: [] };
+    }
+  },
+
+  async setAuctionStatus({ memberId, memberName, groupId, billingMonth, isAuctioned, bidAmount = 0, dividend = 0 }) {
+    await ensureAuthReady();
+    const cleanMonthKey = String(billingMonth || 'August 2026').replace(/\s+/g, '_');
+    const docId = `${memberId}_${groupId}_${cleanMonthKey}`;
+    const docRef = doc(db, 'auctions', docId);
+
+    try {
+      if (isAuctioned) {
+        const docData = {
+          memberId,
+          memberName: memberName || 'Member',
+          groupId: String(groupId),
+          billingMonth,
+          isAuctioned: true,
+          bidAmount: Number(bidAmount || 0),
+          dividend: Number(dividend || 0),
+          updatedAt: serverTimestamp(),
+          updatedBy: auth.currentUser?.email || 'Admin',
+        };
+        await setDoc(docRef, docData, { merge: true });
+        return { id: docId, ...docData };
+      } else {
+        await setDoc(docRef, { isAuctioned: false, updatedAt: serverTimestamp() }, { merge: true });
+        return { id: docId, isAuctioned: false };
+      }
+    } catch (err) {
+      console.error('Firestore setAuctionStatus error:', err.message);
+      throw new Error(`Failed to update auction status: ${err.message}`);
+    }
+  },
+};
+

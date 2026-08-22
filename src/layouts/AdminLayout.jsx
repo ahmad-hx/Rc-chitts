@@ -22,13 +22,17 @@ import {
   Clock,
   CircleDollarSign,
 } from 'lucide-react';
+import { Calendar as CalendarIcon } from 'lucide-react';
 import Logo from '../components/Logo';
+import { useBillingMonth } from '../context/BillingMonthContext';
 
 export default function AdminLayout({ children, onLogout }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+
+  const { selectedMonth, setSelectedMonth, availableMonths, addNewMonth } = useBillingMonth();
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -38,7 +42,8 @@ export default function AdminLayout({ children, onLogout }) {
     { name: 'Members', path: '/members', icon: Users },
     { name: 'Chits / Groups', path: '/chits', icon: Layers },
     { name: 'Payments', path: '/payments', icon: IndianRupee },
-    { name: 'Pending Payments', path: '/members?filter=due', icon: Clock },
+    { name: 'Pending Payments', path: '/pending-payments', icon: Clock },
+    { name: 'Pending History', path: '/pending-history', icon: HistoryIcon },
     { name: 'WhatsApp', path: '/whatsapp', icon: MessageSquare },
     { name: 'History', path: '/history', icon: HistoryIcon },
     { name: 'Settings', path: '/settings', icon: Settings },
@@ -294,6 +299,33 @@ export default function AdminLayout({ children, onLogout }) {
             </form>
 
             <div className="flex items-center gap-3">
+              {/* EDITABLE ACTIVE BILLING MONTH SELECTOR */}
+              <div className="flex items-center gap-2 rounded-xl border border-[#2F5D50]/30 bg-[#EDF7F0] px-3 py-1.5 shadow-2xs">
+                <CalendarIcon className="h-4 w-4 text-[#2F5D50] shrink-0" />
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] font-black uppercase text-[#2F5D50] tracking-wider hidden xl:inline">Month:</span>
+                  <select
+                    value={selectedMonth}
+                    onChange={(e) => {
+                      if (e.target.value === '__NEW__') {
+                        const m = window.prompt('Enter new billing month name (e.g. November 2026):');
+                        if (m) addNewMonth(m);
+                      } else {
+                        setSelectedMonth(e.target.value);
+                      }
+                    }}
+                    className="bg-transparent text-xs font-black text-[#1C1C1A] focus:outline-none cursor-pointer pr-1"
+                  >
+                    {availableMonths.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                    <option value="__NEW__">+ Add New Month...</option>
+                  </select>
+                </div>
+              </div>
+
               {/* SIDEBAR COLLAPSE CONTROL BUTTON */}
               <button
                 onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}

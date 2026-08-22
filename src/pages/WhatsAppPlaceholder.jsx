@@ -31,6 +31,7 @@ import {
 import {
   sendSingleWhatsAppMessage,
   sendTestWhatsAppMessage,
+  getWhatsAppApiUrl,
 } from '../services/whatsappService';
 import { memberService, chitService } from '../services/dbService';
 
@@ -88,11 +89,14 @@ export default function WhatsAppPlaceholder() {
 
   // QR Code Gateway States
   const [qrGatewayState, setQrGatewayState] = useState({
+    ok: true,
     connected: false,
-    status: 'DISCONNECTED',
+    status: 'INITIALIZING',
     userPhone: '9705184411',
     qrCodeDataUrl: null,
   });
+  const [qrFetchError, setQrFetchError] = useState(null);
+  const [isQrLoading, setIsQrLoading] = useState(false);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
 
   // Template & Language States
@@ -159,6 +163,46 @@ export default function WhatsAppPlaceholder() {
     return Array.from(groupsSet).filter(Boolean).sort(compareGroupIds);
   }, [chits, members]);
 
+  // FEATURE 2: Organize Groups Hierarchically by Chit Amount (1L -> 2L -> 5L -> 10L)
+  const groupedAvailableGroups = useMemo(() => {
+    const groupValueMap = new Map();
+
+    (chits || []).forEach((c) => {
+      const gId = String(c.groupId || c.group || '').trim();
+      const val = Number(c.totalChitValue || c.totalValue || c.chitValue || 100000);
+      if (gId) groupValueMap.set(gId, val);
+    });
+
+    (members || []).forEach((m) => {
+      (m.chits || m.holdings || []).forEach((c) => {
+        const gId = String(c.groupId || c.group || '').trim();
+        const val = Number(c.totalChitValue || c.totalValue || c.chitValue || 100000);
+        if (gId && !groupValueMap.has(gId)) {
+          groupValueMap.set(gId, val);
+        }
+      });
+    });
+
+    const categoryMap = new Map();
+
+    (availableGroups || []).forEach((gId) => {
+      const val = groupValueMap.get(gId) || 100000;
+      const lakhStr = val >= 100000 ? `${(val / 100000).toFixed(0)} Lakh Chit Groups` : `₹${val.toLocaleString('en-IN')} Groups`;
+      if (!categoryMap.has(val)) {
+        categoryMap.set(val, { val, label: lakhStr, groups: [] });
+      }
+      categoryMap.get(val).groups.push(gId);
+    });
+
+    const sortedCategories = Array.from(categoryMap.values()).sort((a, b) => a.val - b.val);
+
+    sortedCategories.forEach((cat) => {
+      cat.groups.sort(compareGroupIds);
+    });
+
+    return sortedCategories;
+  }, [availableGroups, chits, members]);
+
   // Selection States
   const [selectedMemberIds, setSelectedMemberIds] = useState([]);
   const [selectedPreviewMember, setSelectedPreviewMember] = useState(null);
@@ -188,23 +232,40 @@ export default function WhatsAppPlaceholder() {
   // Poll QR Code Gateway Status
   const fetchQrGatewayStatus = async () => {
     try {
-      const res = await fetch('/api/whatsapp/qr');
+      setIsQrLoading(true);
+      const res = await fetch(getWhatsAppApiUrl('/api/whatsapp/qr'));
       if (res.ok) {
         const data = await res.json();
-        setQrGatewayState(data);
+        setQrGatewayState({
+          ok: data.ok ?? true,
+          connected: Boolean(data.connected),
+          status: data.status || (data.connected ? 'CONNECTED' : (data.qrCodeDataUrl ? 'QR_READY' : 'INITIALIZING')),
+          userPhone: data.userPhone || '9705184411',
+          userName: data.userName || 'Raghavendra Chitts',
+          lastConnected: data.lastConnected || null,
+          error: data.error || null,
+          qrCodeDataUrl: data.qrCodeDataUrl || null,
+        });
+        setQrFetchError(null);
         if (data.connected && isQrModalOpen) {
           setIsQrModalOpen(false);
-          showToast(`✓ WhatsApp Linked to +${data.userPhone}! Device ready for direct message sending.`, 'success');
+          showToast(`✓ WhatsApp Linked to +${data.userPhone || 'device'}! Device ready for direct message sending.`, 'success');
         }
+      } else {
+        setQrFetchError('Unable to connect to WhatsApp Gateway');
       }
-    } catch (_) {}
+    } catch (_) {
+      setQrFetchError('Unable to connect to WhatsApp Gateway');
+    } finally {
+      setIsQrLoading(false);
+    }
   };
 
   useEffect(() => {
     fetchQrGatewayStatus();
     const interval = setInterval(fetchQrGatewayStatus, 3000);
     return () => clearInterval(interval);
-  }, [isQrModalOpen]);
+  }, []);
 
   // Load Firestore Data on Mount
   useEffect(() => {
@@ -418,7 +479,7 @@ export default function WhatsAppPlaceholder() {
   // Disconnect Scanned Device Session
   const handleDisconnectDevice = async () => {
     try {
-      const res = await fetch('/api/whatsapp/disconnect', { method: 'POST' });
+      const res = await fetch(getWhatsAppApiUrl('/api/whatsapp/disconnect'), { method: 'POST' });
       if (res.ok) {
         showToast('WhatsApp device unlinked successfully.', 'info');
         fetchQrGatewayStatus();
@@ -682,10 +743,14 @@ export default function WhatsAppPlaceholder() {
               className="rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-1.5 font-bold text-[#1C1C1A] focus:outline-none cursor-pointer"
             >
               <option value="all">All Groups</option>
-              {availableGroups.map((g) => (
-                <option key={g} value={g}>
-                  Group {g}
-                </option>
+              {groupedAvailableGroups.map((cat) => (
+                <optgroup key={cat.val} label={`── ${cat.label} ──`}>
+                  {cat.groups.map((g) => (
+                    <option key={g} value={g}>
+                      Group {g}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
 
@@ -1172,22 +1237,65 @@ export default function WhatsAppPlaceholder() {
                 Open WhatsApp on your phone ➔ <strong>Settings</strong> ➔ <strong>Linked Devices</strong> ➔ <strong>Link a Device</strong>.
               </p>
 
-              {/* QR CODE DISPLAY */}
-              <div className="p-4 bg-white border border-[#E5E5E1] rounded-xl w-60 h-60 mx-auto flex items-center justify-center shadow-xs">
-                {qrGatewayState.qrCodeDataUrl ? (
-                  <img src={qrGatewayState.qrCodeDataUrl} alt="WhatsApp Pairing QR Code" className="w-full h-full object-contain" />
-                ) : (
-                  <div className="space-y-2 text-[#6B6B67]">
+              {/* QR CODE DISPLAY CONTAINER */}
+              <div className="p-4 bg-white border border-[#E5E5E1] rounded-xl w-64 h-64 mx-auto flex items-center justify-center shadow-xs">
+                {qrFetchError ? (
+                  <div className="space-y-3 text-center p-2">
+                    <AlertCircle className="w-8 h-8 text-red-500 mx-auto" />
+                    <p className="font-bold text-xs text-red-600">Unable to connect to WhatsApp Gateway</p>
+                    <p className="text-[10px] text-[#6B6B67]">Please verify server connection or retry.</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mx-auto cursor-pointer border-[#2F5D50] text-[#2F5D50] font-bold text-xs"
+                      onClick={fetchQrGatewayStatus}
+                    >
+                      <RefreshCw className="w-3.5 h-3.5 mr-1" /> Retry Connection
+                    </Button>
+                  </div>
+                ) : qrGatewayState.connected || qrGatewayState.status === 'CONNECTED' ? (
+                  <div className="space-y-2 text-center p-2">
+                    <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto animate-bounce" />
+                    <h4 className="font-black text-emerald-900 text-sm">WhatsApp Connected</h4>
+                    <p className="text-xs text-emerald-700 font-bold">+{qrGatewayState.userPhone}</p>
+                    <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600 text-white">
+                      Device Active & Ready
+                    </span>
+                  </div>
+                ) : (qrGatewayState.status === 'QR_READY' || qrGatewayState.qrCodeDataUrl) && qrGatewayState.qrCodeDataUrl ? (
+                  <img
+                    src={qrGatewayState.qrCodeDataUrl}
+                    alt="WhatsApp Pairing QR Code"
+                    className="w-full h-full object-contain rounded-lg"
+                  />
+                ) : qrGatewayState.status === 'INITIALIZING' || qrGatewayState.status === 'RECONNECTING' || isQrLoading ? (
+                  <div className="space-y-2 text-center text-[#6B6B67] p-2">
                     <RefreshCw className="w-8 h-8 animate-spin mx-auto text-[#2F5D50]" />
-                    <p className="font-bold text-[11px]">Generating WhatsApp Pairing QR Code...</p>
+                    <p className="font-bold text-xs text-[#1C1C1A]">Generating WhatsApp Pairing QR Code...</p>
+                    <p className="text-[10px] text-[#6B6B67]">Connecting to Baileys WhatsApp Service</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 text-center text-[#6B6B67] p-2">
+                    <AlertCircle className="w-8 h-8 mx-auto text-amber-500" />
+                    <p className="font-bold text-xs text-[#1C1C1A]">{qrGatewayState.error || 'Gateway Disconnected'}</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mx-auto cursor-pointer border-[#2F5D50] text-[#2F5D50] font-bold text-xs"
+                      onClick={fetchQrGatewayStatus}
+                    >
+                      <RefreshCw className="w-3.5 h-3.5 mr-1" /> Refresh QR Code
+                    </Button>
                   </div>
                 )}
               </div>
 
-              <div className="flex items-center justify-center gap-2 text-[11px] font-bold text-[#2F5D50]">
-                <Smartphone className="w-4 h-4" />
-                <span>Waiting for phone scan... (Auto-connects)</span>
-              </div>
+              {!qrGatewayState.connected && qrGatewayState.status !== 'CONNECTED' && !qrFetchError && (
+                <div className="flex items-center justify-center gap-2 text-[11px] font-bold text-[#2F5D50]">
+                  <Smartphone className="w-4 h-4" />
+                  <span>Waiting for phone scan... (Auto-connects)</span>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end pt-2">

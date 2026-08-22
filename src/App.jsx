@@ -14,6 +14,8 @@ import Dashboard from './pages/Dashboard';
 import Members from './pages/Members';
 import ChitsPlaceholder from './pages/ChitsPlaceholder';
 import PaymentsPlaceholder from './pages/PaymentsPlaceholder';
+import PendingPayments from './pages/PendingPayments';
+import PendingHistory from './pages/PendingHistory';
 import WhatsAppPlaceholder from './pages/WhatsAppPlaceholder';
 import History from './pages/History';
 import SettingsPlaceholder from './pages/SettingsPlaceholder';
@@ -21,6 +23,7 @@ import SettingsPlaceholder from './pages/SettingsPlaceholder';
 import AdminLayout from './layouts/AdminLayout';
 import Logo from './components/Logo';
 import ErrorBoundary from './components/ErrorBoundary';
+import { BillingMonthProvider } from './context/BillingMonthContext';
 
 function AuthTransition() {
   return (
@@ -108,127 +111,155 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <BrowserRouter>
-        <Routes>
+      <BillingMonthProvider>
+        <BrowserRouter>
+          <Routes>
 
-          <Route
-            path="/login"
-            element={
-              isAuthenticated ? (
-                authTransitioning ? (
-                  <AuthTransition />
+            <Route
+              path="/login"
+              element={
+                isAuthenticated ? (
+                  authTransitioning ? (
+                    <AuthTransition />
+                  ) : (
+                    <Navigate to="/dashboard" replace />
+                  )
                 ) : (
-                  <Navigate to="/dashboard" replace />
+                  <Login onLogin={handleLogin} />
                 )
-              ) : (
-                <Login onLogin={handleLogin} />
-              )
-            }
-          />
+              }
+            />
 
-          <Route
-            path="/dashboard"
-            element={
-              isAuthenticated ? (
-                <AdminLayout onLogout={handleLogout}>
-                  <Dashboard />
-                </AdminLayout>
-              ) : (
-                <Navigate to="/login" replace />
-              )
-            }
-          />
+            <Route
+              path="/dashboard"
+              element={
+                isAuthenticated ? (
+                  <AdminLayout onLogout={handleLogout}>
+                    <Dashboard />
+                  </AdminLayout>
+                ) : (
+                  <Navigate to="/login" replace />
+                )
+              }
+            />
 
-          <Route
-            path="/members"
-            element={
-              isAuthenticated ? (
-                <AdminLayout onLogout={handleLogout}>
-                  <Members />
-                </AdminLayout>
-              ) : (
-                <Navigate to="/login" replace />
-              )
-            }
-          />
+            <Route
+              path="/members"
+              element={
+                isAuthenticated ? (
+                  <AdminLayout onLogout={handleLogout}>
+                    <Members />
+                  </AdminLayout>
+                ) : (
+                  <Navigate to="/login" replace />
+                )
+              }
+            />
 
-          <Route
-            path="/chits"
-            element={
-              isAuthenticated ? (
-                <AdminLayout onLogout={handleLogout}>
-                  <ChitsPlaceholder />
-                </AdminLayout>
-              ) : (
-                <Navigate to="/login" replace />
-              )
-            }
-          />
+            <Route
+              path="/chits"
+              element={
+                isAuthenticated ? (
+                  <AdminLayout onLogout={handleLogout}>
+                    <ChitsPlaceholder />
+                  </AdminLayout>
+                ) : (
+                  <Navigate to="/login" replace />
+                )
+              }
+            />
 
-          <Route
-            path="/payments"
-            element={
-              isAuthenticated ? (
-                <AdminLayout onLogout={handleLogout}>
-                  <PaymentsPlaceholder />
-                </AdminLayout>
-              ) : (
-                <Navigate to="/login" replace />
-              )
-            }
-          />
+            <Route
+              path="/payments"
+              element={
+                isAuthenticated ? (
+                  <AdminLayout onLogout={handleLogout}>
+                    <PaymentsPlaceholder />
+                  </AdminLayout>
+                ) : (
+                  <Navigate to="/login" replace />
+                )
+              }
+            />
 
-          <Route
-            path="/whatsapp"
-            element={
-              isAuthenticated ? (
-                <AdminLayout onLogout={handleLogout}>
-                  <WhatsAppPlaceholder />
-                </AdminLayout>
-              ) : (
-                <Navigate to="/login" replace />
-              )
-            }
-          />
+            <Route
+              path="/pending-payments"
+              element={
+                isAuthenticated ? (
+                  <AdminLayout onLogout={handleLogout}>
+                    <PendingPayments />
+                  </AdminLayout>
+                ) : (
+                  <Navigate to="/login" replace />
+                )
+              }
+            />
 
-          <Route
-            path="/history"
-            element={
-              isAuthenticated ? (
-                <AdminLayout onLogout={handleLogout}>
-                  <History />
-                </AdminLayout>
-              ) : (
-                <Navigate to="/login" replace />
-              )
-            }
-          />
+            <Route
+              path="/pending-history"
+              element={
+                isAuthenticated ? (
+                  <AdminLayout onLogout={handleLogout}>
+                    <PendingHistory />
+                  </AdminLayout>
+                ) : (
+                  <Navigate to="/login" replace />
+                )
+              }
+            />
 
-          <Route
-            path="/settings"
-            element={
-              isAuthenticated ? (
-                <AdminLayout onLogout={handleLogout}>
-                  <SettingsPlaceholder />
-                </AdminLayout>
-              ) : (
-                <Navigate to="/login" replace />
-              )
-            }
-          />
+            <Route
+              path="/whatsapp"
+              element={
+                isAuthenticated ? (
+                  <AdminLayout onLogout={handleLogout}>
+                    <WhatsAppPlaceholder />
+                  </AdminLayout>
+                ) : (
+                  <Navigate to="/login" replace />
+                )
+              }
+            />
 
-          <Route
-            path="*"
-            element={
-              <Navigate
-                to={isAuthenticated ? '/dashboard' : '/login'}
-                replace
-              />
-            }
-          />
+            <Route
+              path="/history"
+              element={
+                isAuthenticated ? (
+                  <AdminLayout onLogout={handleLogout}>
+                    <History />
+                  </AdminLayout>
+                ) : (
+                  <Navigate to="/login" replace />
+                )
+              }
+            />
 
-        </Routes>
-      </BrowserRouter>
+            <Route
+              path="/settings"
+              element={
+                isAuthenticated ? (
+                  <AdminLayout onLogout={handleLogout}>
+                    <SettingsPlaceholder />
+                  </AdminLayout>
+                ) : (
+                  <Navigate to="/login" replace />
+                )
+              }
+            />
+
+            <Route
+              path="*"
+              element={
+                <Navigate
+                  to={isAuthenticated ? '/dashboard' : '/login'}
+                  replace
+                />
+              }
+            />
+
+          </Routes>
+        </BrowserRouter>
+      </BillingMonthProvider>
     </ErrorBoundary>
   );
 }

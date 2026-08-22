@@ -25,20 +25,24 @@ import {
 import StatCard from '../components/StatCard';
 import Button from '../components/Button';
 import Toast from '../components/Toast';
+import Modal from '../components/Modal';
 import RecordPaymentModal from '../components/RecordPaymentModal';
 import CreateChitModal from '../components/CreateChitModal';
 import StartAuctionModal from '../components/StartAuctionModal';
-import { memberService, chitService, paymentService } from '../services/dbService';
+import { memberService, chitService, paymentService, auctionService } from '../services/dbService';
 import { whatsappDbService } from '../services/whatsappDbService';
+import { useBillingMonth } from '../context/BillingMonthContext';
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { selectedMonth } = useBillingMonth();
 
   // Data states
   const [members, setMembers] = useState([]);
   const [chits, setChits] = useState([]);
   const [payments, setPayments] = useState([]);
   const [waLogs, setWaLogs] = useState([]);
+  const [auctionsMap, setAuctionsMap] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -46,6 +50,7 @@ export default function Dashboard() {
   const [isRecordPaymentOpen, setIsRecordPaymentOpen] = useState(false);
   const [isCreateChitOpen, setIsCreateChitOpen] = useState(false);
   const [isStartAuctionOpen, setIsStartAuctionOpen] = useState(false);
+  const [auctionConfirmTarget, setAuctionConfirmTarget] = useState(null);
   const [toast, setToast] = useState(null);
 
   const showToast = (message, type = 'success') => {
@@ -58,17 +63,19 @@ export default function Dashboard() {
       setLoading(true);
       setError(null);
       try {
-        const [fetchedMembers, fetchedChits, fetchedPayments, fetchedWaLogs] = await Promise.all([
+        const [fetchedMembers, fetchedChits, fetchedPayments, fetchedWaLogs, fetchedAuctions] = await Promise.all([
           memberService.getMembers(),
           chitService.getChits(),
           paymentService.getPayments().catch(() => []),
           whatsappDbService.getWhatsAppHistory().catch(() => []),
+          auctionService.getAuctions(selectedMonth).catch(() => ({ auctionsMap: {} })),
         ]);
         if (mounted) {
           setMembers(Array.isArray(fetchedMembers) ? fetchedMembers : []);
           setChits(Array.isArray(fetchedChits) ? fetchedChits : []);
           setPayments(Array.isArray(fetchedPayments) ? fetchedPayments : []);
           setWaLogs(Array.isArray(fetchedWaLogs) ? fetchedWaLogs : []);
+          setAuctionsMap(fetchedAuctions.auctionsMap || {});
         }
       } catch (e) {
         if (mounted) {
@@ -77,6 +84,7 @@ export default function Dashboard() {
           setChits([]);
           setPayments([]);
           setWaLogs([]);
+          setAuctionsMap({});
         }
       } finally {
         if (mounted) setLoading(false);
@@ -86,7 +94,7 @@ export default function Dashboard() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [selectedMonth]);
 
   // Calculate Metrics from Firestore Data
   const activeMembers = members.filter((m) => m.status !== 'archived');
@@ -238,8 +246,46 @@ export default function Dashboard() {
     showToast(`Chit Group ${group.groupId} (${group.name}) created successfully!`);
   };
 
-  const handleAuctionCompleted = (result) => {
-    showToast(`Auction completed for Group ${result.groupId}! Winner: ${result.winner} (Dividend: ₹${result.dividend.toLocaleString('en-IN')}/mem)`);
+  const handleAuctionCompleted = async (result) => {
+    try {
+      const winnerMem = members.find((m) => m.name.toLowerCase() === result.winner.toLowerCase()) || { id: `winner_${Date.now()}` };
+      await auctionService.setAuctionStatus({
+        memberId: winnerMem.id,
+        memberName: result.winner,
+        groupId: result.groupId,
+        billingMonth: selectedMonth,
+        isAuctioned: true,
+        bidAmount: result.bidAmount,
+        dividend: result.dividend,
+      });
+
+      const updated = await auctionService.getAuctions(selectedMonth);
+      setAuctionsMap(updated.auctionsMap || {});
+    } catch (_) {}
+
+    showToast(`✓ Auction completed for Group ${result.groupId}! Winner: ${result.winner} (Dividend: ₹${result.dividend.toLocaleString('en-IN')}/mem)`);
+  };
+
+  const handleConfirmToggleAuction = async () => {
+    if (!auctionConfirmTarget) return;
+    const { member, isAuctioned } = auctionConfirmTarget;
+    setAuctionConfirmTarget(null);
+
+    try {
+      await auctionService.setAuctionStatus({
+        memberId: member.id,
+        memberName: member.member,
+        groupId: member.groupId || 'I',
+        billingMonth: selectedMonth,
+        isAuctioned: !isAuctioned,
+      });
+
+      const updated = await auctionService.getAuctions(selectedMonth);
+      setAuctionsMap(updated.auctionsMap || {});
+      showToast(`✓ Auction status updated for ${member.member} (${selectedMonth}).`, 'success');
+    } catch (err) {
+      showToast(`Failed to update auction status: ${err.message}`, 'error');
+    }
   };
 
   return (
@@ -413,30 +459,56 @@ export default function Dashboard() {
             </div>
 
             <div className="mt-4 space-y-3">
-              {upcomingPendingList.map((d) => (
-                <div
-                  key={d.id}
-                  className="flex items-center justify-between p-3.5 rounded-xl bg-[#F7F7F5] border border-[#E5E5E1] transition-colors"
-                >
-                  <div>
-                    <p className="text-xs font-bold text-[#1C1C1A]">{d.member}</p>
-                    <p className="text-[10px] font-semibold text-[#6B6B67]">{d.group}</p>
-                  </div>
+              {upcomingPendingList.map((d) => {
+                const gId = String(d.group || 'I').replace(/^Group\s+/, '').split(' ')[0];
+                const isAuctioned = Boolean(auctionsMap[`${d.id}_${gId}_${selectedMonth}`]);
 
-                  <div className="text-right">
-                    <p className="text-xs font-black text-[#B86B14]">₹{(d.pending || 5000).toLocaleString('en-IN')}</p>
-                    <span
-                      className={`inline-block text-[9px] font-bold px-2 py-0.5 rounded-full mt-0.5 ${
-                        d.dueColor === 'red'
-                          ? 'bg-[#FCEEEE] text-[#C53030] border border-[#F8B4B4]'
-                          : 'bg-[#FFF7E6] text-[#B86B14] border border-[#FCD34D]'
-                      }`}
-                    >
-                      {d.dueStatus}
-                    </span>
+                return (
+                  <div
+                    key={d.id}
+                    className="flex items-center justify-between p-3.5 rounded-xl bg-[#F7F7F5] border border-[#E5E5E1] transition-colors"
+                  >
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-xs font-bold text-[#1C1C1A]">{d.member}</p>
+                        {isAuctioned && (
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
+                            🔨 Auctioned — {selectedMonth}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] font-semibold text-[#6B6B67]">{d.group}</p>
+                    </div>
+
+                    <div className="text-right flex items-center gap-2">
+                      <div>
+                        <p className="text-xs font-black text-[#B86B14]">₹{(d.pending || 5000).toLocaleString('en-IN')}</p>
+                        <span
+                          className={`inline-block text-[9px] font-bold px-2 py-0.5 rounded-full mt-0.5 ${
+                            d.dueColor === 'red'
+                              ? 'bg-[#FCEEEE] text-[#C53030] border border-[#F8B4B4]'
+                              : 'bg-[#FFF7E6] text-[#B86B14] border border-[#FCD34D]'
+                          }`}
+                        >
+                          {d.dueStatus}
+                        </span>
+                      </div>
+
+                      <button
+                        onClick={() => setAuctionConfirmTarget({ member: d, isAuctioned })}
+                        className={`text-[10px] font-extrabold px-2 py-1 rounded-lg border transition-colors cursor-pointer ${
+                          isAuctioned
+                            ? 'bg-[#EDF7F0] text-[#2F5D50] border-[#2F5D50]/30 hover:bg-[#2F5D50] hover:text-white'
+                            : 'bg-white text-[#6B6B67] border-[#E5E5E1] hover:bg-[#F7F7F5] hover:text-[#1C1C1A]'
+                        }`}
+                        title="Toggle Auction Winner Status"
+                      >
+                        {isAuctioned ? '✓ Auctioned' : 'Mark Auction'}
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -612,6 +684,34 @@ export default function Dashboard() {
         onClose={() => setIsStartAuctionOpen(false)}
         onAuctionComplete={handleAuctionCompleted}
       />
+
+      {/* CONFIRMATION DIALOG FOR AUCTION STATUS */}
+      <Modal
+        isOpen={!!auctionConfirmTarget}
+        onClose={() => setAuctionConfirmTarget(null)}
+        title={auctionConfirmTarget?.isAuctioned ? 'Remove Auction Status' : 'Mark as Auctioned'}
+        subtitle="Confirm updating chit auction status for member."
+        maxWidth="max-w-md"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-[#1C1C1A] leading-relaxed">
+            {auctionConfirmTarget?.isAuctioned ? (
+              <>Remove auction status for <strong>{auctionConfirmTarget?.member?.member}</strong> for <strong>{selectedMonth}</strong>?</>
+            ) : (
+              <>Mark <strong>{auctionConfirmTarget?.member?.member}</strong> as auctioned for <strong>{selectedMonth}</strong>?</>
+            )}
+          </p>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E5E1]">
+            <Button variant="secondary" size="sm" onClick={() => setAuctionConfirmTarget(null)}>
+              Cancel
+            </Button>
+            <Button variant="primary" size="sm" className="bg-[#2F5D50] text-white" onClick={handleConfirmToggleAuction}>
+              Confirm
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
