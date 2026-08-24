@@ -11,6 +11,7 @@ import { auth } from './firebase';
 
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import Calculations from './pages/Calculations';
 import Members from './pages/Members';
 import ChitsPlaceholder from './pages/ChitsPlaceholder';
 import PaymentsPlaceholder from './pages/PaymentsPlaceholder';
@@ -136,6 +137,19 @@ function App() {
                 isAuthenticated ? (
                   <AdminLayout onLogout={handleLogout}>
                     <Dashboard />
+                  </AdminLayout>
+                ) : (
+                  <Navigate to="/login" replace />
+                )
+              }
+            />
+
+            <Route
+              path="/calculations"
+              element={
+                isAuthenticated ? (
+                  <AdminLayout onLogout={handleLogout}>
+                    <Calculations />
                   </AdminLayout>
                 ) : (
                   <Navigate to="/login" replace />

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
+  Calculator,
   Users,
   Layers,
   IndianRupee,
@@ -39,6 +40,7 @@ export default function AdminLayout({ children, onLogout }) {
 
   const navigationItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
+    { name: 'Calculations', path: '/calculations', icon: Calculator },
     { name: 'Members', path: '/members', icon: Users },
     { name: 'Chits / Groups', path: '/chits', icon: Layers },
     { name: 'Payments', path: '/payments', icon: IndianRupee },

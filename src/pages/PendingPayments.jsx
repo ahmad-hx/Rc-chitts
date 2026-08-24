@@ -25,7 +25,13 @@ import Badge from '../components/Badge';
 import Toast from '../components/Toast';
 import Modal from '../components/Modal';
 import { useBillingMonth } from '../context/BillingMonthContext';
-import { memberService, chitService, paymentService, monthlyRecordService } from '../services/dbService';
+import {
+  memberService,
+  chitService,
+  paymentService,
+  monthlyRecordService,
+  groupPaymentSettingsService,
+} from '../services/dbService';
 import {
   sendSingleWhatsAppMessage,
   normalizeWhatsAppNumber,
@@ -48,7 +54,7 @@ export default function PendingPayments() {
   const [members, setMembers] = useState([]);
   const [chits, setChits] = useState([]);
   const [payments, setPayments] = useState([]);
-  const [adjustmentsMap, setAdjustmentsMap] = useState({});
+  const [groupPaymentSettings, setGroupPaymentSettings] = useState({});
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
 
@@ -76,17 +82,17 @@ export default function PendingPayments() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [mList, cList, pList, adjData] = await Promise.all([
+      const [mList, cList, pList, settingsRes] = await Promise.all([
         memberService.getMembers().catch(() => []),
         chitService.getChits().catch(() => []),
         paymentService.getPayments().catch(() => []),
-        monthlyRecordService.getMonthlyAdjustments(selectedMonth).catch(() => ({ adjustmentsMap: {} })),
+        groupPaymentSettingsService.getGroupPaymentSettings().catch(() => ({ settingsMap: {} })),
       ]);
 
       setMembers(Array.isArray(mList) ? mList : []);
       setChits(Array.isArray(cList) ? cList : []);
       setPayments(Array.isArray(pList) ? pList : []);
-      setAdjustmentsMap(adjData.adjustmentsMap || {});
+      setGroupPaymentSettings(settingsRes.settingsMap || {});
     } catch (err) {
       showToast('Error loading payment data from Firebase.', 'error');
     } finally {
@@ -117,6 +123,7 @@ export default function PendingPayments() {
   }, [chits, members]);
 
   // Calculate Member Payment Status Rows for the Selected Month & Group Filter
+  // Strictly derived from actual payment history / transactions for selectedMonth per individual chit
   const memberPaymentRows = useMemo(() => {
     const rows = [];
 
@@ -132,8 +139,10 @@ export default function PendingPayments() {
           amountToPay: m.amountToPay || 5000,
           pending: m.pending || 0,
           balance: m.balance || 0,
-        }
+        },
       ];
+
+      const isMultiChit = chitSubscriptions.length > 1;
 
       chitSubscriptions.forEach((c) => {
         const gId = String(c.groupId || m.groupId || m.group || 'I').trim();
@@ -152,70 +161,91 @@ export default function PendingPayments() {
         if (!matchesSearch) return;
 
         const rowKey = `${m.id}_${gId}`;
-        const existingAdj = adjustmentsMap[`${m.id}_${gId}_${selectedMonth}`];
+        const chitVal = Number(c.totalChitValue || 100000);
+        const settingKey = `${chitVal}_${gId}`;
 
-        const reqChitAmount = Number(c.amountToPay || Math.floor((c.totalChitValue || 100000) / 20));
-        
-        let paidAmount = 0;
-        let pendingAmount = reqChitAmount;
+        const reqChitAmount = Number(
+          groupPaymentSettings[settingKey] ||
+          c.amountToPay ||
+          Math.floor(chitVal / 20)
+        );
+
+        // ─────────────────────────────────────────────────────────────────────────
+        // Calculate paid amount from actual payment transactions for selectedMonth
+        // ─────────────────────────────────────────────────────────────────────────
+        let paidFromTxns = 0;
+        const mPhoneClean = (m.phone || m.whatsapp || '').replace(/\D/g, '');
+        const mNameClean = (m.name || '').trim().toLowerCase();
+        const cleanGroupStr = gId.replace(/^GROUP\s+/i, '').toUpperCase();
+
+        (payments || []).forEach((p) => {
+          const pStatus = String(p.status || 'cleared').toLowerCase();
+          if (pStatus === 'failed' || pStatus === 'cancelled') return;
+
+          // 1. Billing Month Match
+          let pMonth = p.billingMonth;
+          if (!pMonth && p.date) {
+            try {
+              const d = new Date(p.date);
+              if (!isNaN(d.getTime())) {
+                pMonth = d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+              }
+            } catch (_) {}
+          }
+          if (!pMonth && p.createdAt) {
+            try {
+              const d = new Date(p.createdAt);
+              if (!isNaN(d.getTime())) {
+                pMonth = d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+              }
+            } catch (_) {}
+          }
+
+          if (pMonth && String(pMonth).trim().toLowerCase() !== String(selectedMonth).trim().toLowerCase()) {
+            return; // Different billing month
+          }
+
+          // 2. Member Match
+          const pMemId = p.memberId;
+          const pMemName = (p.member || p.memberName || '').trim().toLowerCase();
+          const pPhoneClean = (p.phone || p.phoneNumber || '').replace(/\D/g, '');
+
+          const isMemMatch =
+            (pMemId && pMemId === m.id) ||
+            (mPhoneClean && pPhoneClean && (mPhoneClean.endsWith(pPhoneClean) || pPhoneClean.endsWith(mPhoneClean))) ||
+            (mNameClean && pMemName && (mNameClean === pMemName || mNameClean.includes(pMemName) || pMemName.includes(mNameClean)));
+
+          if (!isMemMatch) return;
+
+          // 3. Chit Group Match for Multi-Chit vs Single-Chit
+          const pGrp = String(p.group || p.groupId || p.chitGroup || '').trim().toUpperCase().replace(/^GROUP\s+/, '');
+
+          let isGrpMatch = false;
+          if (!isMultiChit) {
+            // Single chit member: payment applies to their only chit
+            isGrpMatch = true;
+          } else {
+            // Multi-chit member: check specific group match or chit ID
+            if (p.chitId && (p.chitId === c.id || p.chitId === c.groupId)) {
+              isGrpMatch = true;
+            } else if (pGrp && pGrp !== 'ALL') {
+              isGrpMatch = (cleanGroupStr === pGrp || cleanGroupStr.includes(pGrp) || pGrp.includes(cleanGroupStr));
+            } else {
+              // If group is empty or ALL, match if default group matches
+              isGrpMatch = (cleanGroupStr === String(m.groupId || m.group || 'I').replace(/^GROUP\s+/i, '').toUpperCase());
+            }
+          }
+
+          if (isGrpMatch) {
+            paidFromTxns += Number(p.amount || 0);
+          }
+        });
+
+        let paidAmount = paidFromTxns;
+        let pendingAmount = Math.max(reqChitAmount - paidAmount, 0);
         let balanceAmount = Number(c.balance || c.balanceAmount || 0);
 
-        if (existingAdj) {
-          paidAmount = Number(existingAdj.paidAmount || 0);
-          pendingAmount = Number(existingAdj.pendingAmount);
-          balanceAmount = Number(existingAdj.balanceAmount || 0);
-        } else {
-          // Sum actual paid transactions for this selectedMonth, member & chit group
-          let paidFromTxns = 0;
-          const mPhoneClean = (m.phone || m.whatsapp || '').replace(/\D/g, '');
-          const mNameClean = (m.name || '').trim().toLowerCase();
-          const cleanGroupStr = gId.replace(/^GROUP\s+/i, '').toUpperCase();
-
-          (payments || []).forEach((p) => {
-            const pStatus = String(p.status || 'cleared').toLowerCase();
-            if (pStatus === 'failed' || pStatus === 'cancelled') return;
-
-            // Check billing month match
-            let pMonth = p.billingMonth;
-            if (!pMonth && p.date) {
-              try {
-                const d = new Date(p.date);
-                if (!isNaN(d.getTime())) {
-                  pMonth = d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
-                }
-              } catch (_) {}
-            }
-
-            if (pMonth && String(pMonth).trim().toLowerCase() !== String(selectedMonth).trim().toLowerCase()) {
-              return; // Different billing month
-            }
-
-            // Check member match
-            const pMemId = p.memberId;
-            const pMemName = (p.member || '').trim().toLowerCase();
-            const pPhoneClean = (p.phone || '').replace(/\D/g, '');
-
-            const isMemMatch =
-              (pMemId && pMemId === m.id) ||
-              (mPhoneClean && pPhoneClean && (mPhoneClean.endsWith(pPhoneClean) || pPhoneClean.endsWith(mPhoneClean))) ||
-              (mNameClean && pMemName && (mNameClean === pMemName || mNameClean.includes(pMemName) || pMemName.includes(mNameClean)));
-
-            if (!isMemMatch) return;
-
-            // Check group match
-            const pGrp = String(p.group || p.groupId || '').trim().toUpperCase().replace(/^GROUP\s+/, '');
-            const isGrpMatch = !pGrp || pGrp === 'ALL' || cleanGroupStr === pGrp || cleanGroupStr.includes(pGrp) || pGrp.includes(cleanGroupStr);
-
-            if (isGrpMatch) {
-              paidFromTxns += Number(p.amount || 0);
-            }
-          });
-
-          paidAmount = paidFromTxns;
-          pendingAmount = Math.max(reqChitAmount - paidAmount, 0);
-        }
-
-        // Apply live edited overrides if available
+        // Apply live edited overrides if present
         if (editedAmounts[rowKey]) {
           if (editedAmounts[rowKey].pendingAmount !== undefined) {
             pendingAmount = Number(editedAmounts[rowKey].pendingAmount);
@@ -226,19 +256,18 @@ export default function PendingPayments() {
           }
         }
 
-        // Determine Status based on required prompt rules:
-        // PAID: Paid >= Required Chit Amount (Pending = 0) -> NOT shown in Pending Payments!
-        // FULL PENDING: Paid = 0 (Pending = Required Chit Amount) -> Section A
-        // PARTIAL: Paid > 0 && Paid < Required Chit Amount (Pending = Required - Paid) -> Section B
-        let status = 'PENDING';
+        // ─────────────────────────────────────────────────────────────────────────
+        // Section Rules:
+        // - Fully Paid (paidAmount >= reqChitAmount): Excluded from Pending Payments
+        // - Full Pending (paidAmount = 0): Section 1
+        // - Partial Payment (0 < paidAmount < reqChitAmount): Section 2
+        // ─────────────────────────────────────────────────────────────────────────
         if (pendingAmount <= 0 || paidAmount >= reqChitAmount) {
-          status = 'PAID';
-        } else if (paidAmount > 0 && paidAmount < reqChitAmount) {
-          status = 'PARTIAL';
-        } else {
-          status = 'PENDING';
+          // Fully paid for this month -> DO NOT show in Pending Payments
+          return;
         }
 
+        const status = paidAmount > 0 ? 'PARTIAL' : 'PENDING';
         const totalDue = pendingAmount;
 
         rows.push({
@@ -249,7 +278,7 @@ export default function PendingPayments() {
           whatsapp: m.whatsapp || m.phone || '',
           groupId: gId,
           groupName: `Group ${gId}`,
-          chitValue: c.totalChitValue || 100000,
+          chitValue: chitVal,
           reqChitAmount,
           paidAmount,
           pendingAmount,
@@ -263,13 +292,14 @@ export default function PendingPayments() {
     });
 
     return rows;
-  }, [members, chits, payments, adjustmentsMap, editedAmounts, selectedGroupId, selectedMonth, searchQuery]);
+  }, [members, chits, payments, groupPaymentSettings, editedAmounts, selectedGroupId, selectedMonth, searchQuery]);
 
-  // Separate Rows into Section A (Full Pending) and Section B (Partial Payments)
+  // Section 1: Full Pending Members (Paid = ₹0)
   const fullPendingRows = useMemo(() => {
     return memberPaymentRows.filter((r) => r.status === 'PENDING');
   }, [memberPaymentRows]);
 
+  // Section 2: Partial Payment Members (0 < Paid < Required)
   const partialPaymentRows = useMemo(() => {
     return memberPaymentRows.filter((r) => r.status === 'PARTIAL');
   }, [memberPaymentRows]);
@@ -318,7 +348,7 @@ export default function PendingPayments() {
     }
   };
 
-  // Feature 9: Apply to Selected (Bulk Update selected rows)
+  // Apply to Selected (Bulk Update selected rows to monthlyAdjustments)
   const handleApplyToSelected = async () => {
     const selectedRows = [...fullPendingRows, ...partialPaymentRows].filter((r) =>
       selectedRowKeys.includes(r.rowKey)
@@ -343,14 +373,14 @@ export default function PendingPayments() {
       }));
 
       await monthlyRecordService.bulkSaveMonthlyAdjustments(recordsToSave);
-      showToast(`✓ Successfully updated ${selectedRows.length} selected member records!`, 'success');
+      showToast(`✓ Successfully saved adjustments for ${selectedRows.length} selected member records!`, 'success');
       loadData();
     } catch (err) {
       showToast(`Update failed: ${err.message}`, 'error');
     }
   };
 
-  // Feature 10: Apply All (Applies changes to all loaded members after confirmation)
+  // Apply All (Applies changes to all loaded members after confirmation)
   const handleConfirmApplyAll = async () => {
     setIsApplyAllModalOpen(false);
     const allRows = [...fullPendingRows, ...partialPaymentRows];
@@ -377,7 +407,7 @@ export default function PendingPayments() {
     }
   };
 
-  // Feature 11: Reset Form
+  // Reset Form
   const handleResetForm = () => {
     setEditedAmounts({});
     setSelectedRowKeys([]);
@@ -385,7 +415,7 @@ export default function PendingPayments() {
     showToast('Temporary form edits and selections reset.', 'info');
   };
 
-  // Feature 12: Send WhatsApp Reminders (Single / Selected / All)
+  // Send WhatsApp Reminders (Single / Selected / All)
   const handleSendWhatsAppReminder = async (row) => {
     const rawPhone = row.whatsapp || row.phone;
     const norm = normalizeWhatsAppNumber(rawPhone);
@@ -457,7 +487,7 @@ export default function PendingPayments() {
     showToast(`✓ Sent reminders to ${selectedRows.length} members!`, 'success');
   };
 
-  // Feature 14: Export to Excel
+  // Export to Excel
   const handleExportToExcel = () => {
     const allPendingRecords = [...fullPendingRows, ...partialPaymentRows];
     if (allPendingRecords.length === 0) {
@@ -470,10 +500,9 @@ export default function PendingPayments() {
       'Phone Number': r.phone,
       'Chit Group': `Group ${r.groupId}`,
       'Billing Month': selectedMonth,
-      'Chit Amount (INR)': r.reqChitAmount,
+      'Required Chit Amount (INR)': r.reqChitAmount,
       'Paid Amount (INR)': r.paidAmount,
-      'Pending Amount (INR)': r.pendingAmount,
-      'Balance Amount (INR)': r.balanceAmount,
+      'Remaining Balance (INR)': r.pendingAmount,
       'Total Due (INR)': r.totalDue,
       'Payment Status': r.status === 'PARTIAL' ? 'Partial Payment' : 'Full Pending',
     }));
@@ -504,7 +533,7 @@ export default function PendingPayments() {
           </div>
           <h1 className="text-2xl md:text-3xl font-black text-[#1C1C1A] tracking-tight">Pending Payments & Collection</h1>
           <p className="text-xs text-[#6B6B67] mt-1">
-            Automatically organizes members into Full Pending and Partial Payments for exact monthly balance auditing.
+            Independently calculates Full Pending (Paid ₹0) and Partial Payments per chit subscription for {selectedMonth}.
           </p>
         </div>
 
@@ -521,33 +550,33 @@ export default function PendingPayments() {
         </div>
       </div>
 
-      {/* FEATURE 13: DASHBOARD SUMMARY CARDS */}
+      {/* DASHBOARD SUMMARY CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="p-4 border border-[#E5E5E1] bg-white rounded-2xl shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-extrabold text-[#6B6B67] uppercase tracking-wider">Total Pending Members</span>
+            <span className="text-[10px] font-extrabold text-[#6B6B67] uppercase tracking-wider">Full Pending Subscriptions</span>
             <Clock className="w-4 h-4 text-amber-600" />
           </div>
           <p className="text-2xl font-black text-[#1C1C1A] mt-2">{summaryMetrics.totalPendingMembers}</p>
-          <p className="text-[11px] font-semibold text-amber-700 mt-1">Zero payment for {selectedMonth}</p>
+          <p className="text-[11px] font-semibold text-amber-700 mt-1">Zero payment (₹0) for {selectedMonth}</p>
         </Card>
 
         <Card className="p-4 border border-[#E5E5E1] bg-white rounded-2xl shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-extrabold text-[#6B6B67] uppercase tracking-wider">Partial Payment Members</span>
+            <span className="text-[10px] font-extrabold text-[#6B6B67] uppercase tracking-wider">Partial Payment Subscriptions</span>
             <AlertCircle className="w-4 h-4 text-amber-500" />
           </div>
           <p className="text-2xl font-black text-[#1C1C1A] mt-2">{summaryMetrics.partialPaymentMembers}</p>
-          <p className="text-[11px] font-semibold text-amber-600 mt-1">Partially paid monthly chit</p>
+          <p className="text-[11px] font-semibold text-amber-600 mt-1">Paid part of monthly amount</p>
         </Card>
 
         <Card className="p-4 border border-[#E5E5E1] bg-white rounded-2xl shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-extrabold text-[#6B6B67] uppercase tracking-wider">Total Pending Amount</span>
+            <span className="text-[10px] font-extrabold text-[#6B6B67] uppercase tracking-wider">Total Full Pending Dues</span>
             <IndianRupee className="w-4 h-4 text-amber-600" />
           </div>
           <p className="text-2xl font-black text-amber-700 mt-2">₹{summaryMetrics.totalPendingAmount.toLocaleString('en-IN')}</p>
-          <p className="text-[11px] font-semibold text-[#6B6B67] mt-1">Outstanding full pending sum</p>
+          <p className="text-[11px] font-semibold text-[#6B6B67] mt-1">Outstanding sum from full pending</p>
         </Card>
 
         <Card className="p-4 border border-[#E5E5E1] bg-white rounded-2xl shadow-xs">
@@ -556,11 +585,11 @@ export default function PendingPayments() {
             <IndianRupee className="w-4 h-4 text-amber-500" />
           </div>
           <p className="text-2xl font-black text-amber-600 mt-2">₹{summaryMetrics.totalPartialRemaining.toLocaleString('en-IN')}</p>
-          <p className="text-[11px] font-semibold text-[#6B6B67] mt-1">Remaining from partial payments</p>
+          <p className="text-[11px] font-semibold text-[#6B6B67] mt-1">Remaining balance from partials</p>
         </Card>
       </div>
 
-      {/* FEATURE 4: CONTROL AREA AT TOP */}
+      {/* CONTROL AREA AT TOP */}
       <Card className="p-5 border border-[#E5E5E1] bg-white rounded-2xl shadow-xs space-y-4 font-sans">
         <div className="flex items-center justify-between border-b border-[#E5E5E1] pb-3">
           <div className="flex items-center gap-2">
@@ -620,7 +649,7 @@ export default function PendingPayments() {
 
           {/* 4. GROUP PENDING AMOUNT */}
           <div>
-            <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block mb-1">Group Total Pending Amount</label>
+            <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block mb-1">Total Outstanding Pending</label>
             <div className="w-full px-3 py-2 text-xs font-black bg-[#FFF7E6] border border-[#FCD34D] rounded-xl text-amber-800">
               ₹{(summaryMetrics.totalPendingAmount + summaryMetrics.totalPartialRemaining).toLocaleString('en-IN')}
             </div>
@@ -671,15 +700,15 @@ export default function PendingPayments() {
         <div className="p-12 text-center text-slate-500 font-bold text-sm">Loading payment records...</div>
       ) : (
         <div className="space-y-8">
-          {/* ─── FEATURE 1: SECTION A — ALL PENDING PAYMENTS (FULL PENDING) ────────────────── */}
+          {/* ─── SECTION 1: FULL PENDING MEMBERS (Paid Amount = ₹0) ─────────────────────────── */}
           <Card className="border border-[#E5E5E1] bg-white rounded-2xl shadow-xs overflow-hidden">
             <div className="p-4 bg-[#FFF7E6] border-b border-[#FCD34D] flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider bg-amber-600 text-white rounded-lg">
                   FULL PENDING
                 </span>
-                <h2 className="text-sm font-black text-[#1C1C1A]">SECTION A — ALL PENDING PAYMENTS</h2>
-                <span className="text-xs text-[#6B6B67]">({fullPendingRows.length} Members • Zero Payment for {selectedMonth})</span>
+                <h2 className="text-sm font-black text-[#1C1C1A]">SECTION 1 — FULL PENDING MEMBERS</h2>
+                <span className="text-xs text-[#6B6B67]">({fullPendingRows.length} Subscriptions • Paid Amount = ₹0 for {selectedMonth})</span>
               </div>
             </div>
 
@@ -694,12 +723,12 @@ export default function PendingPayments() {
                     <tr>
                       <th className="p-3 w-10 text-center">Select</th>
                       <th className="p-3">Member Name</th>
-                      <th className="p-3">Group</th>
+                      <th className="p-3">Chit / Group</th>
                       <th className="p-3">Phone Number</th>
-                      <th className="p-3 text-right">Chit Amount</th>
+                      <th className="p-3 text-right">Required Monthly Amount</th>
                       <th className="p-3 text-center">Billing Month</th>
-                      <th className="p-3 text-right">Pending Amount ₹</th>
-                      <th className="p-3 text-right">Balance ₹</th>
+                      <th className="p-3 text-right">Paid Amount ₹</th>
+                      <th className="p-3 text-right">Pending Balance ₹</th>
                       <th className="p-3 text-right">Total Due ₹</th>
                       <th className="p-3 text-center">Status</th>
                       <th className="p-3 text-right">Action</th>
@@ -723,8 +752,9 @@ export default function PendingPayments() {
                           <td className="p-3 font-mono text-[#6B6B67]">{row.phone}</td>
                           <td className="p-3 text-right font-bold text-[#1C1C1A]">₹{row.reqChitAmount.toLocaleString('en-IN')}</td>
                           <td className="p-3 text-center text-[#6B6B67]">{selectedMonth}</td>
+                          <td className="p-3 text-right font-bold text-[#6B6B67]">₹0</td>
                           
-                          {/* FEATURE 7: EDIT PENDING AMOUNT */}
+                          {/* EDITABLE PENDING AMOUNT */}
                           <td className="p-3 text-right">
                             <input
                               type="number"
@@ -734,19 +764,9 @@ export default function PendingPayments() {
                             />
                           </td>
 
-                          {/* FEATURE 8: EDIT BALANCE AMOUNT */}
-                          <td className="p-3 text-right">
-                            <input
-                              type="number"
-                              value={row.balanceAmount}
-                              onChange={(e) => handleAmountChange(row.rowKey, 'balanceAmount', e.target.value)}
-                              className="w-24 px-2 py-1 text-right text-xs font-bold bg-[#F7F7F5] border border-[#E5E5E1] rounded-lg text-[#1C1C1A] focus:outline-none"
-                            />
-                          </td>
-
                           <td className="p-3 text-right font-black text-amber-700">₹{row.totalDue.toLocaleString('en-IN')}</td>
                           <td className="p-3 text-center">
-                            <Badge variant="warning">FULL PENDING</Badge>
+                            <Badge variant="warning">PENDING</Badge>
                           </td>
                           <td className="p-3 text-right">
                             <button
@@ -766,15 +786,15 @@ export default function PendingPayments() {
             )}
           </Card>
 
-          {/* ─── FEATURE 2: SECTION B — PARTIAL PAYMENTS ──────────────────────────────────── */}
+          {/* ─── SECTION 2: PARTIAL PAYMENTS (Paid Amount > 0 and < Required) ───────────────── */}
           <Card className="border border-[#E5E5E1] bg-white rounded-2xl shadow-xs overflow-hidden">
             <div className="p-4 bg-[#F7F7F5] border-b border-[#E5E5E1] flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider bg-amber-500 text-white rounded-lg">
                   PARTIAL PAYMENTS
                 </span>
-                <h2 className="text-sm font-black text-[#1C1C1A]">SECTION B — PARTIAL PAYMENTS</h2>
-                <span className="text-xs text-[#6B6B67]">({partialPaymentRows.length} Members • Paid part of required monthly chit)</span>
+                <h2 className="text-sm font-black text-[#1C1C1A]">SECTION 2 — PARTIAL PAYMENTS</h2>
+                <span className="text-xs text-[#6B6B67]">({partialPaymentRows.length} Subscriptions • Paid part of monthly amount)</span>
               </div>
             </div>
 
@@ -789,13 +809,12 @@ export default function PendingPayments() {
                     <tr>
                       <th className="p-3 w-10 text-center">Select</th>
                       <th className="p-3">Member Name</th>
-                      <th className="p-3">Group</th>
+                      <th className="p-3">Chit / Group</th>
                       <th className="p-3">Phone Number</th>
-                      <th className="p-3 text-right">Chit Amount</th>
+                      <th className="p-3 text-right">Required Monthly Amount</th>
                       <th className="p-3 text-center">Billing Month</th>
-                      <th className="p-3 text-right">Paid Amount ₹</th>
-                      <th className="p-3 text-right">Remaining Pending ₹</th>
-                      <th className="p-3 text-right">Balance ₹</th>
+                      <th className="p-3 text-right">Amount Already Paid ₹</th>
+                      <th className="p-3 text-right">Remaining Balance ₹</th>
                       <th className="p-3 text-right">Total Due ₹</th>
                       <th className="p-3 text-center">Status</th>
                       <th className="p-3 text-right">Action</th>
@@ -815,10 +834,12 @@ export default function PendingPayments() {
                             />
                           </td>
                           <td className="p-3 font-bold text-[#1C1C1A]">
-                            {row.memberName}
-                            <span className="ml-2 text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300">
-                              PARTIAL
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <span>{row.memberName}</span>
+                              <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
+                                PARTIAL
+                              </span>
+                            </div>
                           </td>
                           <td className="p-3 font-semibold text-[#6B6B67]">{row.groupName}</td>
                           <td className="p-3 font-mono text-[#6B6B67]">{row.phone}</td>
@@ -826,7 +847,7 @@ export default function PendingPayments() {
                           <td className="p-3 text-center text-[#6B6B67]">{selectedMonth}</td>
                           <td className="p-3 text-right font-bold text-emerald-700">₹{row.paidAmount.toLocaleString('en-IN')}</td>
                           
-                          {/* EDITABLE PENDING AMOUNT */}
+                          {/* EDITABLE REMAINING BALANCE AMOUNT */}
                           <td className="p-3 text-right">
                             <input
                               type="number"
@@ -836,20 +857,10 @@ export default function PendingPayments() {
                             />
                           </td>
 
-                          {/* EDITABLE BALANCE AMOUNT */}
-                          <td className="p-3 text-right">
-                            <input
-                              type="number"
-                              value={row.balanceAmount}
-                              onChange={(e) => handleAmountChange(row.rowKey, 'balanceAmount', e.target.value)}
-                              className="w-24 px-2 py-1 text-right text-xs font-bold bg-[#F7F7F5] border border-[#E5E5E1] rounded-lg text-[#1C1C1A] focus:outline-none"
-                            />
-                          </td>
-
                           <td className="p-3 text-right font-black text-amber-700">₹{row.totalDue.toLocaleString('en-IN')}</td>
                           <td className="p-3 text-center">
                             <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-1 rounded-md border border-amber-200">
-                              Partial ₹{row.pendingAmount.toLocaleString('en-IN')} Pending
+                              Partial (₹{row.pendingAmount.toLocaleString('en-IN')} Left)
                             </span>
                           </td>
                           <td className="p-3 text-right">
@@ -872,7 +883,7 @@ export default function PendingPayments() {
         </div>
       )}
 
-      {/* FEATURE 10: CONFIRMATION MODAL FOR APPLY ALL */}
+      {/* CONFIRMATION MODAL FOR APPLY ALL */}
       <Modal
         isOpen={isApplyAllModalOpen}
         onClose={() => setIsApplyAllModalOpen(false)}
@@ -882,7 +893,7 @@ export default function PendingPayments() {
       >
         <div className="space-y-4">
           <p className="text-xs text-[#1C1C1A] leading-relaxed">
-            Apply changes to all <strong>{fullPendingRows.length + partialPaymentRows.length} members</strong> in{' '}
+            Apply changes to all <strong>{fullPendingRows.length + partialPaymentRows.length} subscriptions</strong> in{' '}
             <strong>{selectedGroupId === 'all' ? 'All Groups' : `Group ${selectedGroupId}`}</strong> for{' '}
             <strong>{selectedMonth}</strong>?
           </p>

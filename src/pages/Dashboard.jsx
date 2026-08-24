@@ -168,7 +168,7 @@ export default function Dashboard() {
       badgeText: `${dueMembersCount} Members Pending`,
       badgeColor: 'warning',
       description: 'Follow-ups required',
-      onClick: () => navigate('/members?filter=due'),
+      onClick: () => navigate('/pending-payments'),
     },
     {
       title: 'Total Commission',
@@ -452,9 +452,9 @@ export default function Dashboard() {
               <Button
                 variant="outline"
                 className="text-[11px] font-bold px-3 py-1.5 rounded-xl border-[#E5E5E1] bg-[#F7F7F5] text-[#1C1C1A] hover:bg-[#E5E5E1] cursor-pointer"
-                onClick={() => navigate('/members?filter=due')}
+                onClick={() => navigate('/pending-payments')}
               >
-                Filter Due
+                View Pending
               </Button>
             </div>
 
