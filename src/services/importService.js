@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { doc, setDoc, writeBatch, getDocs, collection, serverTimestamp } from 'firebase/firestore';
+import { doc, writeBatch, getDocs, collection, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../firebase.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -24,7 +24,7 @@ export function generateMemberKey(cleanName = '', primaryPhone = '') {
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '_')
     .replace(/_+/g, '_')
-    .replace(/^_+|_+$/g, '');
+    .replace(/^_|_$/g, '');
   const normPhone = normalizePhone(primaryPhone);
   return `${normName}_${normPhone}`;
 }
@@ -105,7 +105,7 @@ export function parseGroupHeader(cellStr = '') {
   const s = String(cellStr).trim();
 
   // 1. ₹1 Lakh Roman numeral group: lakh-(XI), lakh-(I), lakh-XI, Lakh (XI), Group XI
-  const lakhMatch = s.match(/lakh\s*[-_\(]*\s*([IVXLCDM]+)\s*[\)]*/i);
+  const lakhMatch = s.match(/lakh\s*[-_()]*\s*([IVXLCDM]+)\s*[)]*/i);
   if (lakhMatch) {
     const roman = lakhMatch[1].toUpperCase();
     return {
@@ -118,7 +118,7 @@ export function parseGroupHeader(cellStr = '') {
   }
 
   // 2. ₹2 Lakh group: 2L-A, 2L-B, 2L-(A), 2L A, 2L_A
-  const lakh2Match = s.match(/2L\s*[-_\(]*\s*([A-Z0-9]+)\s*[\)]*/i);
+  const lakh2Match = s.match(/2L\s*[-_()]*\s*([A-Z0-9]+)\s*[)]*/i);
   if (lakh2Match) {
     const subGrp = lakh2Match[1].toUpperCase();
     return {
@@ -131,7 +131,7 @@ export function parseGroupHeader(cellStr = '') {
   }
 
   // 3. ₹5 Lakh group: 5L-A, 5L-B, 5L-(A), 5L A, 5L_A
-  const lakh5Match = s.match(/5L\s*[-_\(]*\s*([A-Z0-9]+)\s*[\)]*/i);
+  const lakh5Match = s.match(/5L\s*[-_()]*\s*([A-Z0-9]+)\s*[)]*/i);
   if (lakh5Match) {
     const subGrp = lakh5Match[1].toUpperCase();
     return {
@@ -177,7 +177,7 @@ export function parseChitToken(tokenStr = '') {
   if (!cleanToken) return null;
 
   // 1. ₹5 Lakh group: 5L-A, 5L-B, 5LA, 5L B, 5L_C
-  const m5L = cleanToken.match(/^(?:5L|₹?5\s*Lakh)\s*[-_\(]*\s*([A-Z0-9]+)\s*[\)]*$/i);
+  const m5L = cleanToken.match(/^(?:5L|₹?5\s*Lakh)\s*[-_()]*\s*([A-Z0-9]+)\s*[)]*$/i);
   if (m5L) {
     const grp = m5L[1].toUpperCase();
     return {
@@ -190,7 +190,7 @@ export function parseChitToken(tokenStr = '') {
   }
 
   // 2. ₹2 Lakh group: 2L-A, 2L-B, 2LA, 2L B, 2L_F
-  const m2L = cleanToken.match(/^(?:2L|₹?2\s*Lakh)\s*[-_\(]*\s*([A-Z0-9]+)\s*[\)]*$/i);
+  const m2L = cleanToken.match(/^(?:2L|₹?2\s*Lakh)\s*[-_()]*\s*([A-Z0-9]+)\s*[)]*$/i);
   if (m2L) {
     const grp = m2L[1].toUpperCase();
     return {
@@ -203,7 +203,7 @@ export function parseChitToken(tokenStr = '') {
   }
 
   // 3. ₹1 Lakh Roman Numeral group: I, II, III, IV, V, VI, VII, VIII, IX, X, XI, XII, XIII, XIV, XV, XVI, XVII, XVIII
-  const mRoman = cleanToken.match(/^(?:lakh|₹?1\s*Lakh)?\s*[-_\(]*\s*([IVXLCDM]+)\s*[\)]*$/i);
+  const mRoman = cleanToken.match(/^(?:lakh|₹?1\s*Lakh)?\s*[-_()]*\s*([IVXLCDM]+)\s*[)]*$/i);
   if (mRoman) {
     const roman = mRoman[1].toUpperCase();
     return {
@@ -337,8 +337,8 @@ export function parseRowContent(rowCells = [], activeState = {}) {
 
     // Strip out group text if embedded (e.g. lakh-(XI), 2L-A, 5L-C)
     textOnly = textOnly
-      .replace(/lakh\s*[-_\(]*\s*[IVXLCDM]+\s*[\)]*/gi, '')
-      .replace(/[25]L\s*[-_\(]*\s*[A-Z0-9]+\s*[\)]*/gi, '')
+      .replace(/lakh\s*[-_()]*\s*[IVXLCDM]+\s*[)]*/gi, '')
+      .replace(/[25]L\s*[-_()]*\s*[A-Z0-9]+\s*[)]*/gi, '')
       .trim();
 
     if (textOnly && textOnly.length >= 2 && !/^(name|phone|mobile|whatsapp|group|sl|no|sl\.no|sl\.\s*no|chits|chit)$/i.test(textOnly)) {

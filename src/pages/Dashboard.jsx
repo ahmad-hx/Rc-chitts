@@ -242,8 +242,15 @@ export default function Dashboard() {
     showToast(`Payment of ₹${txn.amount.toLocaleString('en-IN')} recorded for ${txn.member}!`);
   };
 
-  const handleChitCreated = (group) => {
-    showToast(`Chit Group ${group.groupId} (${group.name}) created successfully!`);
+  const handleChitCreated = async (group) => {
+    try {
+      const saved = await chitService.createChit(group);
+      setChits((prev) => [saved, ...prev.filter((c) => c.groupId !== saved.groupId || c.totalChitValue !== saved.totalChitValue)]);
+      showToast(`✓ Chit Group ${saved.groupId} (${saved.name}) created and saved to Firebase!`, 'success');
+    } catch (err) {
+      showToast(`Failed to save chit group: ${err.message}`, 'error');
+      throw err;
+    }
   };
 
   const handleAuctionCompleted = async (result) => {

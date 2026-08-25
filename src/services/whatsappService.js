@@ -203,12 +203,44 @@ export async function getWhatsAppQrStatus() {
         lastConnected: data.lastConnected || null,
         error: data.error || null,
         qrCodeDataUrl: data.qrCodeDataUrl || null,
+        qrGenerationId: data.qrGenerationId || 0,
+        readyForReconnect: data.readyForReconnect ?? true,
       };
     }
   } catch (err) {
-    return { ok: false, connected: false, status: 'ERROR', error: 'Unable to connect to WhatsApp Gateway', qrCodeDataUrl: null };
+    return {
+      ok: false,
+      connected: false,
+      status: 'INITIALIZING',
+      error: 'Connecting to WhatsApp Gateway...',
+      qrCodeDataUrl: null,
+      qrGenerationId: 0,
+    };
   }
-  return { ok: false, connected: false, status: 'ERROR', error: 'Unable to connect to WhatsApp Gateway', qrCodeDataUrl: null };
+  return {
+    ok: false,
+    connected: false,
+    status: 'INITIALIZING',
+    error: 'Connecting to WhatsApp Gateway...',
+    qrCodeDataUrl: null,
+    qrGenerationId: 0,
+  };
+}
+
+export async function connectWhatsAppGateway() {
+  try {
+    const res = await fetch(getWhatsAppApiUrl('/api/whatsapp/connect'), { method: 'POST' });
+    if (res.ok) return await res.json();
+  } catch (_) {}
+  return { ok: false, connected: false, status: 'ERROR', error: 'Failed to request QR Code.' };
+}
+
+export async function reconnectWhatsAppGateway() {
+  try {
+    const res = await fetch(getWhatsAppApiUrl('/api/whatsapp/reconnect'), { method: 'POST' });
+    if (res.ok) return await res.json();
+  } catch (_) {}
+  return { ok: false, connected: false, status: 'ERROR', error: 'Failed to restart WhatsApp session.' };
 }
 
 export async function disconnectWhatsAppGateway() {
@@ -216,7 +248,7 @@ export async function disconnectWhatsAppGateway() {
     const res = await fetch(getWhatsAppApiUrl('/api/whatsapp/disconnect'), { method: 'POST' });
     if (res.ok) return await res.json();
   } catch (_) {}
-  return { ok: false };
+  return { ok: false, connected: false, status: 'DISCONNECTED', readyForReconnect: true };
 }
 
 export async function testConnection() {
@@ -229,3 +261,4 @@ export async function sendTestWhatsAppMessage({ recipient = '8125737275', messag
     message: message || 'Hello Ahmad 👋 This is a test message from Raghavendra Chitts.',
   });
 }
+

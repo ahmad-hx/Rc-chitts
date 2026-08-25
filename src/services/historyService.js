@@ -7,7 +7,7 @@ import {
   orderBy,
   serverTimestamp,
 } from 'firebase/firestore';
-import { db, auth } from '../firebase';
+import { db, auth } from '../firebase.js';
 
 async function ensureAuthReady() {
   if (auth.authStateReady) {

@@ -14,17 +14,29 @@ if (dotenvResult.error) {
 }
 
 import { sendWhatsAppBroadcast, sendSingleWhatsAppMessage, sendTestWhatsAppMessage, getWhatsAppConfig, verifyMetaConnection, ADMIN_WHATSAPP_NUMBER } from './services/whatsappService.js';
-import { initWhatsAppQrGateway, getWhatsAppGatewayState, sendWhatsAppMessageViaQrGateway, disconnectWhatsAppGateway } from './services/qrGatewayService.js';
+import { initWhatsAppQrGateway, getWhatsAppGatewayState, sendWhatsAppMessageViaQrGateway, disconnectWhatsAppGateway, restartWhatsAppGateway } from './services/qrGatewayService.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
 
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  'https://raghavendra-chitts-c0822.web.app',
+  'https://raghavendra-chitts-c0822.firebaseapp.com',
+];
+
 app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'https://raghavendra-chitts-c0822.web.app'
-  ],
-  methods: ['GET', 'POST'],
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.web.app') || origin.endsWith('.firebaseapp.com')) {
+      callback(null, true);
+    } else {
+      callback(null, true);
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'OPTIONS'],
 }));
 app.use(express.json({ limit: '2mb' }));
 
@@ -43,8 +55,11 @@ app.get('/api/health', async (req, res) => {
 });
 
 // ─── WHATSAPP LINKED DEVICE QR CODE ENDPOINTS ─────────────────────────────────
-app.get('/api/whatsapp/qr', (req, res) => {
-  const state = getWhatsAppGatewayState();
+app.get('/api/whatsapp/qr', async (req, res) => {
+  let state = getWhatsAppGatewayState();
+  if (!state.connected && !state.qrCodeDataUrl && state.status === 'DISCONNECTED') {
+    state = await initWhatsAppQrGateway(false);
+  }
   res.json({
     ok: true,
     ...state,
@@ -53,6 +68,22 @@ app.get('/api/whatsapp/qr', (req, res) => {
 
 app.get('/api/whatsapp/status', (req, res) => {
   const state = getWhatsAppGatewayState();
+  res.json({
+    ok: true,
+    ...state,
+  });
+});
+
+app.post('/api/whatsapp/connect', async (req, res) => {
+  const state = await initWhatsAppQrGateway(true);
+  res.json({
+    ok: true,
+    ...state,
+  });
+});
+
+app.post('/api/whatsapp/reconnect', async (req, res) => {
+  const state = await restartWhatsAppGateway();
   res.json({
     ok: true,
     ...state,

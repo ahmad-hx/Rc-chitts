@@ -1,18 +1,13 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   Send,
   RefreshCw,
   Search,
-  ChevronDown,
-  ChevronUp,
-  Users,
   CheckCircle2,
   AlertCircle,
   History,
-  Info,
   QrCode,
   Smartphone,
-  Check,
   Unlink,
 } from 'lucide-react';
 import Card from '../components/Card';
@@ -32,8 +27,11 @@ import {
   sendSingleWhatsAppMessage,
   sendTestWhatsAppMessage,
   getWhatsAppApiUrl,
+  reconnectWhatsAppGateway,
+  disconnectWhatsAppGateway,
 } from '../services/whatsappService';
-import { memberService, chitService } from '../services/dbService';
+import { memberService, chitService, groupPaymentSettingsService } from '../services/dbService';
+import { useBillingMonth } from '../context/BillingMonthContext';
 
 function parseRomanNumeral(str = '') {
   const clean = String(str).toUpperCase().trim().replace(/^GROUP\s+/, '');
@@ -73,18 +71,13 @@ function getActiveChits(member) {
   return (member?.chits || []).filter((chit) => (chit.status ? chit.status === 'ACTIVE' : true));
 }
 
-function formatGroupDisplayName(groupId, totalChitValue) {
-  if (!groupId || groupId === 'all') return 'All Chit Groups';
-  const val = Number(totalChitValue || 100000);
-  const lakhStr = val >= 100000 ? `₹${(val / 100000).toFixed(0)} Lakh Chit` : `₹${val.toLocaleString('en-IN')}`;
-  return `Group ${groupId} — ${lakhStr}`;
-}
-
 export default function WhatsAppPlaceholder() {
+  const { selectedMonth } = useBillingMonth();
+
   // Core Data States
   const [members, setMembers] = useState([]);
   const [chits, setChits] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [groupPaymentSettings, setGroupPaymentSettings] = useState({});
   const [toast, setToast] = useState(null);
 
   // QR Code Gateway States
@@ -106,7 +99,14 @@ export default function WhatsAppPlaceholder() {
 
   // Parameter Inputs
   const [selectedGroupId, setSelectedGroupId] = useState('all');
-  const [billingMonth, setBillingMonth] = useState('August 2026');
+  const [billingMonth, setBillingMonth] = useState(selectedMonth || 'August 2026');
+
+  useEffect(() => {
+    if (selectedMonth) {
+      setBillingMonth(selectedMonth);
+    }
+  }, [selectedMonth]);
+
   const [dueDate, setDueDate] = useState('15th of Month');
   const [chitAmount, setChitAmount] = useState('25000');
   const [groupPendingAmount, setGroupPendingAmount] = useState('0');
@@ -225,17 +225,32 @@ export default function WhatsAppPlaceholder() {
   const [historyStatusFilter, setHistoryStatusFilter] = useState('all');
   const [detailsLogModal, setDetailsLogModal] = useState(null);
 
+  // QR Gateway failure counter for graceful cold start retry
+  const [consecutiveQrErrors, setConsecutiveQrErrors] = useState(0);
+  const [latestQrGenId, setLatestQrGenId] = useState(0);
+
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
   };
 
-  // Poll QR Code Gateway Status
-  const fetchQrGatewayStatus = async () => {
+  // Poll QR Code Gateway Status with generational tracking and cold start tolerance
+  const fetchQrGatewayStatus = useCallback(async () => {
     try {
-      setIsQrLoading(true);
       const res = await fetch(getWhatsAppApiUrl('/api/whatsapp/qr'));
       if (res.ok) {
         const data = await res.json();
+        setConsecutiveQrErrors(0);
+        setQrFetchError(null);
+
+        // Discard stale responses if generation ID is older than latest seen
+        if (data.qrGenerationId && data.qrGenerationId < latestQrGenId) {
+          return;
+        }
+
+        if (data.qrGenerationId && data.qrGenerationId >= latestQrGenId) {
+          setLatestQrGenId(data.qrGenerationId);
+        }
+
         setQrGatewayState({
           ok: data.ok ?? true,
           connected: Boolean(data.connected),
@@ -245,17 +260,92 @@ export default function WhatsAppPlaceholder() {
           lastConnected: data.lastConnected || null,
           error: data.error || null,
           qrCodeDataUrl: data.qrCodeDataUrl || null,
+          qrGenerationId: data.qrGenerationId || 0,
         });
-        setQrFetchError(null);
+
         if (data.connected && isQrModalOpen) {
           setIsQrModalOpen(false);
-          showToast(`✓ WhatsApp Linked to +${data.userPhone || 'device'}! Device ready for direct message sending.`, 'success');
+          showToast(`✓ WhatsApp Linked to +${data.userPhone || 'device'}! Ready for messaging.`, 'success');
         }
       } else {
-        setQrFetchError('Unable to connect to WhatsApp Gateway');
+        setConsecutiveQrErrors((prev) => {
+          const next = prev + 1;
+          if (next >= 4) {
+            setQrFetchError('WhatsApp Gateway needs to be restarted.');
+          }
+          return next;
+        });
       }
     } catch (_) {
-      setQrFetchError('Unable to connect to WhatsApp Gateway');
+      setConsecutiveQrErrors((prev) => {
+        const next = prev + 1;
+        if (next >= 4) {
+          setQrFetchError('Connecting to WhatsApp Gateway... (Service waking up)');
+        }
+        return next;
+      });
+    }
+  }, [latestQrGenId, isQrModalOpen]);
+
+  const handleGenerateNewQr = async () => {
+    setIsQrLoading(true);
+    setQrFetchError(null);
+    setConsecutiveQrErrors(0);
+    setQrGatewayState((prev) => ({
+      ...prev,
+      status: 'INITIALIZING',
+      qrCodeDataUrl: null,
+      error: null,
+    }));
+
+    try {
+      const data = await reconnectWhatsAppGateway();
+      if (data && data.ok) {
+        if (data.qrGenerationId) {
+          setLatestQrGenId(data.qrGenerationId);
+        }
+        setQrGatewayState({
+          ok: true,
+          connected: Boolean(data.connected),
+          status: data.status || (data.qrCodeDataUrl ? 'QR_READY' : 'INITIALIZING'),
+          userPhone: data.userPhone || '9705184411',
+          userName: data.userName || 'Raghavendra Chitts',
+          lastConnected: data.lastConnected || null,
+          error: data.error || null,
+          qrCodeDataUrl: data.qrCodeDataUrl || null,
+          qrGenerationId: data.qrGenerationId || 0,
+        });
+        showToast('Generated fresh QR Code! Scan with WhatsApp.', 'info');
+      } else {
+        setQrFetchError(data?.error || 'Unable to initialize fresh QR session.');
+      }
+    } catch (e) {
+      setQrFetchError('Failed to connect to WhatsApp Gateway.');
+    } finally {
+      setIsQrLoading(false);
+    }
+  };
+
+  const handleDisconnectDevice = async () => {
+    setIsQrLoading(true);
+    setQrGatewayState((prev) => ({ ...prev, status: 'DISCONNECTING' }));
+
+    try {
+      await disconnectWhatsAppGateway();
+      setQrGatewayState({
+        ok: true,
+        connected: false,
+        status: 'DISCONNECTED',
+        userPhone: '9705184411',
+        userName: 'Raghavendra Chitts',
+        lastConnected: null,
+        error: null,
+        qrCodeDataUrl: null,
+        qrGenerationId: 0,
+      });
+      showToast('WhatsApp device unlinked successfully.', 'info');
+    } catch (err) {
+      showToast('Failed to unlink device.', 'error');
     } finally {
       setIsQrLoading(false);
     }
@@ -263,19 +353,26 @@ export default function WhatsAppPlaceholder() {
 
   useEffect(() => {
     fetchQrGatewayStatus();
-    const interval = setInterval(fetchQrGatewayStatus, 3000);
+    const interval = setInterval(fetchQrGatewayStatus, 2500);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchQrGatewayStatus]);
+
+  const handleOpenQrModal = () => {
+    setIsQrModalOpen(true);
+    if (!qrGatewayState.connected && !qrGatewayState.qrCodeDataUrl) {
+      handleGenerateNewQr();
+    }
+  };
 
   // Load Firestore Data on Mount
   useEffect(() => {
     let mounted = true;
     async function loadData() {
-      setLoading(true);
       try {
-        const [fetchedMembers, fetchedChits] = await Promise.all([
+        const [fetchedMembers, fetchedChits, settingsRes] = await Promise.all([
           memberService.getMembers().catch(() => []),
           chitService.getChits().catch(() => []),
+          groupPaymentSettingsService.getGroupPaymentSettings().catch(() => ({ settingsMap: {} })),
         ]);
 
         if (mounted) {
@@ -283,6 +380,7 @@ export default function WhatsAppPlaceholder() {
           const chitsList = Array.isArray(fetchedChits) ? fetchedChits : [];
           setMembers(list);
           setChits(chitsList);
+          setGroupPaymentSettings(settingsRes?.settingsMap || {});
 
           // Extract groups for diagnostic logging
           const groupsSet = new Set();
@@ -297,7 +395,6 @@ export default function WhatsAppPlaceholder() {
           console.log('Total members loaded:', list.length);
           console.log('Available groups:', uniqueGroups);
           if (list.length > 0) {
-            console.log('Sample member data:', list[0]);
             setSelectedPreviewMember(list[0]);
           }
         }
@@ -305,11 +402,8 @@ export default function WhatsAppPlaceholder() {
         if (mounted) {
           showToast('Failed to load member records from Firebase.', 'error');
         }
-      } finally {
-        if (mounted) setLoading(false);
       }
     }
-
     loadData();
     return () => {
       mounted = false;
@@ -317,7 +411,7 @@ export default function WhatsAppPlaceholder() {
   }, []);
 
   // Fetch Message History from Firestore ('messageHistory' collection)
-  const refreshHistoryLogs = async () => {
+  const refreshHistoryLogs = useCallback(async () => {
     setHistoryLoading(true);
     try {
       const logs = await fetchMessageHistory({ statusFilter: historyStatusFilter, limitCount: 50 });
@@ -327,11 +421,11 @@ export default function WhatsAppPlaceholder() {
     } finally {
       setHistoryLoading(false);
     }
-  };
+  }, [historyStatusFilter]);
 
   useEffect(() => {
     refreshHistoryLogs();
-  }, [historyStatusFilter]);
+  }, [refreshHistoryLogs]);
 
   // Sync Template Text on Template or Language Change
   useEffect(() => {
@@ -344,16 +438,6 @@ export default function WhatsAppPlaceholder() {
       setCustomTemplateText(`${tmpl.englishText}\n\n-------------------\n\n${tmpl.teluguText}`);
     }
   }, [selectedTemplateId, language]);
-
-  // Active Chit Group Info
-  const activeGroup = useMemo(() => {
-    if (selectedGroupId === 'all') {
-      return { id: 'all', name: 'All Chit Groups', totalChitValue: 100000 };
-    }
-    const found = chits.find((c) => String(c.groupId).toLowerCase() === String(selectedGroupId).toLowerCase());
-    if (found) return found;
-    return { id: selectedGroupId, name: `Group ${selectedGroupId}`, totalChitValue: 100000 };
-  }, [chits, selectedGroupId]);
 
   // Filtered Recipients List
   const filteredRecipients = useMemo(() => {
@@ -401,6 +485,7 @@ export default function WhatsAppPlaceholder() {
       totalAmount,
       finalAmount,
       dueDate,
+      groupPaymentSettings,
     });
   };
 
@@ -474,17 +559,6 @@ export default function WhatsAppPlaceholder() {
       setIsSendingSingle(false);
       showToast(`Send error: ${err.message}`, 'error');
     }
-  };
-
-  // Disconnect Scanned Device Session
-  const handleDisconnectDevice = async () => {
-    try {
-      const res = await fetch(getWhatsAppApiUrl('/api/whatsapp/disconnect'), { method: 'POST' });
-      if (res.ok) {
-        showToast('WhatsApp device unlinked successfully.', 'info');
-        fetchQrGatewayStatus();
-      }
-    } catch (_) {}
   };
 
   // Quick Test Message Execution
@@ -665,7 +739,7 @@ export default function WhatsAppPlaceholder() {
               variant="primary"
               size="sm"
               className="rounded-xl text-xs gap-1.5 bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold cursor-pointer shadow-xs"
-              onClick={() => setIsQrModalOpen(true)}
+              onClick={handleOpenQrModal}
             >
               <QrCode className="w-4 h-4" />
               Scan QR Code to Link WhatsApp
@@ -1238,19 +1312,26 @@ export default function WhatsAppPlaceholder() {
               </p>
 
               {/* QR CODE DISPLAY CONTAINER */}
-              <div className="p-4 bg-white border border-[#E5E5E1] rounded-xl w-64 h-64 mx-auto flex items-center justify-center shadow-xs">
-                {qrFetchError ? (
+              <div className="p-4 bg-white border border-[#E5E5E1] rounded-xl w-64 h-64 mx-auto flex items-center justify-center shadow-xs relative">
+                {qrGatewayState.status === 'DISCONNECTING' ? (
+                  <div className="space-y-2 text-center text-[#6B6B67] p-2">
+                    <RefreshCw className="w-8 h-8 animate-spin mx-auto text-red-500" />
+                    <p className="font-bold text-xs text-[#1C1C1A]">Unlinking WhatsApp session...</p>
+                    <p className="text-[10px] text-[#6B6B67]">Clearing device authentication cache</p>
+                  </div>
+                ) : qrFetchError ? (
                   <div className="space-y-3 text-center p-2">
-                    <AlertCircle className="w-8 h-8 text-red-500 mx-auto" />
-                    <p className="font-bold text-xs text-red-600">Unable to connect to WhatsApp Gateway</p>
-                    <p className="text-[10px] text-[#6B6B67]">Please verify server connection or retry.</p>
+                    <AlertCircle className="w-8 h-8 text-amber-500 mx-auto" />
+                    <p className="font-bold text-xs text-[#1C1C1A]">{qrFetchError}</p>
+                    <p className="text-[10px] text-[#6B6B67]">Connection needs to be restarted.</p>
                     <Button
-                      variant="outline"
+                      variant="primary"
                       size="sm"
-                      className="mx-auto cursor-pointer border-[#2F5D50] text-[#2F5D50] font-bold text-xs"
-                      onClick={fetchQrGatewayStatus}
+                      className="mx-auto cursor-pointer bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold text-xs"
+                      onClick={handleGenerateNewQr}
+                      disabled={isQrLoading}
                     >
-                      <RefreshCw className="w-3.5 h-3.5 mr-1" /> Retry Connection
+                      <RefreshCw className={`w-3.5 h-3.5 mr-1 ${isQrLoading ? 'animate-spin' : ''}`} /> Try Again
                     </Button>
                   </div>
                 ) : qrGatewayState.connected || qrGatewayState.status === 'CONNECTED' ? (
@@ -1263,42 +1344,69 @@ export default function WhatsAppPlaceholder() {
                     </span>
                   </div>
                 ) : (qrGatewayState.status === 'QR_READY' || qrGatewayState.qrCodeDataUrl) && qrGatewayState.qrCodeDataUrl ? (
-                  <img
-                    src={qrGatewayState.qrCodeDataUrl}
-                    alt="WhatsApp Pairing QR Code"
-                    className="w-full h-full object-contain rounded-lg"
-                  />
+                  <div className="flex flex-col items-center justify-center h-full w-full">
+                    <img
+                      src={qrGatewayState.qrCodeDataUrl}
+                      alt="WhatsApp Pairing QR Code"
+                      className="w-52 h-52 object-contain rounded-lg border border-slate-100"
+                    />
+                  </div>
                 ) : qrGatewayState.status === 'INITIALIZING' || qrGatewayState.status === 'RECONNECTING' || isQrLoading ? (
                   <div className="space-y-2 text-center text-[#6B6B67] p-2">
                     <RefreshCw className="w-8 h-8 animate-spin mx-auto text-[#2F5D50]" />
-                    <p className="font-bold text-xs text-[#1C1C1A]">Generating WhatsApp Pairing QR Code...</p>
-                    <p className="text-[10px] text-[#6B6B67]">Connecting to Baileys WhatsApp Service</p>
+                    <p className="font-bold text-xs text-[#1C1C1A]">Generating fresh QR code...</p>
+                    <p className="text-[10px] text-[#6B6B67]">Starting clean Baileys session</p>
                   </div>
                 ) : (
                   <div className="space-y-2 text-center text-[#6B6B67] p-2">
-                    <AlertCircle className="w-8 h-8 mx-auto text-amber-500" />
-                    <p className="font-bold text-xs text-[#1C1C1A]">{qrGatewayState.error || 'Gateway Disconnected'}</p>
+                    <Smartphone className="w-8 h-8 mx-auto text-[#2F5D50]" />
+                    <p className="font-bold text-xs text-[#1C1C1A]">Ready to connect</p>
+                    <p className="text-[10px] text-[#6B6B67]">Click below to generate a new QR code</p>
                     <Button
-                      variant="outline"
+                      variant="primary"
                       size="sm"
-                      className="mx-auto cursor-pointer border-[#2F5D50] text-[#2F5D50] font-bold text-xs"
-                      onClick={fetchQrGatewayStatus}
+                      className="mx-auto cursor-pointer bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold text-xs"
+                      onClick={handleGenerateNewQr}
+                      disabled={isQrLoading}
                     >
-                      <RefreshCw className="w-3.5 h-3.5 mr-1" /> Refresh QR Code
+                      <RefreshCw className={`w-3.5 h-3.5 mr-1 ${isQrLoading ? 'animate-spin' : ''}`} /> Generate New QR
                     </Button>
                   </div>
                 )}
               </div>
 
-              {!qrGatewayState.connected && qrGatewayState.status !== 'CONNECTED' && !qrFetchError && (
-                <div className="flex items-center justify-center gap-2 text-[11px] font-bold text-[#2F5D50]">
-                  <Smartphone className="w-4 h-4" />
-                  <span>Waiting for phone scan... (Auto-connects)</span>
+              {!qrGatewayState.connected && qrGatewayState.status !== 'CONNECTED' && qrGatewayState.status !== 'DISCONNECTING' && !qrFetchError && qrGatewayState.qrCodeDataUrl && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-center gap-2 text-[11px] font-bold text-[#2F5D50]">
+                    <Smartphone className="w-4 h-4" />
+                    <span>Waiting for phone scan... (Auto-connects)</span>
+                  </div>
+                  <button
+                    onClick={handleGenerateNewQr}
+                    className="text-[11px] text-[#2F5D50] hover:underline font-bold cursor-pointer inline-flex items-center gap-1"
+                    disabled={isQrLoading}
+                  >
+                    <RefreshCw className={`w-3 h-3 ${isQrLoading ? 'animate-spin' : ''}`} />
+                    Refresh QR Code
+                  </button>
                 </div>
               )}
             </div>
 
-            <div className="flex justify-end pt-2">
+            <div className="flex justify-between items-center pt-2">
+              <div>
+                {qrGatewayState.connected && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-red-200 text-red-600 hover:bg-red-50 text-xs font-bold"
+                    onClick={handleDisconnectDevice}
+                    disabled={isQrLoading}
+                  >
+                    Disconnect
+                  </Button>
+                )}
+              </div>
               <Button variant="outline" size="sm" onClick={() => setIsQrModalOpen(false)}>
                 Close
               </Button>

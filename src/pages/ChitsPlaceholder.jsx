@@ -5,9 +5,11 @@ import Button from '../components/Button';
 import Toast from '../components/Toast';
 import CreateChitModal from '../components/CreateChitModal';
 import Modal from '../components/Modal';
-import { Calendar, Users, ArrowRight, Plus, Layers, Gavel, CheckCircle2, Archive, Edit, MoreVertical } from 'lucide-react';
+import { Calendar, Users, ArrowRight, Plus, Layers, Gavel, CheckCircle2, Archive, Edit, MoreVertical, Clock } from 'lucide-react';
 import { chitService, memberService, groupPaymentSettingsService } from '../services/dbService';
 import { useNavigate } from 'react-router-dom';
+import { useBillingMonth } from '../context/BillingMonthContext';
+import { getChitMonth, getStandardMonthOptions } from '../utils/chitMonthUtils';
 
 // Roman numeral parsing helper
 function parseRomanNumeral(str = '') {
@@ -46,6 +48,7 @@ function compareGroupIds(groupIdA = '', groupIdB = '') {
 
 export default function ChitsPlaceholder() {
   const navigate = useNavigate();
+  const { selectedMonth } = useBillingMonth();
   const [chits, setChits] = useState([]);
   const [members, setMembers] = useState([]);
   const [groupPaymentSettings, setGroupPaymentSettings] = useState({});
@@ -63,6 +66,12 @@ export default function ChitsPlaceholder() {
   const [targetGroupForMonthly, setTargetGroupForMonthly] = useState(null);
   const [inputMonthlyAmount, setInputMonthlyAmount] = useState('');
   const [isSavingMonthly, setIsSavingMonthly] = useState(false);
+
+  // Group starting month edit modal state
+  const [isEditStartingMonthModalOpen, setIsEditStartingMonthModalOpen] = useState(false);
+  const [targetGroupForStartingMonth, setTargetGroupForStartingMonth] = useState(null);
+  const [inputStartingMonth, setInputStartingMonth] = useState('March 2026');
+  const [isSavingStartingMonth, setIsSavingStartingMonth] = useState(false);
 
   const [toast, setToast] = useState(null);
 
@@ -112,9 +121,18 @@ export default function ChitsPlaceholder() {
     return group?.monthlyPremium || Math.floor(val / 20);
   };
 
-  const handleChitCreated = (newGroup) => {
-    setChits([newGroup, ...chits]);
-    showToast(`Chit Group ${newGroup.groupId} (${newGroup.name}) created successfully!`);
+  const handleChitCreated = async (newGroup) => {
+    try {
+      const saved = await chitService.createChit(newGroup);
+      setChits((prev) => [saved, ...prev.filter((c) => c.groupId !== saved.groupId || c.totalChitValue !== saved.totalChitValue)]);
+      showToast(`✓ Chit Group ${newGroup.groupId} (${newGroup.name}) created and saved to Firebase!`, 'success');
+      // Reload chits to ensure complete synchronization
+      const fetched = await chitService.getChits().catch(() => null);
+      if (fetched) setChits(fetched);
+    } catch (err) {
+      showToast(`Failed to save chit group: ${err.message}`, 'error');
+      throw err;
+    }
   };
 
   const getEnrolledMembers = (groupId) => {
@@ -135,6 +153,23 @@ export default function ChitsPlaceholder() {
     });
     setInputMonthlyAmount(String(current));
     setIsEditMonthlyModalOpen(true);
+    setActiveMenuId(null);
+  };
+
+  const handleOpenEditStartingMonth = (group) => {
+    const val = group?.totalChitValue || 100000;
+    const grp = group?.groupId || 'I';
+    const currentStart = group?.startingMonth || 'March 2026';
+
+    setTargetGroupForStartingMonth({
+      id: group?.id,
+      chitValue: val,
+      groupId: grp,
+      fullFormattedValue: `₹${(val / 100000).toFixed(0)} Lakh Group ${grp}`,
+      startingMonth: currentStart,
+    });
+    setInputStartingMonth(currentStart);
+    setIsEditStartingMonthModalOpen(true);
     setActiveMenuId(null);
   };
 
@@ -164,6 +199,39 @@ export default function ChitsPlaceholder() {
       showToast(`Failed to save: ${err.message}`, 'error');
     } finally {
       setIsSavingMonthly(false);
+    }
+  };
+
+  const handleSaveStartingMonth = async (e) => {
+    e.preventDefault();
+    if (!targetGroupForStartingMonth) return;
+
+    setIsSavingStartingMonth(true);
+    try {
+      await chitService.updateChitGroupStartingMonth(
+        targetGroupForStartingMonth.groupId,
+        targetGroupForStartingMonth.chitValue,
+        inputStartingMonth
+      );
+
+      setChits((prev) =>
+        prev.map((c) => {
+          if (
+            String(c.groupId).toLowerCase() === String(targetGroupForStartingMonth.groupId).toLowerCase() &&
+            Number(c.totalChitValue || 100000) === Number(targetGroupForStartingMonth.chitValue)
+          ) {
+            return { ...c, startingMonth: inputStartingMonth };
+          }
+          return c;
+        })
+      );
+
+      setIsEditStartingMonthModalOpen(false);
+      showToast(`✓ Starting month for Group ${targetGroupForStartingMonth.groupId} updated to ${inputStartingMonth}!`);
+    } catch (err) {
+      showToast(`Failed to save starting month: ${err.message}`, 'error');
+    } finally {
+      setIsSavingStartingMonth(false);
     }
   };
 
@@ -207,10 +275,10 @@ export default function ChitsPlaceholder() {
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#2F5D50]">Portfolio</p>
           <h1 className="text-2xl md:text-3xl font-black text-[#1C1C1A]">Chit Fund Groups</h1>
           <p className="text-xs text-[#6B6B67] mt-1">
-            Ordered group navigation, capacity tracking, group-level monthly premium configuration, and audit ledgers.
+            Ordered group navigation, dynamic Chit Month calculation ({selectedMonth}), capacity tracking, and audit ledgers.
           </p>
         </div>
-        <Button variant="primary" className="gap-2 rounded-xl cursor-pointer" onClick={() => setIsCreateModalOpen(true)}>
+        <Button variant="primary" className="gap-2 rounded-xl cursor-pointer bg-[#2F5D50] hover:bg-[#24493F] text-white" onClick={() => setIsCreateModalOpen(true)}>
           <Plus className="w-4 h-4" />
           Create Chit Group
         </Button>
@@ -254,11 +322,12 @@ export default function ChitsPlaceholder() {
             const enrolledCount = enrolled.length || group.currentMembers || 18;
             const monthlyPremium = getGroupMonthlyPremium(group);
             const isMenuOpen = activeMenuId === group.id;
+            const chitMonthInfo = getChitMonth(group.startingMonth || 'March 2026', selectedMonth);
 
             return (
               <Card key={group.id} className="border border-[#E5E5E1] bg-white rounded-2xl p-6 shadow-xs space-y-4 relative">
-                {/* TOP ROW: Group Name, Roman Numeral, Capacity Badge & Status */}
-                <div className="flex justify-between items-start">
+                {/* TOP ROW: Group Name, Roman Numeral, Capacity Badge, Chit Month Badge & Status */}
+                <div className="flex justify-between items-start gap-2">
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-extrabold font-mono text-[#2F5D50] bg-[#DDE8E2] px-2 py-0.5 rounded-lg border border-[#2F5D50]/20">
@@ -267,11 +336,15 @@ export default function ChitsPlaceholder() {
                       <h3 className="text-base font-black text-[#1C1C1A]">{group.name}</h3>
                     </div>
                     <p className="text-xs text-[#6B6B67] mt-1 font-medium">
-                      Duration: {group.duration || '20 Months'}
+                      Duration: {group.duration || '20 Months'} • Starts: {group.startingMonth || 'March 2026'}
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
+                    <span className="text-xs font-black text-[#2F5D50] bg-[#EDF7F0] px-2.5 py-1 rounded-full border border-[#2F5D50]/20 flex items-center gap-1.5 shadow-xs">
+                      <Calendar className="w-3.5 h-3.5 text-[#2F5D50]" />
+                      <span>Chit Month {chitMonthInfo.display}</span>
+                    </span>
                     <span className="text-xs font-bold text-[#1C1C1A] bg-[#F2F2EF] px-2.5 py-1 rounded-full border border-[#E5E5E1] flex items-center gap-1">
                       <Users className="w-3.5 h-3.5 text-[#6B6B67]" />
                       {enrolledCount} / {group.capacity || 20}
@@ -325,7 +398,7 @@ export default function ChitsPlaceholder() {
                       </button>
 
                       {isMenuOpen && (
-                        <div className="absolute right-0 bottom-11 z-30 w-44 rounded-xl border border-[#E5E5E1] bg-white p-1.5 shadow-xl text-xs space-y-1 font-sans">
+                        <div className="absolute right-0 bottom-11 z-30 w-52 rounded-xl border border-[#E5E5E1] bg-white p-1.5 shadow-xl text-xs space-y-1 font-sans">
                           <button
                             type="button"
                             onClick={() => {
@@ -336,6 +409,15 @@ export default function ChitsPlaceholder() {
                           >
                             <Layers className="w-3.5 h-3.5 text-[#2F5D50]" />
                             View Group Ledger
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditStartingMonth(group)}
+                            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[#1C1C1A] hover:bg-[#F2F2EF] font-bold cursor-pointer"
+                          >
+                            <Calendar className="w-3.5 h-3.5 text-[#2F5D50]" />
+                            Edit Starting Month
                           </button>
 
                           <button
@@ -406,6 +488,72 @@ export default function ChitsPlaceholder() {
               </Button>
               <Button type="submit" variant="primary" size="sm" disabled={isSavingMonthly}>
                 {isSavingMonthly ? 'Saving...' : 'Save Group Monthly Amount'}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* EDIT GROUP STARTING MONTH MODAL */}
+      {isEditStartingMonthModalOpen && targetGroupForStartingMonth && (
+        <Modal
+          isOpen={isEditStartingMonthModalOpen}
+          onClose={() => setIsEditStartingMonthModalOpen(false)}
+          title="Edit Group Starting Month"
+          subtitle={`Configure the starting month (Chit Month 1) for ${targetGroupForStartingMonth?.fullFormattedValue}.`}
+          maxWidth="max-w-md"
+        >
+          <form onSubmit={handleSaveStartingMonth} className="space-y-4 text-xs font-sans">
+            <div className="p-3.5 bg-[#EDF7F0] border border-[#2F5D50]/20 rounded-xl space-y-2">
+              <label className="block text-[11px] font-extrabold text-[#2F5D50] uppercase tracking-wider">
+                Select Starting Month (Chit Month 1)
+              </label>
+              <select
+                value={inputStartingMonth}
+                onChange={(e) => setInputStartingMonth(e.target.value)}
+                className="w-full px-3 py-2.5 text-xs font-bold bg-white border border-[#E5E5E1] rounded-xl text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50] cursor-pointer"
+              >
+                {getStandardMonthOptions().map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+
+              <div className="pt-2 border-t border-[#2F5D50]/20 flex items-center justify-between text-xs">
+                <span className="text-[#6B6B67] font-semibold">Active Billing Month:</span>
+                <span className="font-bold text-[#1C1C1A]">{selectedMonth}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-[#6B6B67] font-semibold">Calculated Chit Month:</span>
+                <span className="font-black text-[#2F5D50] bg-white px-2 py-0.5 rounded-md border border-[#2F5D50]/20">
+                  {getChitMonth(inputStartingMonth, selectedMonth).display}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-[#6B6B67] leading-relaxed">
+              ℹ Changing the starting month recalculates the active Chit Month dynamically across all group dashboards, member views, and WhatsApp message previews. Historical financial ledger entries remain intact.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#E5E5E1]">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setIsEditStartingMonthModalOpen(false)}
+                disabled={isSavingStartingMonth}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                className="bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold"
+                disabled={isSavingStartingMonth}
+              >
+                {isSavingStartingMonth ? 'Saving...' : 'Save Starting Month'}
               </Button>
             </div>
           </form>

@@ -6,12 +6,13 @@ import {
   setDoc,
   addDoc,
   updateDoc,
+  deleteDoc,
   query,
   where,
   serverTimestamp,
 } from 'firebase/firestore';
-import { auth, db } from '../firebase';
-import { historyService } from './historyService';
+import { auth, db } from '../firebase.js';
+import { historyService } from './historyService.js';
 
 // Helper to normalize phone numbers for deduplication
 function normalizePhone(value = '') {
@@ -329,6 +330,35 @@ export const memberService = {
       throw new Error('Unable to archive member in Firebase.');
     }
   },
+
+  async deleteMember(memberId, memberData = null) {
+    await ensureAuthReady();
+    try {
+      const docRef = doc(db, 'members', memberId);
+      await deleteDoc(docRef);
+
+      // Log event into History collection asynchronously
+      try {
+        await historyService.logHistoryEvent({
+          category: 'Member',
+          action: 'MEMBER_DELETED',
+          title: `Member Permanently Deleted: ${memberData?.name || memberId}`,
+          details: `Member ${memberData?.name || memberId} (${memberData?.phone || 'No phone'}) was permanently deleted. Financial transaction records remain intact for accounting consistency.`,
+          entityId: memberId,
+          entityType: 'MEMBER',
+          previousData: memberData,
+          memberId: memberId,
+        });
+      } catch (logErr) {
+        console.warn('History logging notice:', logErr?.message);
+      }
+
+      return true;
+    } catch (err) {
+      console.error('Firestore deleteMember error:', err.message);
+      throw new Error('Unable to permanently delete member from Firebase.');
+    }
+  },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -359,6 +389,7 @@ export const chitService = {
           monthlyPremium: Number(g.monthlyPremium || Math.floor((g.totalChitValue || 100000) / 20)),
           capacity: Number(g.capacity || 20),
           duration: g.duration || '20 Months',
+          startingMonth: g.startingMonth || g.startMonth || 'March 2026',
           nextAuctionDate: g.nextAuctionDate || '15th of Month',
         }));
       }
@@ -380,6 +411,7 @@ export const chitService = {
               monthlyPremium: Math.floor(val / 20),
               duration: '20 Months',
               capacity: 20,
+              startingMonth: c.startingMonth || c.startMonth || 'March 2026',
               nextAuctionDate: '15th of Month',
               status: 'ACTIVE',
               enrolledMembers: 0,
@@ -428,6 +460,107 @@ export const chitService = {
     } catch (err) {
       console.error('Firestore associateHolding error:', err.message);
       throw new Error('Unable to save holding to Firebase.');
+    }
+  },
+
+  async createChit(chitData) {
+    await ensureAuthReady();
+    const gId = String(chitData.groupId || chitData.id || '').trim();
+    const val = Number(chitData.totalChitValue || chitData.totalValue || chitData.chitValue || 100000);
+    const prem = Number(chitData.monthlyPremium || Math.floor(val / 20));
+    const cap = Number(chitData.capacity || 20);
+    const dur = chitData.duration || '20 Months';
+    const startM = chitData.startingMonth || chitData.startMonth || 'March 2026';
+    const nextAuc = chitData.nextAuctionDate || '15th of Month';
+    const name = chitData.name?.trim() || `₹${(val / 100000).toFixed(0)} Lakh Chit (Group ${gId})`;
+
+    if (!gId) {
+      throw new Error('Chit Group ID is required.');
+    }
+
+    const docId = `group_${gId}_${val}`;
+    const docRef = doc(db, 'chits', docId);
+
+    const fullChitData = {
+      id: docId,
+      groupId: gId,
+      name,
+      totalChitValue: val,
+      monthlyPremium: prem,
+      capacity: cap,
+      duration: dur,
+      startingMonth: startM,
+      nextAuctionDate: nextAuc,
+      status: 'ACTIVE',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+
+    try {
+      await setDoc(docRef, fullChitData, { merge: true });
+
+      // Automatically register group payment setting for the monthly base amount
+      try {
+        await groupPaymentSettingsService.saveGroupPaymentSetting({
+          chitValue: val,
+          groupId: gId,
+          monthlyAmount: prem,
+        });
+      } catch (_) {}
+
+      // Log history event
+      try {
+        await historyService.logHistoryEvent({
+          category: 'Group',
+          action: 'GROUP_CREATED',
+          title: `New Chit Group Created: ${name}`,
+          details: `Chit Group ${name} (Value: ₹${val.toLocaleString('en-IN')}, Premium: ₹${prem.toLocaleString('en-IN')}, Starting Month: ${startM}) established and saved to Firebase.`,
+          entityId: docId,
+          entityType: 'GROUP',
+          groupId: gId,
+          chitValue: val,
+        });
+      } catch (_) {}
+
+      return fullChitData;
+    } catch (err) {
+      console.error('Firestore createChit error:', err.message);
+      throw new Error(`Failed to create chit group in Firebase: ${err.message}`);
+    }
+  },
+
+  async updateChitGroupStartingMonth(groupId, chitValue = 100000, startingMonth = 'March 2026') {
+    await ensureAuthReady();
+    try {
+      const gId = String(groupId).trim();
+      const val = Number(chitValue || 100000);
+      const docId = `group_${gId}_${val}`;
+      const docRef = doc(db, 'chits', docId);
+
+      await setDoc(docRef, {
+        groupId: gId,
+        totalChitValue: val,
+        startingMonth,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+
+      try {
+        await historyService.logHistoryEvent({
+          category: 'Group',
+          action: 'GROUP_STARTING_MONTH_UPDATED',
+          title: `Chit Group ${gId} Starting Month Updated: ${startingMonth}`,
+          details: `Chit Group ${gId} (₹${(val / 100000).toFixed(0)}L) starting month configured to ${startingMonth} (Chit Month 1).`,
+          entityId: docId,
+          entityType: 'GROUP',
+          groupId: gId,
+          chitValue: val,
+        });
+      } catch (_) {}
+
+      return true;
+    } catch (err) {
+      console.error('Firestore updateChitGroupStartingMonth error:', err.message);
+      throw new Error(`Failed to update starting month: ${err.message}`);
     }
   },
 

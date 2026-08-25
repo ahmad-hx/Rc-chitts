@@ -23,6 +23,9 @@ import {
   Eye,
   SlidersHorizontal,
   FileSpreadsheet,
+  Trash2,
+  Trash,
+  AlertCircle,
 } from 'lucide-react';
 import Card from '../components/Card';
 import Button from '../components/Button';
@@ -74,6 +77,7 @@ export default function Members() {
 
   // Core Data States
   const [members, setMembers] = useState([]);
+  const [chits, setChits] = useState([]);
   const [groupPaymentSettings, setGroupPaymentSettings] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -104,16 +108,23 @@ export default function Members() {
   const [editPhone, setEditPhone] = useState('');
   const [editAddress, setEditAddress] = useState('');
   const [editNominee, setEditNominee] = useState('');
+  const [editMemberSubscriptions, setEditMemberSubscriptions] = useState([]);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
-  // Add Member Form State
+  // Add Member Form State with Multi-Chit Subscriptions Support
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [newAddress, setNewAddress] = useState('');
   const [newNominee, setNewNominee] = useState('');
-  const [newChitValue, setNewChitValue] = useState('100000');
-  const [newGroupId, setNewGroupId] = useState('I');
+  const [newChitSubscriptions, setNewChitSubscriptions] = useState([
+    { id: `sub_${Date.now()}_0`, chitValue: '100000', groupId: 'I', monthlyAmount: '5000', pending: '0', balance: '0' }
+  ]);
   const [isSavingAdd, setIsSavingAdd] = useState(false);
+
+  // Permanent Delete Confirmation State
+  const [deleteConfirmMember, setDeleteConfirmMember] = useState(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeletingMember, setIsDeletingMember] = useState(false);
 
   // Group Level Edit Monthly Amount State
   const [isEditMonthlyModalOpen, setIsEditMonthlyModalOpen] = useState(false);
@@ -134,21 +145,24 @@ export default function Members() {
     setToast({ message, type });
   };
 
-  // Load Members and Group Payment Settings from Firestore
+  // Load Members, Chits, and Group Payment Settings from Firestore
   const loadData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [fetchedMembers, settingsRes] = await Promise.all([
+      const [fetchedMembers, fetchedChits, settingsRes] = await Promise.all([
         memberService.getMembers(),
+        chitService.getChits().catch(() => []),
         groupPaymentSettingsService.getGroupPaymentSettings().catch(() => ({ settingsMap: {} })),
       ]);
       setMembers(Array.isArray(fetchedMembers) ? fetchedMembers : []);
+      setChits(Array.isArray(fetchedChits) ? fetchedChits : []);
       setGroupPaymentSettings(settingsRes?.settingsMap || {});
     } catch (e) {
       console.error('Members load error:', e.message);
       setError('Unable to load members from Firebase. Please check connection and try again.');
       setMembers([]);
+      setChits([]);
     } finally {
       setLoading(false);
     }
@@ -157,6 +171,60 @@ export default function Members() {
   useEffect(() => {
     loadData();
   }, []);
+
+  // Extract all unique Chit Groups dynamically from loaded chits & members safely
+  const availableGroups = useMemo(() => {
+    const groupsSet = new Set();
+    (chits || []).forEach((c) => {
+      if (c.groupId) groupsSet.add(String(c.groupId).trim());
+      if (c.group) groupsSet.add(String(c.group).trim());
+    });
+    (members || []).forEach((m) => {
+      if (m.groupId) groupsSet.add(String(m.groupId).trim());
+      if (m.group) groupsSet.add(String(m.group).trim());
+      (m.chits || []).forEach((c) => {
+        if (c.groupId) groupsSet.add(String(c.groupId).trim());
+        if (c.group) groupsSet.add(String(c.group).trim());
+      });
+    });
+    const list = Array.from(groupsSet).filter(Boolean).sort(compareGroupIds);
+    return list.length > 0 ? list : ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+  }, [chits, members]);
+
+  // Organize groups hierarchically by Chit Amount (1L -> 2L -> 5L -> 10L)
+  const groupedAvailableGroups = useMemo(() => {
+    const groupValueMap = new Map();
+    (chits || []).forEach((c) => {
+      const gId = String(c.groupId || c.group || '').trim();
+      const val = Number(c.totalChitValue || c.totalValue || c.chitValue || 100000);
+      if (gId) groupValueMap.set(gId, val);
+    });
+    (members || []).forEach((m) => {
+      (m.chits || []).forEach((c) => {
+        const gId = String(c.groupId || c.group || '').trim();
+        const val = Number(c.totalChitValue || c.totalValue || c.chitValue || 100000);
+        if (gId && !groupValueMap.has(gId)) {
+          groupValueMap.set(gId, val);
+        }
+      });
+    });
+
+    const categoryMap = new Map();
+    (availableGroups || []).forEach((gId) => {
+      const val = groupValueMap.get(gId) || 100000;
+      const lakhStr = val >= 100000 ? `${(val / 100000).toFixed(0)} Lakh Chit Groups` : `₹${val.toLocaleString('en-IN')} Groups`;
+      if (!categoryMap.has(val)) {
+        categoryMap.set(val, { val, label: lakhStr, groups: [] });
+      }
+      categoryMap.get(val).groups.push(gId);
+    });
+
+    const sortedCategories = Array.from(categoryMap.values()).sort((a, b) => a.val - b.val);
+    sortedCategories.forEach((cat) => cat.groups.sort(compareGroupIds));
+    return sortedCategories.length > 0 ? sortedCategories : [
+      { val: 100000, label: '1 Lakh Chit Groups', groups: ['I', 'II', 'III', 'IV', 'V'] }
+    ];
+  }, [availableGroups, chits, members]);
 
   // Handle URL Search Params (e.g. ?action=add or ?filter=due)
   useEffect(() => {
@@ -197,7 +265,10 @@ export default function Members() {
   const calculateChitPayable = (chit) => {
     const val = Number(chit.totalChitValue || 100000);
     const grp = String(chit.groupId || 'I');
-    const baseMonthly = getGroupMonthlyBaseAmount(val, grp);
+    // Prioritize individual subscription amountToPay if customized, otherwise fallback to group default
+    const baseMonthly = typeof chit.amountToPay === 'number' && chit.amountToPay > 0
+      ? chit.amountToPay
+      : getGroupMonthlyBaseAmount(val, grp);
     const pending = Number(chit.pending || 0);
     const balance = Number(chit.balance || 0);
     const quantity = Number(chit.quantity || 1);
@@ -359,28 +430,145 @@ export default function Members() {
     setEditPhone(member.phone || '');
     setEditAddress(member.address || '');
     setEditNominee(member.nominee || '');
+
+    const active = (member.chits || []).filter((c) => !c.status || c.status === 'ACTIVE');
+    const initialSubs = active.length > 0
+      ? active.map((c, idx) => ({
+          id: c.id || `chit_${member.id}_${idx}`,
+          chitValue: String(c.totalChitValue || 100000),
+          groupId: String(c.groupId || 'I'),
+          monthlyAmount: String(c.amountToPay || Math.floor((c.totalChitValue || 100000) / 20)),
+          pending: String(c.pending || 0),
+          balance: String(c.balance || 0),
+        }))
+      : [
+          {
+            id: `chit_${member.id}_0`,
+            chitValue: String(member.calculatedTotalChitValue || 100000),
+            groupId: String(member.groupId || member.group || 'I'),
+            monthlyAmount: String(member.amountToPay || 5000),
+            pending: '0',
+            balance: '0',
+          },
+        ];
+
+    setEditMemberSubscriptions(initialSubs);
     setIsEditModalOpen(true);
     setActiveActionMenuMemberId(null);
+  };
+
+  const handleAddEditSubscriptionRow = () => {
+    const defaultGroup = availableGroups[0] || 'I';
+    setEditMemberSubscriptions((prev) => [
+      ...prev,
+      {
+        id: `sub_${Date.now()}_${prev.length}`,
+        chitValue: '100000',
+        groupId: defaultGroup,
+        monthlyAmount: '5000',
+        pending: '0',
+        balance: '0',
+      },
+    ]);
+  };
+
+  const handleRemoveEditSubscriptionRow = (index) => {
+    if (editMemberSubscriptions.length <= 1) {
+      showToast('A member must have at least one chit subscription.', 'warning');
+      return;
+    }
+    setEditMemberSubscriptions((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleEditSubscriptionChange = (index, field, value) => {
+    setEditMemberSubscriptions((prev) => {
+      const updated = [...prev];
+      const current = { ...updated[index], [field]: value };
+      if (field === 'chitValue') {
+        const valNum = Number(value) || 100000;
+        current.monthlyAmount = String(Math.floor(valNum / 20));
+      }
+      updated[index] = current;
+      return updated;
+    });
   };
 
   const handleSaveEditMember = async (e) => {
     e.preventDefault();
     if (!selectedMember) return;
 
+    if (!editName.trim() || !editPhone.trim()) {
+      showToast('Please enter member name and phone number.', 'error');
+      return;
+    }
+
+    if (!editMemberSubscriptions || editMemberSubscriptions.length === 0) {
+      showToast('Member must have at least one chit subscription.', 'error');
+      return;
+    }
+
+    // Validate each subscription row
+    for (let i = 0; i < editMemberSubscriptions.length; i++) {
+      const sub = editMemberSubscriptions[i];
+      const val = Number(sub.chitValue);
+      const grp = String(sub.groupId || '').trim();
+      const monthly = Number(sub.monthlyAmount);
+
+      if (isNaN(val) || val <= 0) {
+        showToast(`Chit #${i + 1}: Please enter a valid chit value.`, 'error');
+        return;
+      }
+      if (!grp) {
+        showToast(`Chit #${i + 1}: Please select a chit group.`, 'error');
+        return;
+      }
+      if (isNaN(monthly) || monthly <= 0) {
+        showToast(`Chit #${i + 1}: Please enter a valid monthly amount.`, 'error');
+        return;
+      }
+    }
+
     setIsSavingEdit(true);
     try {
-      await memberService.updateMember(selectedMember.id, {
-        name: editName,
-        phone: editPhone,
-        address: editAddress,
-        nominee: editNominee,
+      const isMulti = editMemberSubscriptions.length > 1;
+      const chits = editMemberSubscriptions.map((sub, idx) => {
+        const val = Number(sub.chitValue);
+        const grp = String(sub.groupId).trim().toUpperCase();
+        const monthly = Number(sub.monthlyAmount) || Math.floor(val / 20);
+        return {
+          id: sub.id || `chit_${Date.now()}_${idx}_${grp}`,
+          name: `₹${(val / 100000).toFixed(0)} Lakh Chit (Group ${grp})`,
+          groupId: grp,
+          totalChitValue: val,
+          amountToPay: monthly,
+          pending: Math.max(Number(sub.pending) || 0, 0),
+          balance: Math.max(Number(sub.balance) || 0, 0),
+          quantity: 1,
+          status: 'ACTIVE',
+        };
       });
 
+      const updatedData = {
+        name: editName.trim(),
+        phone: editPhone.trim(),
+        whatsapp: editPhone.trim(),
+        address: editAddress.trim(),
+        nominee: editNominee.trim(),
+        classification: isMulti ? 'MULTIPLE' : 'SINGLE',
+        group: chits[0]?.groupId || 'I',
+        groupId: chits[0]?.groupId || 'I',
+        chits,
+        holdings: chits,
+        totalHoldings: chits.length,
+      };
+
+      await memberService.updateMember(selectedMember.id, updatedData);
+
       setMembers((prev) =>
-        prev.map((m) => (m.id === selectedMember.id ? { ...m, name: editName, phone: editPhone, address: editAddress, nominee: editNominee } : m))
+        prev.map((m) => (m.id === selectedMember.id ? { ...m, ...updatedData } : m))
       );
       setIsEditModalOpen(false);
-      showToast(`Member profile updated for ${editName}!`);
+      showToast(`✓ Member profile and subscriptions updated for "${editName}"!`);
     } catch (err) {
       showToast(`Failed to update member: ${err.message}`, 'error');
     } finally {
@@ -476,17 +664,27 @@ export default function Members() {
     }
   };
 
-  const handleArchiveMember = async (member) => {
+  const handleOpenDeleteModal = (member) => {
     if (!member) return;
     setActiveActionMenuMemberId(null);
-    if (window.confirm(`Move member "${member.name}" to History?\n\nThis member will be removed from active member lists but their historical records remain preserved in History.`)) {
-      try {
-        await memberService.archiveMember(member.id, member);
-        setMembers((prev) => prev.filter((m) => m.id !== member.id));
-        showToast(`Member "${member.name}" moved to History.`);
-      } catch (err) {
-        showToast(`Failed to archive member: ${err.message}`, 'error');
-      }
+    setDeleteConfirmMember(member);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleConfirmDeleteMember = async () => {
+    if (!deleteConfirmMember) return;
+    setIsDeletingMember(true);
+    try {
+      await memberService.deleteMember(deleteConfirmMember.id, deleteConfirmMember);
+      setMembers((prev) => prev.filter((m) => m.id !== deleteConfirmMember.id));
+      setIsDeleteModalOpen(false);
+      setIsDetailModalOpen(false);
+      showToast(`✓ Member "${deleteConfirmMember.name}" permanently deleted.`);
+      setDeleteConfirmMember(null);
+    } catch (err) {
+      showToast(`Failed to delete member: ${err.message}`, 'error');
+    } finally {
+      setIsDeletingMember(false);
     }
   };
 
@@ -503,6 +701,40 @@ export default function Members() {
     }
   };
 
+  // Multi-Chit Subscription Row Handlers
+  const handleAddSubscriptionRow = () => {
+    const defaultGroup = availableGroups[0] || 'I';
+    setNewChitSubscriptions((prev) => [
+      ...prev,
+      {
+        id: `sub_${Date.now()}_${prev.length}`,
+        chitValue: '100000',
+        groupId: defaultGroup,
+        monthlyAmount: '5000',
+        pending: '0',
+        balance: '0',
+      },
+    ]);
+  };
+
+  const handleRemoveSubscriptionRow = (index) => {
+    if (newChitSubscriptions.length <= 1) return;
+    setNewChitSubscriptions((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSubscriptionChange = (index, field, value) => {
+    setNewChitSubscriptions((prev) => {
+      const updated = [...prev];
+      const current = { ...updated[index], [field]: value };
+      if (field === 'chitValue') {
+        const valNum = Number(value) || 100000;
+        current.monthlyAmount = String(Math.floor(valNum / 20));
+      }
+      updated[index] = current;
+      return updated;
+    });
+  };
+
   const handleAddMemberSubmit = async (e) => {
     e.preventDefault();
     if (!newName.trim() || !newPhone.trim()) {
@@ -510,10 +742,51 @@ export default function Members() {
       return;
     }
 
+    if (!newChitSubscriptions || newChitSubscriptions.length === 0) {
+      showToast('Please add at least one chit subscription.', 'error');
+      return;
+    }
+
+    // Validate each subscription row
+    for (let i = 0; i < newChitSubscriptions.length; i++) {
+      const sub = newChitSubscriptions[i];
+      const val = Number(sub.chitValue);
+      const grp = String(sub.groupId || '').trim();
+      const monthly = Number(sub.monthlyAmount);
+
+      if (isNaN(val) || val <= 0) {
+        showToast(`Chit Subscription #${i + 1}: Please enter a valid chit value.`, 'error');
+        return;
+      }
+      if (!grp) {
+        showToast(`Chit Subscription #${i + 1}: Please select a chit group.`, 'error');
+        return;
+      }
+      if (isNaN(monthly) || monthly <= 0) {
+        showToast(`Chit Subscription #${i + 1}: Please enter a valid monthly amount.`, 'error');
+        return;
+      }
+    }
+
     setIsSavingAdd(true);
     try {
-      const val = Number(newChitValue);
-      const grp = newGroupId;
+      const isMulti = newChitSubscriptions.length > 1;
+      const chits = newChitSubscriptions.map((sub, idx) => {
+        const val = Number(sub.chitValue);
+        const grp = String(sub.groupId).trim().toUpperCase();
+        const monthly = Number(sub.monthlyAmount) || Math.floor(val / 20);
+        return {
+          id: `chit_${Date.now()}_${idx}_${grp}`,
+          name: `₹${(val / 100000).toFixed(0)} Lakh Chit (Group ${grp})`,
+          groupId: grp,
+          totalChitValue: val,
+          amountToPay: monthly,
+          pending: Math.max(Number(sub.pending) || 0, 0),
+          balance: Math.max(Number(sub.balance) || 0, 0),
+          quantity: 1,
+          status: 'ACTIVE',
+        };
+      });
 
       const newMemberObj = {
         name: newName.trim(),
@@ -522,20 +795,12 @@ export default function Members() {
         address: newAddress.trim(),
         nominee: newNominee.trim(),
         status: 'active',
-        classification: 'SINGLE',
-        chits: [
-          {
-            id: `chit_${Date.now()}_${grp}`,
-            name: `₹${(val / 100000).toFixed(0)} Lakh Chit (Group ${grp})`,
-            groupId: grp,
-            totalChitValue: val,
-            amountToPay: Math.floor(val / 20),
-            pending: 0,
-            balance: 0,
-            quantity: 1,
-            status: 'ACTIVE',
-          },
-        ],
+        classification: isMulti ? 'MULTIPLE' : 'SINGLE',
+        group: chits[0]?.groupId || 'I',
+        groupId: chits[0]?.groupId || 'I',
+        chits,
+        holdings: chits,
+        totalHoldings: chits.length,
       };
 
       const added = await memberService.addMember(newMemberObj);
@@ -545,7 +810,10 @@ export default function Members() {
       setNewPhone('');
       setNewAddress('');
       setNewNominee('');
-      showToast(`Member "${added.name}" added successfully!`);
+      setNewChitSubscriptions([
+        { id: `sub_${Date.now()}_0`, chitValue: '100000', groupId: 'I', monthlyAmount: '5000', pending: '0', balance: '0' }
+      ]);
+      showToast(`✓ Member "${added.name}" with ${chits.length} chit${chits.length > 1 ? 's' : ''} added successfully!`, 'success');
     } catch (err) {
       showToast(err.message, 'error');
     } finally {
@@ -1093,14 +1361,12 @@ export default function Members() {
                                 <span>View History Audit</span>
                               </button>
 
-                              <div className="my-1 border-t border-slate-800"></div>
-
                               <button
-                                onClick={() => handleArchiveMember(member)}
-                                className="flex w-full items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-red-500/20 text-red-300 cursor-pointer"
+                                onClick={() => handleOpenDeleteModal(member)}
+                                className="flex w-full items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-red-50 text-red-600 font-bold cursor-pointer transition-colors"
                               >
-                                <Archive className="w-3.5 h-3.5 text-red-400" />
-                                <span>Archive Member</span>
+                                <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                                <span>Delete Member</span>
                               </button>
                             </div>
                           )}
@@ -1210,7 +1476,17 @@ export default function Members() {
               </div>
             </div>
 
-            <div className="flex justify-end pt-3 border-t border-slate-200">
+            <div className="flex justify-between items-center pt-3 border-t border-[#E5E5E1]">
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-xl text-xs font-bold border-red-200 text-red-600 hover:bg-red-50 cursor-pointer"
+                onClick={() => handleOpenDeleteModal(selectedMember)}
+              >
+                <Trash2 className="w-3.5 h-3.5 mr-1" />
+                Delete Member
+              </Button>
+
               <Button variant="secondary" size="sm" className="rounded-xl" onClick={() => setIsDetailModalOpen(false)}>
                 Close Details
               </Button>
@@ -1336,55 +1612,199 @@ export default function Members() {
       )}
 
       {/* ─────────────────────────────────────────────────────────────────────── */}
-      {/* 10. EDIT MEMBER INFO MODAL */}
+      {/* 10. EDIT MEMBER INFO MODAL (SINGLE & MULTI-CHIT WITH INDEPENDENT MONTHLY AMOUNTS) */}
       {/* ─────────────────────────────────────────────────────────────────────── */}
       {isEditModalOpen && selectedMember && (
         <Modal
           isOpen={isEditModalOpen}
           onClose={() => setIsEditModalOpen(false)}
           title={`Edit Member: ${selectedMember.name}`}
-          subtitle="Update member details without changing underlying chit holdings schema."
-          maxWidth="max-w-md"
+          subtitle="Update member details, manage chit subscriptions, and edit monthly amounts independently."
+          maxWidth="max-w-2xl"
         >
-          <form onSubmit={handleSaveEditMember} className="space-y-4 text-xs font-sans">
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Member Name</label>
-              <input
-                type="text"
-                required
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
-              />
+          <form onSubmit={handleSaveEditMember} className="space-y-5 text-xs font-sans">
+            {/* MEMBER PERSONAL DETAILS */}
+            <div className="p-4 bg-[#F7F7F5] border border-[#E5E5E1] rounded-2xl space-y-3">
+              <span className="text-[10px] font-black text-[#2F5D50] uppercase tracking-wider block">
+                1. Member Personal Details
+              </span>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-[#1C1C1A] uppercase tracking-wider mb-1">
+                    Member Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full rounded-xl border border-[#E5E5E1] bg-white px-3.5 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-[#1C1C1A] uppercase tracking-wider mb-1">
+                    Mobile Phone (WhatsApp) *
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    value={editPhone}
+                    onChange={(e) => setEditPhone(e.target.value)}
+                    className="w-full rounded-xl border border-[#E5E5E1] bg-white px-3.5 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50] font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-[#1C1C1A] uppercase tracking-wider mb-1">
+                    Address
+                  </label>
+                  <input
+                    type="text"
+                    value={editAddress}
+                    onChange={(e) => setEditAddress(e.target.value)}
+                    className="w-full rounded-xl border border-[#E5E5E1] bg-white px-3.5 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-[#1C1C1A] uppercase tracking-wider mb-1">
+                    Nominee Name
+                  </label>
+                  <input
+                    type="text"
+                    value={editNominee}
+                    onChange={(e) => setEditNominee(e.target.value)}
+                    className="w-full rounded-xl border border-[#E5E5E1] bg-white px-3.5 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+                  />
+                </div>
+              </div>
             </div>
 
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Mobile Phone</label>
-              <input
-                type="text"
-                required
-                value={editPhone}
-                onChange={(e) => setEditPhone(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
-              />
+            {/* CHIT SUBSCRIPTIONS LIST (DYNAMIC MULTI-CHIT ROWS WITH INDEPENDENT MONTHLY AMOUNTS) */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-black text-[#2F5D50] uppercase tracking-wider block">
+                    2. Chit Subscriptions ({editMemberSubscriptions.length})
+                  </span>
+                  <p className="text-[11px] text-[#6B6B67]">
+                    Adjust group and monthly payment individually for each chit held by this member.
+                  </p>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-xl text-xs font-bold gap-1 border-[#2F5D50] text-[#2F5D50] hover:bg-[#EDF7F0] cursor-pointer"
+                  onClick={handleAddEditSubscriptionRow}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Another Chit</span>
+                </Button>
+              </div>
+
+              <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                {editMemberSubscriptions.map((sub, idx) => (
+                  <div
+                    key={sub.id || idx}
+                    className="p-3.5 bg-white border border-[#E5E5E1] rounded-2xl shadow-xs space-y-3 relative"
+                  >
+                    <div className="flex items-center justify-between border-b border-[#E5E5E1] pb-2">
+                      <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-[#1C1C1A]">
+                        <span className="w-5 h-5 rounded-full bg-[#2F5D50] text-white flex items-center justify-center text-[10px]">
+                          {idx + 1}
+                        </span>
+                        <span>Chit Subscription {idx + 1}</span>
+                      </span>
+
+                      {editMemberSubscriptions.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveEditSubscriptionRow(idx)}
+                          className="text-red-500 hover:text-red-700 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                          title="Remove Subscription"
+                        >
+                          <Trash className="w-3.5 h-3.5" />
+                          <span>Remove</span>
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider mb-1">
+                          Chit Value *
+                        </label>
+                        <select
+                          value={sub.chitValue}
+                          onChange={(e) => handleEditSubscriptionChange(idx, 'chitValue', e.target.value)}
+                          className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none cursor-pointer"
+                        >
+                          <option value="100000">₹1 Lakh Chit</option>
+                          <option value="200000">₹2 Lakh Chit</option>
+                          <option value="500000">₹5 Lakh Chit</option>
+                          <option value="1000000">₹10 Lakh Chit</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider mb-1">
+                          Chit Group *
+                        </label>
+                        <select
+                          value={sub.groupId}
+                          onChange={(e) => handleEditSubscriptionChange(idx, 'groupId', e.target.value)}
+                          className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none cursor-pointer"
+                        >
+                          {groupedAvailableGroups.map((cat) => (
+                            <optgroup key={cat.val} label={`── ${cat.label} ──`}>
+                              {cat.groups.map((g) => (
+                                <option key={g} value={g}>
+                                  Group {g}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider mb-1">
+                          Monthly Amount (₹) *
+                        </label>
+                        <input
+                          type="number"
+                          required
+                          min="100"
+                          step="100"
+                          value={sub.monthlyAmount}
+                          onChange={(e) => handleEditSubscriptionChange(idx, 'monthlyAmount', e.target.value)}
+                          className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none font-sans"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Address</label>
-              <input
-                type="text"
-                value={editAddress}
-                onChange={(e) => setEditAddress(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
-              />
-            </div>
-
-            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+            <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E5E1]">
               <Button type="button" variant="secondary" size="sm" onClick={() => setIsEditModalOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" variant="primary" size="sm" disabled={isSavingEdit}>
-                {isSavingEdit ? 'Saving...' : 'Save Member Info'}
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                className="bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold"
+                disabled={isSavingEdit}
+              >
+                {isSavingEdit ? 'Saving...' : 'Save Member & Subscriptions'}
               </Button>
             </div>
           </form>
@@ -1392,80 +1812,273 @@ export default function Members() {
       )}
 
       {/* ─────────────────────────────────────────────────────────────────────── */}
-      {/* 11. ADD MEMBER MODAL */}
+      {/* 11. ADD MEMBER MODAL (COMPLETE MULTI-CHIT SUPPORT) */}
       {/* ─────────────────────────────────────────────────────────────────────── */}
       {isAddModalOpen && (
         <Modal
           isOpen={isAddModalOpen}
           onClose={() => setIsAddModalOpen(false)}
           title="Add New Member"
-          subtitle="Enroll a new member into an active chit group."
-          maxWidth="max-w-md"
+          subtitle="Enroll a member with Single or Multiple Chit subscriptions."
+          maxWidth="max-w-2xl"
         >
-          <form onSubmit={handleAddMemberSubmit} className="space-y-4 text-xs font-sans">
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Full Name</label>
-              <input
-                type="text"
-                required
-                placeholder="e.g. Ramesh Kumar"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
-              />
-            </div>
+          <form onSubmit={handleAddMemberSubmit} className="space-y-5 text-xs font-sans">
+            {/* MEMBER PERSONAL DETAILS */}
+            <div className="p-4 bg-[#F7F7F5] border border-[#E5E5E1] rounded-2xl space-y-3">
+              <span className="text-[10px] font-black text-[#2F5D50] uppercase tracking-wider block">
+                1. Member Personal Details
+              </span>
 
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Phone Number</label>
-              <input
-                type="text"
-                required
-                placeholder="e.g. 9849012345"
-                value={newPhone}
-                onChange={(e) => setNewPhone(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 font-mono"
-              />
-            </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-[#1C1C1A] uppercase tracking-wider mb-1">
+                    Full Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Ramesh Kumar"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    className="w-full rounded-xl border border-[#E5E5E1] bg-white px-3.5 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+                  />
+                </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Chit Value</label>
-                <select
-                  value={newChitValue}
-                  onChange={(e) => setNewChitValue(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                >
-                  <option value="100000">₹1 Lakh</option>
-                  <option value="200000">₹2 Lakh</option>
-                  <option value="500000">₹5 Lakh</option>
-                </select>
+                <div>
+                  <label className="block text-[11px] font-bold text-[#1C1C1A] uppercase tracking-wider mb-1">
+                    Mobile Phone (WhatsApp) *
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    placeholder="e.g. 9848012345"
+                    value={newPhone}
+                    onChange={(e) => setNewPhone(e.target.value)}
+                    className="w-full rounded-xl border border-[#E5E5E1] bg-white px-3.5 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50] font-mono"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">Group ID</label>
-                <select
-                  value={newGroupId}
-                  onChange={(e) => setNewGroupId(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                >
-                  {['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'A', 'B', 'C', 'D', 'E', 'F'].map((g) => (
-                    <option key={g} value={g}>
-                      Group {g}
-                    </option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-[#1C1C1A] uppercase tracking-wider mb-1">
+                    Address
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Hyderabad / Local area"
+                    value={newAddress}
+                    onChange={(e) => setNewAddress(e.target.value)}
+                    className="w-full rounded-xl border border-[#E5E5E1] bg-white px-3.5 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-[#1C1C1A] uppercase tracking-wider mb-1">
+                    Nominee Name
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Nominee / Relation"
+                    value={newNominee}
+                    onChange={(e) => setNewNominee(e.target.value)}
+                    className="w-full rounded-xl border border-[#E5E5E1] bg-white px-3.5 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+                  />
+                </div>
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+            {/* CHIT SUBSCRIPTIONS LIST (DYNAMIC MULTI-CHIT ROWS) */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-black text-[#2F5D50] uppercase tracking-wider block">
+                    2. Chit Subscriptions ({newChitSubscriptions.length})
+                  </span>
+                  <p className="text-[11px] text-[#6B6B67]">
+                    Configure monthly payment and group details for every chit held by this member.
+                  </p>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-xl text-xs font-bold gap-1 border-[#2F5D50] text-[#2F5D50] hover:bg-[#EDF7F0] cursor-pointer"
+                  onClick={handleAddSubscriptionRow}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Another Chit</span>
+                </Button>
+              </div>
+
+              <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                {newChitSubscriptions.map((sub, idx) => (
+                  <div
+                    key={sub.id || idx}
+                    className="p-3.5 bg-white border border-[#E5E5E1] rounded-2xl shadow-xs space-y-3 relative"
+                  >
+                    <div className="flex items-center justify-between border-b border-[#E5E5E1] pb-2">
+                      <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-[#1C1C1A]">
+                        <span className="w-5 h-5 rounded-full bg-[#2F5D50] text-white flex items-center justify-center text-[10px]">
+                          {idx + 1}
+                        </span>
+                        <span>Chit Subscription {idx + 1}</span>
+                      </span>
+
+                      {newChitSubscriptions.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSubscriptionRow(idx)}
+                          className="text-red-500 hover:text-red-700 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                          title="Remove Subscription"
+                        >
+                          <Trash className="w-3.5 h-3.5" />
+                          <span>Remove</span>
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider mb-1">
+                          Chit Value *
+                        </label>
+                        <select
+                          value={sub.chitValue}
+                          onChange={(e) => handleSubscriptionChange(idx, 'chitValue', e.target.value)}
+                          className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none cursor-pointer"
+                        >
+                          <option value="100000">₹1 Lakh Chit</option>
+                          <option value="200000">₹2 Lakh Chit</option>
+                          <option value="500000">₹5 Lakh Chit</option>
+                          <option value="1000000">₹10 Lakh Chit</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider mb-1">
+                          Chit Group *
+                        </label>
+                        <select
+                          value={sub.groupId}
+                          onChange={(e) => handleSubscriptionChange(idx, 'groupId', e.target.value)}
+                          className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none cursor-pointer"
+                        >
+                          {groupedAvailableGroups.map((cat) => (
+                            <optgroup key={cat.val} label={`── ${cat.label} ──`}>
+                              {cat.groups.map((g) => (
+                                <option key={g} value={g}>
+                                  Group {g}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider mb-1">
+                          Monthly Amount (₹) *
+                        </label>
+                        <input
+                          type="number"
+                          required
+                          min="100"
+                          step="100"
+                          value={sub.monthlyAmount}
+                          onChange={(e) => handleSubscriptionChange(idx, 'monthlyAmount', e.target.value)}
+                          className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none font-sans"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E5E1]">
               <Button type="button" variant="secondary" size="sm" onClick={() => setIsAddModalOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" variant="primary" size="sm" disabled={isSavingAdd}>
-                {isSavingAdd ? 'Saving...' : 'Add Member'}
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                className="bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold"
+                disabled={isSavingAdd}
+              >
+                {isSavingAdd ? 'Saving Member...' : `Save Member (${newChitSubscriptions.length} Chit${newChitSubscriptions.length > 1 ? 's' : ''})`}
               </Button>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      {/* 12. PERMANENT DELETE CONFIRMATION MODAL */}
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      {isDeleteModalOpen && deleteConfirmMember && (
+        <Modal
+          isOpen={isDeleteModalOpen}
+          onClose={() => setIsDeleteModalOpen(false)}
+          title="Delete Member Permanently"
+          maxWidth="max-w-md"
+        >
+          <div className="space-y-4 text-xs font-sans">
+            <div className="p-4 bg-red-50 border border-red-200 rounded-2xl space-y-2">
+              <div className="flex items-center gap-2 text-red-700 font-black text-sm">
+                <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
+                <span>Permanent Action Warning</span>
+              </div>
+              <p className="text-red-700 text-xs leading-relaxed">
+                Are you sure you want to permanently delete member <strong>"{deleteConfirmMember.name}"</strong>?
+              </p>
+              <p className="text-red-600 text-[11px] font-semibold">
+                ⚠️ This action cannot be undone. The member will be removed permanently from the active directory. Historical financial transaction logs remain safe in the ledger for accounting consistency.
+              </p>
+            </div>
+
+            <div className="p-3 bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl space-y-1.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-[#6B6B67]">Member Name:</span>
+                <span className="font-bold text-[#1C1C1A]">{deleteConfirmMember.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#6B6B67]">Phone:</span>
+                <span className="font-mono font-bold text-[#1C1C1A]">{deleteConfirmMember.phone}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#6B6B67]">Chit Subscriptions:</span>
+                <span className="font-bold text-[#2F5D50]">
+                  {(deleteConfirmMember.chits || []).length} Chit(s)
+                </span>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E5E1]">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setIsDeleteModalOpen(false)}
+                disabled={isDeletingMember}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                className="bg-red-600 hover:bg-red-700 text-white font-bold gap-1.5"
+                onClick={handleConfirmDeleteMember}
+                disabled={isDeletingMember}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isDeletingMember ? 'Deleting...' : 'Confirm Permanent Deletion'}</span>
+              </Button>
+            </div>
+          </div>
         </Modal>
       )}
 

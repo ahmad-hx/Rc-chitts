@@ -4,16 +4,18 @@ import Button from './Button';
 import { MessageSquare, Send, CheckCircle2, CreditCard, Copy } from 'lucide-react';
 import { getBilingualWhatsAppMessage } from '../services/messageFormatter';
 import { generateUpiPayLink } from '../services/upiService';
+import { useBillingMonth } from '../context/BillingMonthContext';
 
 export default function MemberMessageModal({ isOpen, onClose, member, onSent, groupPaymentSettings = {} }) {
   const [copied, setCopied] = useState(false);
+  const { selectedMonth } = useBillingMonth();
 
   if (!member) return null;
 
   const upiInfo = generateUpiPayLink({ member, groupPaymentSettings });
   const activeChits = (member.chits || []).filter((c) => (c.status ? c.status === 'ACTIVE' : true));
 
-  const whatsappMessage = getBilingualWhatsAppMessage(member, groupPaymentSettings);
+  const whatsappMessage = getBilingualWhatsAppMessage(member, groupPaymentSettings, selectedMonth);
 
   const handleLaunchUpiIntent = () => {
     if (!upiInfo.success || !upiInfo.upiUrl) {

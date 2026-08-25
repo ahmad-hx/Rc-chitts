@@ -122,6 +122,39 @@ export default function PendingPayments() {
     return Array.from(groupsSet).filter(Boolean).sort(compareGroupIds);
   }, [chits, members]);
 
+  // Organize groups hierarchically by Chit Amount (1L -> 2L -> 5L -> 10L)
+  const groupedAvailableGroups = useMemo(() => {
+    const groupValueMap = new Map();
+    (chits || []).forEach((c) => {
+      const gId = String(c.groupId || c.group || '').trim();
+      const val = Number(c.totalChitValue || c.totalValue || c.chitValue || 100000);
+      if (gId) groupValueMap.set(gId, val);
+    });
+    (members || []).forEach((m) => {
+      (m.chits || []).forEach((c) => {
+        const gId = String(c.groupId || c.group || '').trim();
+        const val = Number(c.totalChitValue || c.totalValue || c.chitValue || 100000);
+        if (gId && !groupValueMap.has(gId)) {
+          groupValueMap.set(gId, val);
+        }
+      });
+    });
+
+    const categoryMap = new Map();
+    (availableGroups || []).forEach((gId) => {
+      const val = groupValueMap.get(gId) || 100000;
+      const lakhStr = val >= 100000 ? `${(val / 100000).toFixed(0)} Lakh Chit Groups` : `₹${val.toLocaleString('en-IN')} Groups`;
+      if (!categoryMap.has(val)) {
+        categoryMap.set(val, { val, label: lakhStr, groups: [] });
+      }
+      categoryMap.get(val).groups.push(gId);
+    });
+
+    const sortedCategories = Array.from(categoryMap.values()).sort((a, b) => a.val - b.val);
+    sortedCategories.forEach((cat) => cat.groups.sort(compareGroupIds));
+    return sortedCategories;
+  }, [availableGroups, chits, members]);
+
   // Calculate Member Payment Status Rows for the Selected Month & Group Filter
   // Strictly derived from actual payment history / transactions for selectedMonth per individual chit
   const memberPaymentRows = useMemo(() => {
@@ -609,13 +642,17 @@ export default function PendingPayments() {
             <select
               value={selectedGroupId}
               onChange={(e) => setSelectedGroupId(e.target.value)}
-              className="w-full px-3 py-2 text-xs font-bold bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+              className="w-full px-3 py-2 text-xs font-bold bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50] cursor-pointer"
             >
               <option value="all">All Chit Groups</option>
-              {availableGroups.map((g) => (
-                <option key={g} value={g}>
-                  Group {g}
-                </option>
+              {groupedAvailableGroups.map((cat) => (
+                <optgroup key={cat.val} label={`── ${cat.label} ──`}>
+                  {cat.groups.map((g) => (
+                    <option key={g} value={g}>
+                      Group {g}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </div>
