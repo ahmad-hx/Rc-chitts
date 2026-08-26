@@ -5,7 +5,7 @@ import Button from '../components/Button';
 import Toast from '../components/Toast';
 import CreateChitModal from '../components/CreateChitModal';
 import Modal from '../components/Modal';
-import { Calendar, Users, ArrowRight, Plus, Layers, Gavel, CheckCircle2, Archive, Edit, MoreVertical, Clock } from 'lucide-react';
+import { Calendar, Users, ArrowRight, Plus, Layers, Gavel, CheckCircle2, Trash2, UserPlus, AlertTriangle, Edit, MoreVertical, Clock } from 'lucide-react';
 import { chitService, memberService, groupPaymentSettingsService } from '../services/dbService';
 import { useNavigate } from 'react-router-dom';
 import { useBillingMonth } from '../context/BillingMonthContext';
@@ -73,6 +73,10 @@ export default function ChitsPlaceholder() {
   const [inputStartingMonth, setInputStartingMonth] = useState('March 2026');
   const [isSavingStartingMonth, setIsSavingStartingMonth] = useState(false);
 
+  // Delete group modal state
+  const [deletingGroup, setDeletingGroup] = useState(null);
+  const [isDeletingGroup, setIsDeletingGroup] = useState(false);
+
   const [toast, setToast] = useState(null);
 
   const showToast = (message, type = 'success') => {
@@ -135,9 +139,18 @@ export default function ChitsPlaceholder() {
     }
   };
 
-  const getEnrolledMembers = (groupId) => {
+  const getEnrolledMembers = (groupId, chitValue = null) => {
+    const targetGrp = String(groupId || '').trim().toUpperCase();
+    const targetVal = chitValue ? Number(chitValue) : null;
     return members.filter((m) =>
-      (m.chits || []).some((c) => c.groupId === groupId || (c.name && c.name.includes(groupId)))
+      (m.chits || []).some((c) => {
+        const cGrp = String(c?.groupId || c?.group || '').trim().toUpperCase();
+        const cVal = Number(c?.totalChitValue || c?.totalValue || c?.chitValue || 100000);
+        if (targetVal) {
+          return cGrp === targetGrp && cVal === targetVal;
+        }
+        return cGrp === targetGrp || (c.name && c.name.includes(groupId));
+      })
     );
   };
 
@@ -235,20 +248,38 @@ export default function ChitsPlaceholder() {
     }
   };
 
-  const handleArchiveGroup = async (group) => {
+  const handleOpenDeleteModal = (group) => {
     setActiveMenuId(null);
-    if (!group) return;
-    const val = group.totalChitValue || 100000;
-    const grp = group.groupId || 'I';
+    setDeletingGroup(group);
+  };
 
-    if (window.confirm(`Archive Group ${grp} (₹${(val / 100000).toFixed(0)} Lakh)?\n\nAll historical payment records will remain safely preserved in History.`)) {
-      try {
-        await chitService.archiveGroup(grp, val, group);
-        setChits((prev) => prev.filter((c) => c.id !== group.id));
-        showToast(`Group ${grp} archived and preserved in History.`);
-      } catch (err) {
-        showToast(`Failed to archive group: ${err.message}`, 'error');
-      }
+  const handleConfirmDeleteGroup = async () => {
+    if (!deletingGroup) return;
+    setIsDeletingGroup(true);
+    try {
+      await chitService.deleteChitGroup(
+        deletingGroup.groupId,
+        deletingGroup.totalChitValue,
+        deletingGroup.id
+      );
+
+      setChits((prev) =>
+        prev.filter(
+          (c) =>
+            c.id !== deletingGroup.id &&
+            !(
+              String(c.groupId).toUpperCase() === String(deletingGroup.groupId).toUpperCase() &&
+              Number(c.totalChitValue || 100000) === Number(deletingGroup.totalChitValue || 100000)
+            )
+        )
+      );
+
+      showToast('Chit group deleted successfully.', 'success');
+      setDeletingGroup(null);
+    } catch (err) {
+      showToast(`Failed to delete group: ${err.message}`, 'error');
+    } finally {
+      setIsDeletingGroup(false);
     }
   };
 
@@ -375,23 +406,38 @@ export default function ChitsPlaceholder() {
                   </div>
                 </div>
 
-                {/* BOTTOM ROW ACTION BAR: [ Edit Monthly ] [ ⋮ ] [ View Members → ] */}
-                <div className="flex items-center justify-between gap-3 text-xs pt-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5 rounded-xl border-[#E5E5E1] text-[#1C1C1A] hover:bg-[#F7F7F5] font-bold"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleOpenEditMonthly(group);
-                    }}
-                  >
-                    <Edit className="w-3.5 h-3.5 text-[#6B6B67]" />
-                    Edit Monthly
-                  </Button>
+                {/* BOTTOM ROW ACTION BAR: [ Edit Monthly ] [ + Add Member ] [ ⋮ ] [ View Members → ] */}
+                <div className="flex flex-wrap items-center justify-between gap-2.5 text-xs pt-1">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 rounded-xl border-[#E5E5E1] text-[#1C1C1A] hover:bg-[#F7F7F5] font-bold"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenEditMonthly(group);
+                      }}
+                    >
+                      <Edit className="w-3.5 h-3.5 text-[#6B6B67]" />
+                      Edit Monthly
+                    </Button>
 
-                  <div className="flex items-center gap-2.5">
-                    {/* THREE-DOT OVERFLOW MENU (Section 5) */}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 rounded-xl border-[#2F5D50]/30 bg-[#EDF7F0] text-[#2F5D50] hover:bg-[#2F5D50] hover:text-white font-bold cursor-pointer transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/members?group=${group.groupId}&category=${group.totalChitValue}&action=add`);
+                      }}
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      <span>+ Add Member</span>
+                    </Button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {/* THREE-DOT OVERFLOW MENU */}
                     <div className="relative" onClick={(e) => e.stopPropagation()}>
                       <button
                         type="button"
@@ -427,11 +473,11 @@ export default function ChitsPlaceholder() {
 
                           <button
                             type="button"
-                            onClick={() => handleArchiveGroup(group)}
-                            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[#A33A3A] hover:bg-[#FCEEEE] font-bold cursor-pointer"
+                            onClick={() => handleOpenDeleteModal(group)}
+                            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[#A33A3A] hover:bg-[#FCEEEE] font-bold cursor-pointer transition-colors"
                           >
-                            <Archive className="w-3.5 h-3.5 text-[#A33A3A]" />
-                            Archive Group
+                            <Trash2 className="w-3.5 h-3.5 text-[#A33A3A]" />
+                            Delete Group
                           </button>
                         </div>
                       )}
@@ -442,7 +488,7 @@ export default function ChitsPlaceholder() {
                       variant="primary"
                       size="sm"
                       className="gap-1.5 rounded-xl bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold cursor-pointer"
-                      onClick={() => navigate(`/members?group=${group.groupId}`)}
+                      onClick={() => navigate(`/members?group=${group.groupId}&category=${group.totalChitValue}`)}
                     >
                       <span>View Members</span>
                       <ArrowRight className="w-3.5 h-3.5" />
@@ -564,6 +610,128 @@ export default function ChitsPlaceholder() {
           </form>
         </Modal>
       )}
+
+      {/* SAFE DELETE GROUP MODAL */}
+      {deletingGroup && (() => {
+        const assignedMembers = getEnrolledMembers(deletingGroup.groupId, deletingGroup.totalChitValue);
+        const hasMembers = assignedMembers.length > 0;
+
+        return (
+          <Modal
+            isOpen={!!deletingGroup}
+            onClose={() => !isDeletingGroup && setDeletingGroup(null)}
+            title={hasMembers ? 'Cannot Delete Chit Group' : 'Delete Chit Group?'}
+            subtitle={
+              hasMembers
+                ? `Group ${deletingGroup.groupId} (₹${(deletingGroup.totalChitValue / 100000).toFixed(0)} Lakh) currently has ${assignedMembers.length} active member(s) assigned.`
+                : `Permanently delete ${deletingGroup.name} (Group ${deletingGroup.groupId}).`
+            }
+            maxWidth="max-w-md"
+          >
+            {hasMembers ? (
+              <div className="space-y-4 font-sans text-xs">
+                <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 text-amber-900">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-bold">
+                      This group cannot be deleted because members are currently assigned to it.
+                    </p>
+                    <p className="text-[11px] text-amber-800">
+                      You must remove or reassign all <strong>{assignedMembers.length} member(s)</strong> from this group before it can be deleted.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-[11px] font-bold text-[#6B6B67] uppercase tracking-wider">
+                    Assigned Members ({assignedMembers.length})
+                  </p>
+                  <div className="max-h-40 overflow-y-auto space-y-1.5 border border-[#E5E5E1] rounded-xl p-2 bg-[#F7F7F5]">
+                    {assignedMembers.slice(0, 8).map((m) => (
+                      <div key={m.id} className="flex items-center justify-between text-xs p-1.5 bg-white rounded-lg border border-[#E5E5E1]">
+                        <span className="font-bold text-[#1C1C1A] truncate">{m.name}</span>
+                        <Badge variant={m.classification === 'MULTIPLE' ? 'purple' : 'info'} className="text-[9px]">
+                          {m.classification === 'MULTIPLE' ? 'Multi-Chit' : 'Single Chit'}
+                        </Badge>
+                      </div>
+                    ))}
+                    {assignedMembers.length > 8 && (
+                      <p className="text-[10px] text-center text-[#6B6B67] pt-1">
+                        + {assignedMembers.length - 8} more members
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E5E1]">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setDeletingGroup(null)}
+                    className="rounded-xl border-[#E5E5E1]"
+                  >
+                    Close
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => {
+                      const grp = deletingGroup;
+                      setDeletingGroup(null);
+                      navigate(`/members?group=${grp.groupId}&category=${grp.totalChitValue}`);
+                    }}
+                    className="rounded-xl bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold"
+                  >
+                    View Members
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4 font-sans text-xs">
+                <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3 text-red-900">
+                  <Trash2 className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-bold">
+                      Are you sure you want to permanently delete Group {deletingGroup.groupId}?
+                    </p>
+                    <p className="text-[11px] text-red-800">
+                      This action cannot be undone. Historical financial records and past ledger history will remain preserved in History.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-[#F7F7F5] rounded-xl border border-[#E5E5E1] space-y-1">
+                  <p className="font-bold text-[#1C1C1A]">{deletingGroup.name}</p>
+                  <p className="text-[11px] text-[#6B6B67]">
+                    Total Chit Value: ₹{(deletingGroup.totalChitValue || 100000).toLocaleString('en-IN')} • Starting Month: {deletingGroup.startingMonth || 'March 2026'}
+                  </p>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E5E1]">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={isDeletingGroup}
+                    onClick={() => setDeletingGroup(null)}
+                    className="rounded-xl border-[#E5E5E1]"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    disabled={isDeletingGroup}
+                    onClick={handleConfirmDeleteGroup}
+                    className="rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold cursor-pointer"
+                  >
+                    {isDeletingGroup ? 'Deleting...' : 'Delete Group'}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </Modal>
+        );
+      })()}
 
       {/* VIEW LEDGER MODAL */}
       {selectedChitLedger && (

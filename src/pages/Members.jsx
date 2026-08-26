@@ -4,6 +4,7 @@ import {
   Search,
   Filter,
   Plus,
+  UserPlus,
   Phone,
   Layers,
   X,
@@ -16,7 +17,6 @@ import {
   Users,
   IndianRupee,
   MoreVertical,
-  Archive,
   RefreshCw,
   CheckCircle2,
   Clock,
@@ -236,10 +236,22 @@ export default function Members() {
     ];
   }, [availableGroups, chits, members]);
 
-  // Handle URL Search Params (e.g. ?action=add or ?filter=due)
+  // Handle URL Search Params (e.g. ?action=add, ?group=Z, ?category=100000)
   useEffect(() => {
-    if (searchParams.get('action') === 'add') {
-      setIsAddModalOpen(true);
+    const urlGroup = searchParams.get('group');
+    const urlCategory = searchParams.get('category') || searchParams.get('value');
+    const urlAction = searchParams.get('action');
+
+    if (urlGroup) {
+      setSelectedGroupId(urlGroup);
+    }
+    if (urlCategory) {
+      setActiveCategory(urlCategory);
+    }
+    if (urlAction === 'add') {
+      const targetVal = urlCategory || '100000';
+      const targetGrp = urlGroup || 'I';
+      handleOpenAddMemberForGroup(targetVal, targetGrp);
     }
     if (searchParams.get('filter') === 'due') {
       setFilterPayment('due');
@@ -732,29 +744,39 @@ export default function Members() {
     }
   };
 
-  const handleArchiveGroup = async (groupId, chitValue) => {
-    if (!groupId) return;
-    if (window.confirm(`Archive Group ${groupId} (₹${(chitValue / 100000).toFixed(0)} Lakh)?\n\nAll members and payment records remain preserved in History.`)) {
-      try {
-        await chitService.archiveGroup(groupId, chitValue);
-        showToast(`Group ${groupId} archived and preserved in History.`);
-        loadData();
-      } catch (err) {
-        showToast(`Failed to archive group: ${err.message}`, 'error');
-      }
-    }
+  const handleOpenAddMemberForGroup = (chitValue, groupId) => {
+    const val = String(chitValue || (activeCategory !== 'multiple' ? activeCategory : '100000'));
+    const grp = String(groupId || selectedGroupId || availableGroups[0] || 'I');
+    const monthly = String(getGroupMonthlyBaseAmount(val, grp));
+    setNewName('');
+    setNewPhone('');
+    setNewAddress('');
+    setNewNominee('');
+    setNewChitSubscriptions([
+      {
+        id: `sub_${Date.now()}_0`,
+        chitValue: val,
+        groupId: grp,
+        monthlyAmount: monthly,
+        pending: '0',
+        balance: '0',
+      },
+    ]);
+    setIsAddModalOpen(true);
   };
 
   // Multi-Chit Subscription Row Handlers
   const handleAddSubscriptionRow = () => {
+    const defaultVal = String(activeCategory !== 'multiple' ? activeCategory : '100000');
     const defaultGroup = availableGroups[0] || 'I';
+    const defaultMonthly = String(getGroupMonthlyBaseAmount(defaultVal, defaultGroup));
     setNewChitSubscriptions((prev) => [
       ...prev,
       {
         id: `sub_${Date.now()}_${prev.length}`,
-        chitValue: '100000',
+        chitValue: defaultVal,
         groupId: defaultGroup,
-        monthlyAmount: '5000',
+        monthlyAmount: defaultMonthly,
         pending: '0',
         balance: '0',
       },
@@ -772,7 +794,10 @@ export default function Members() {
       const current = { ...updated[index], [field]: value };
       if (field === 'chitValue') {
         const valNum = Number(value) || 100000;
-        current.monthlyAmount = String(Math.floor(valNum / 20));
+        current.monthlyAmount = String(getGroupMonthlyBaseAmount(valNum, current.groupId));
+      }
+      if (field === 'groupId') {
+        current.monthlyAmount = String(getGroupMonthlyBaseAmount(current.chitValue, value));
       }
       updated[index] = current;
       return updated;
@@ -1170,21 +1195,12 @@ export default function Members() {
                       Edit Monthly
                     </button>
 
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleArchiveGroup(group.groupId, group.chitValue)}
-                        className="text-[11px] font-bold text-[#C53030] hover:bg-[#FCEEEE] border border-[#F8B4B4] bg-[#FCEEEE] px-3 py-1.5 rounded-xl cursor-pointer transition-colors"
-                      >
-                        Archive
-                      </button>
-
-                      <button
-                        onClick={() => setSelectedGroupId(group.groupId)}
-                        className="text-[11px] font-black text-white bg-[#2F5D50] hover:bg-[#24493F] px-3.5 py-1.5 rounded-xl cursor-pointer flex items-center gap-1 shadow-xs"
-                      >
-                        <span>View Members</span> <ChevronRight className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => setSelectedGroupId(group.groupId)}
+                      className="text-[11px] font-black text-white bg-[#2F5D50] hover:bg-[#24493F] px-3.5 py-1.5 rounded-xl cursor-pointer flex items-center gap-1 shadow-xs"
+                    >
+                      <span>View Members</span> <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
               ))}
@@ -1197,11 +1213,14 @@ export default function Members() {
       {/* 5. SELECTED GROUP HEADER BAR (IF INSIDE SPECIFIC GROUP) */}
       {/* ─────────────────────────────────────────────────────────────────────── */}
       {selectedGroupId && activeCategory !== 'multiple' && (
-        <div className="flex items-center justify-between bg-[#EDF7F0] border border-[#2F5D50]/30 rounded-2xl p-5 text-xs shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#EDF7F0] border border-[#2F5D50]/30 rounded-2xl p-5 text-xs shadow-xs">
           <div className="flex items-center gap-4">
             <button
-              onClick={() => setSelectedGroupId(null)}
-              className="flex items-center gap-1.5 font-bold text-[#2F5D50] hover:bg-[#2F5D50]/15 bg-white border border-[#2F5D50]/30 px-4 py-2 rounded-xl cursor-pointer shadow-xs"
+              onClick={() => {
+                setSelectedGroupId(null);
+                navigate('/members');
+              }}
+              className="flex items-center gap-1.5 font-bold text-[#2F5D50] hover:bg-[#2F5D50]/15 bg-white border border-[#2F5D50]/30 px-3.5 py-2 rounded-xl cursor-pointer shadow-xs"
             >
               <ArrowLeft className="w-4 h-4" /> Back to Group Cards
             </button>
@@ -1210,17 +1229,29 @@ export default function Members() {
                 ₹{(Number(activeCategory) / 100000).toFixed(0)} Lakh — Group {selectedGroupId}
               </h2>
               <p className="text-[11px] font-semibold text-[#6B6B67]">
-                Displaying members in Group {selectedGroupId}. Monthly Installment: ₹{getGroupMonthlyBaseAmount(activeCategory, selectedGroupId).toLocaleString('en-IN')}.
+                {filteredMembersList.length} Members • Monthly Installment: ₹{getGroupMonthlyBaseAmount(activeCategory, selectedGroupId).toLocaleString('en-IN')}
               </p>
             </div>
           </div>
 
-          <button
-            onClick={() => handleOpenEditMonthlyAmount({ chitValue: Number(activeCategory), groupId: selectedGroupId })}
-            className="font-bold text-[#2F5D50] bg-white border border-[#2F5D50]/30 px-4 py-2 rounded-xl hover:bg-[#F7F7F5] cursor-pointer shrink-0"
-          >
-            Edit Monthly Payment
-          </button>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              onClick={() => handleOpenEditMonthlyAmount({ chitValue: Number(activeCategory), groupId: selectedGroupId })}
+              className="font-bold text-[#2F5D50] bg-white border border-[#2F5D50]/30 px-3.5 py-2 rounded-xl hover:bg-[#F7F7F5] cursor-pointer shadow-2xs text-xs"
+            >
+              Edit Monthly Payment
+            </button>
+
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => handleOpenAddMemberForGroup(activeCategory, selectedGroupId)}
+              className="font-bold text-white bg-[#2F5D50] hover:bg-[#24493F] px-4 py-2 rounded-xl shadow-xs text-xs cursor-pointer gap-1.5"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>+ Add Member</span>
+            </Button>
+          </div>
         </div>
       )}
 

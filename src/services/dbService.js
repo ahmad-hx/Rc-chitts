@@ -628,29 +628,33 @@ export const chitService = {
     }
   },
 
-  async archiveGroup(groupId, chitValue = 100000, groupData = null) {
+  async deleteChitGroup(groupId, chitValue = 100000, chitId = null) {
     await ensureAuthReady();
     try {
-      const docId = `group_${groupId}_${chitValue}`;
+      const gId = String(groupId).trim();
+      const val = Number(chitValue || 100000);
+      const docId = chitId || `group_${gId}_${val}`;
       const docRef = doc(db, 'chits', docId);
-      await setDoc(docRef, {
-        status: 'ARCHIVED',
-        archivedAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
+
+      await deleteDoc(docRef);
+
+      // Clean up group payment settings document if present
+      try {
+        const settingsDocRef = doc(db, 'groupPaymentSettings', `${val}_${gId}`);
+        await deleteDoc(settingsDocRef);
+      } catch (_) {}
 
       // Log event into History collection
       try {
         await historyService.logHistoryEvent({
           category: 'Group',
-          action: 'GROUP_ARCHIVED',
-          title: `Chit Group Archived: ₹${(chitValue / 100000).toFixed(0)} Lakh Group ${groupId}`,
-          details: `Chit group ₹${(chitValue / 100000).toFixed(0)} Lakh Group ${groupId} was archived and moved to History.`,
+          action: 'GROUP_DELETED',
+          title: `Chit Group Deleted: ₹${(val / 100000).toFixed(0)} Lakh Group ${gId}`,
+          details: `Chit group ₹${(val / 100000).toFixed(0)} Lakh Group ${gId} was deleted. Historical financial transaction records remain preserved.`,
           entityId: docId,
           entityType: 'GROUP',
-          groupId: groupId,
-          chitValue: chitValue,
-          previousData: groupData,
+          groupId: gId,
+          chitValue: val,
         });
       } catch (logErr) {
         console.warn('History logging notice:', logErr?.message);
@@ -658,8 +662,8 @@ export const chitService = {
 
       return true;
     } catch (err) {
-      console.error('Firestore archiveGroup error:', err.message);
-      throw new Error('Unable to archive chit group in Firebase.');
+      console.error('Firestore deleteChitGroup error:', err.message);
+      throw new Error(`Unable to delete chit group in Firebase: ${err.message}`);
     }
   },
 };
