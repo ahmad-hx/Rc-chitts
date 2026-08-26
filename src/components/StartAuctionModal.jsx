@@ -123,6 +123,8 @@ export default function StartAuctionModal({ isOpen, onClose, onAuctionComplete, 
             <input
               type="number"
               required
+              min="0"
+              step="1"
               placeholder="18000"
               value={bidAmount}
               onChange={(e) => {

@@ -40,6 +40,7 @@ import {
   generatePersonalizedMessage,
   createMessageHistoryDoc,
 } from '../services/messagingService';
+import { getEffectiveMonthlyAmount } from '../utils/amountUtils';
 
 function compareGroupIds(groupIdA = '', groupIdB = '') {
   const cleanA = String(groupIdA).trim().toUpperCase();
@@ -195,13 +196,8 @@ export default function PendingPayments() {
 
         const rowKey = `${m.id}_${gId}`;
         const chitVal = Number(c.totalChitValue || 100000);
-        const settingKey = `${chitVal}_${gId}`;
 
-        const reqChitAmount = Number(
-          groupPaymentSettings[settingKey] ||
-          c.amountToPay ||
-          Math.floor(chitVal / 20)
-        );
+        const reqChitAmount = getEffectiveMonthlyAmount(m, c, groupPaymentSettings);
 
         // ─────────────────────────────────────────────────────────────────────────
         // Calculate paid amount from actual payment transactions for selectedMonth
@@ -678,6 +674,8 @@ export default function PendingPayments() {
             <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block mb-1">Group Monthly Chit Amount</label>
             <input
               type="number"
+              min="0"
+              step="1"
               value={groupMonthlyChitAmount}
               onChange={(e) => setGroupMonthlyChitAmount(Number(e.target.value) || 0)}
               className="w-full px-3 py-2 text-xs font-bold bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
@@ -795,6 +793,8 @@ export default function PendingPayments() {
                           <td className="p-3 text-right">
                             <input
                               type="number"
+                              min="0"
+                              step="1"
                               value={row.pendingAmount}
                               onChange={(e) => handleAmountChange(row.rowKey, 'pendingAmount', e.target.value)}
                               className="w-24 px-2 py-1 text-right text-xs font-bold bg-[#FFF7E6] border border-amber-300 rounded-lg text-amber-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
@@ -803,7 +803,7 @@ export default function PendingPayments() {
 
                           <td className="p-3 text-right font-black text-amber-700">₹{row.totalDue.toLocaleString('en-IN')}</td>
                           <td className="p-3 text-center">
-                            <Badge variant="warning">PENDING</Badge>
+                            <Badge variant="pending" dot>PENDING</Badge>
                           </td>
                           <td className="p-3 text-right">
                             <button
@@ -888,6 +888,8 @@ export default function PendingPayments() {
                           <td className="p-3 text-right">
                             <input
                               type="number"
+                              min="0"
+                              step="1"
                               value={row.pendingAmount}
                               onChange={(e) => handleAmountChange(row.rowKey, 'pendingAmount', e.target.value)}
                               className="w-24 px-2 py-1 text-right text-xs font-bold bg-[#FFF7E6] border border-amber-300 rounded-lg text-amber-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
@@ -896,9 +898,9 @@ export default function PendingPayments() {
 
                           <td className="p-3 text-right font-black text-amber-700">₹{row.totalDue.toLocaleString('en-IN')}</td>
                           <td className="p-3 text-center">
-                            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-1 rounded-md border border-amber-200">
-                              Partial (₹{row.pendingAmount.toLocaleString('en-IN')} Left)
-                            </span>
+                            <Badge variant="partial" dot>
+                              PARTIAL (₹{row.pendingAmount.toLocaleString('en-IN')} Left)
+                            </Badge>
                           </td>
                           <td className="p-3 text-right">
                             <button

@@ -34,6 +34,11 @@ import Toast from '../components/Toast';
 import Modal from '../components/Modal';
 import MemberMessageModal from '../components/MemberMessageModal';
 import { memberService, chitService, groupPaymentSettingsService } from '../services/dbService';
+import {
+  getEffectiveMonthlyAmount,
+  isMemberSpecificMonthlyAmount,
+  calculateHoldingPayable,
+} from '../utils/amountUtils';
 
 // Roman numeral parsing helper (Group I -> 1, Group II -> 2 ... Group XVII -> 17)
 function parseRomanNumeral(str = '') {
@@ -138,6 +143,11 @@ export default function Members() {
   const [inputPendingAmount, setInputPendingAmount] = useState('0');
   const [inputBalanceAmount, setInputBalanceAmount] = useState('0');
   const [isSavingAdjustment, setIsSavingAdjustment] = useState(false);
+
+  // Individual Multi-Chit Subscription Monthly Amount State
+  const [editingSubscriptionId, setEditingSubscriptionId] = useState(null);
+  const [inputSubMonthlyAmount, setInputSubMonthlyAmount] = useState('');
+  const [isSavingSubMonthlyAmount, setIsSavingSubMonthlyAmount] = useState(false);
 
   const actionMenuRef = useRef(null);
 
@@ -262,18 +272,8 @@ export default function Members() {
     return Math.floor(val / 20);
   };
 
-  const calculateChitPayable = (chit) => {
-    const val = Number(chit.totalChitValue || 100000);
-    const grp = String(chit.groupId || 'I');
-    // Prioritize individual subscription amountToPay if customized, otherwise fallback to group default
-    const baseMonthly = typeof chit.amountToPay === 'number' && chit.amountToPay > 0
-      ? chit.amountToPay
-      : getGroupMonthlyBaseAmount(val, grp);
-    const pending = Number(chit.pending || 0);
-    const balance = Number(chit.balance || 0);
-    const quantity = Number(chit.quantity || 1);
-    const perHolding = Math.max(baseMonthly + pending - balance, 0);
-    return perHolding * quantity;
+  const calculateChitPayable = (chit, member = null) => {
+    return calculateHoldingPayable(chit, member, groupPaymentSettings);
   };
 
   const calculateMemberTotalPayable = (member) => {
@@ -360,7 +360,7 @@ export default function Members() {
         const grpObj = groupMap.get(grpId);
         grpObj.memberCount += 1;
         grpObj.activeHoldings += qty;
-        grpObj.totalDueAmount += calculateChitPayable(c);
+        grpObj.totalDueAmount += calculateChitPayable(c, m);
         grpObj.membersList.push({ member: m, chit: c, quantity: qty });
       });
     });
@@ -437,7 +437,9 @@ export default function Members() {
           id: c.id || `chit_${member.id}_${idx}`,
           chitValue: String(c.totalChitValue || 100000),
           groupId: String(c.groupId || 'I'),
-          monthlyAmount: String(c.amountToPay || Math.floor((c.totalChitValue || 100000) / 20)),
+          monthlyAmount: String(getEffectiveMonthlyAmount(member, c, groupPaymentSettings)),
+          hasCustomMonthlyAmount: Boolean(c.hasCustomMonthlyAmount),
+          customMonthlyAmount: c.customMonthlyAmount,
           pending: String(c.pending || 0),
           balance: String(c.balance || 0),
         }))
@@ -446,7 +448,9 @@ export default function Members() {
             id: `chit_${member.id}_0`,
             chitValue: String(member.calculatedTotalChitValue || 100000),
             groupId: String(member.groupId || member.group || 'I'),
-            monthlyAmount: String(member.amountToPay || 5000),
+            monthlyAmount: String(getEffectiveMonthlyAmount(member, null, groupPaymentSettings)),
+            hasCustomMonthlyAmount: Boolean(member.hasCustomMonthlyAmount),
+            customMonthlyAmount: member.customMonthlyAmount,
             pending: '0',
             balance: '0',
           },
@@ -535,12 +539,19 @@ export default function Members() {
         const val = Number(sub.chitValue);
         const grp = String(sub.groupId).trim().toUpperCase();
         const monthly = Number(sub.monthlyAmount) || Math.floor(val / 20);
+        const key = `${val}_${grp}`;
+        const groupAmt = groupPaymentSettings[key];
+        const isCustom = typeof groupAmt === 'number' && groupAmt > 0 ? monthly !== groupAmt : monthly !== Math.floor(val / 20);
+
         return {
           id: sub.id || `chit_${Date.now()}_${idx}_${grp}`,
           name: `₹${(val / 100000).toFixed(0)} Lakh Chit (Group ${grp})`,
           groupId: grp,
           totalChitValue: val,
+          monthlyAmount: monthly,
           amountToPay: monthly,
+          customMonthlyAmount: isCustom ? monthly : undefined,
+          hasCustomMonthlyAmount: isCustom,
           pending: Math.max(Number(sub.pending) || 0, 0),
           balance: Math.max(Number(sub.balance) || 0, 0),
           quantity: 1,
@@ -577,19 +588,52 @@ export default function Members() {
   };
 
   const handleOpenEditAdjustment = (member, chit) => {
-    const val = chit?.totalChitValue || 100000;
-    const grp = chit?.groupId || 'I';
-    const baseMonthly = getGroupMonthlyBaseAmount(val, grp);
+    const baseMonthly = getEffectiveMonthlyAmount(member, chit, groupPaymentSettings);
+    const isCustom = isMemberSpecificMonthlyAmount(member, chit, groupPaymentSettings);
 
     setSelectedMember(member);
     setTargetChitForAdjustment({
       ...chit,
       baseGroupMonthly: baseMonthly,
+      isCustomMemberAmount: isCustom,
     });
     setInputPendingAmount(String(chit?.pending || 0));
     setInputBalanceAmount(String(chit?.balance || 0));
     setIsEditAdjustmentModalOpen(true);
     setActiveActionMenuMemberId(null);
+  };
+
+  const handleSaveSubscriptionMonthlyAmount = async (member, chit) => {
+    const parsedAmount = Number(inputSubMonthlyAmount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      showToast('Please enter a valid positive monthly amount.', 'error');
+      return;
+    }
+
+    setIsSavingSubMonthlyAmount(true);
+    try {
+      const subId = chit.id || chit.groupId;
+      const updatedChits = await memberService.updateMemberSubscriptionMonthlyAmount(
+        member.id,
+        subId,
+        parsedAmount
+      );
+
+      const updatedMember = {
+        ...member,
+        chits: updatedChits,
+        holdings: updatedChits,
+      };
+
+      setSelectedMember(updatedMember);
+      setMembers((prev) => prev.map((m) => (m.id === member.id ? updatedMember : m)));
+      setEditingSubscriptionId(null);
+      showToast(`✓ Monthly installment for Group ${chit.groupId || 'I'} updated to ₹${parsedAmount.toLocaleString('en-IN')}!`);
+    } catch (err) {
+      showToast(`Failed to update monthly amount: ${err.message}`, 'error');
+    } finally {
+      setIsSavingSubMonthlyAmount(false);
+    }
   };
 
   const handleSaveAdjustment = async (e) => {
@@ -780,6 +824,7 @@ export default function Members() {
           name: `₹${(val / 100000).toFixed(0)} Lakh Chit (Group ${grp})`,
           groupId: grp,
           totalChitValue: val,
+          monthlyAmount: monthly,
           amountToPay: monthly,
           pending: Math.max(Number(sub.pending) || 0, 0),
           balance: Math.max(Number(sub.balance) || 0, 0),
@@ -1314,26 +1359,26 @@ export default function Members() {
                             >
                               <button
                                 onClick={() => handleOpenDetails(member)}
-                                className="flex w-full items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-[#F7F7F5] text-[#1C1C1A] cursor-pointer"
+                                className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[#F7F7F5] text-[#1C1C1A] cursor-pointer"
                               >
-                                <Eye className="w-3.5 h-3.5 text-sky-400" />
+                                <Eye className="w-3.5 h-3.5 text-sky-600" />
                                 <span>View Details</span>
                               </button>
 
                               <button
                                 onClick={() => handleOpenEditMember(member)}
-                                className="flex w-full items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-slate-900 text-slate-200 cursor-pointer"
+                                className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[#F7F7F5] text-[#1C1C1A] cursor-pointer"
                               >
-                                <Edit className="w-3.5 h-3.5 text-emerald-400" />
+                                <Edit className="w-3.5 h-3.5 text-[#2F5D50]" />
                                 <span>Edit Member Info</span>
                               </button>
 
                               {activeChits.length > 0 && (
                                 <button
                                   onClick={() => handleOpenEditAdjustment(member, activeChits[0])}
-                                  className="flex w-full items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-slate-900 text-slate-200 cursor-pointer"
+                                  className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[#F7F7F5] text-[#1C1C1A] cursor-pointer"
                                 >
-                                  <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
+                                  <SlidersHorizontal className="w-3.5 h-3.5 text-amber-600" />
                                   <span>Edit Adjustments</span>
                                 </button>
                               )}
@@ -1344,9 +1389,9 @@ export default function Members() {
                                   setIsMessageModalOpen(true);
                                   setActiveActionMenuMemberId(null);
                                 }}
-                                className="flex w-full items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-slate-900 text-slate-200 cursor-pointer"
+                                className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[#F7F7F5] text-[#1C1C1A] cursor-pointer"
                               >
-                                <MessageSquare className="w-3.5 h-3.5 text-teal-400" />
+                                <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
                                 <span>Send WhatsApp</span>
                               </button>
 
@@ -1355,15 +1400,15 @@ export default function Members() {
                                   navigate(`/history?memberId=${member.id}`);
                                   setActiveActionMenuMemberId(null);
                                 }}
-                                className="flex w-full items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-slate-900 text-slate-200 cursor-pointer"
+                                className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[#F7F7F5] text-[#1C1C1A] cursor-pointer"
                               >
-                                <History className="w-3.5 h-3.5 text-purple-400" />
+                                <History className="w-3.5 h-3.5 text-purple-600" />
                                 <span>View History Audit</span>
                               </button>
 
                               <button
                                 onClick={() => handleOpenDeleteModal(member)}
-                                className="flex w-full items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-red-50 text-red-600 font-bold cursor-pointer transition-colors"
+                                className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-red-50 text-red-600 font-bold cursor-pointer transition-colors"
                               >
                                 <Trash2 className="w-3.5 h-3.5 text-red-600" />
                                 <span>Delete Member</span>
@@ -1426,8 +1471,8 @@ export default function Members() {
                 {getActiveChits(selectedMember).map((chit) => {
                   const val = chit.totalChitValue || 100000;
                   const grp = chit.groupId || 'I';
-                  const baseMonthly = getGroupMonthlyBaseAmount(val, grp);
-                  const payable = calculateChitPayable(chit);
+                  const baseMonthly = getEffectiveMonthlyAmount(selectedMember, chit, groupPaymentSettings);
+                  const payable = calculateChitPayable(chit, selectedMember);
 
                   return (
                     <div key={chit.id} className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3 shadow-md">
@@ -1445,7 +1490,56 @@ export default function Members() {
                       <div className="grid grid-cols-3 gap-2 text-center bg-slate-900 p-2.5 rounded-xl border border-slate-800">
                         <div>
                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Base Monthly</span>
-                          <span className="font-bold text-white">₹{baseMonthly.toLocaleString('en-IN')}</span>
+                          {editingSubscriptionId === (chit.id || chit.groupId) ? (
+                            <div className="flex flex-col items-center gap-1.5 pt-1">
+                              <div className="flex items-center gap-1">
+                                <span className="font-bold text-white text-xs">₹</span>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  step="1"
+                                  value={inputSubMonthlyAmount}
+                                  onChange={(e) => setInputSubMonthlyAmount(e.target.value)}
+                                  disabled={isSavingSubMonthlyAmount}
+                                  className="w-20 px-1.5 py-0.5 rounded-md border border-sky-500 bg-slate-950 text-xs font-mono font-bold text-white text-center focus:outline-hidden"
+                                  autoFocus
+                                />
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  disabled={isSavingSubMonthlyAmount}
+                                  onClick={() => handleSaveSubscriptionMonthlyAmount(selectedMember, chit)}
+                                  className="px-2 py-0.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold cursor-pointer disabled:opacity-50"
+                                >
+                                  {isSavingSubMonthlyAmount ? '...' : 'Save'}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isSavingSubMonthlyAmount}
+                                  onClick={() => setEditingSubscriptionId(null)}
+                                  className="px-2 py-0.5 rounded-md border border-slate-700 text-slate-300 hover:bg-slate-800 text-[10px] font-bold cursor-pointer"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-center gap-1 mt-0.5">
+                              <span className="font-bold text-white">₹{baseMonthly.toLocaleString('en-IN')}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingSubscriptionId(chit.id || chit.groupId);
+                                  setInputSubMonthlyAmount(String(baseMonthly));
+                                }}
+                                className="p-0.5 text-sky-400 hover:text-sky-300 rounded hover:bg-slate-800 transition-colors cursor-pointer"
+                                title="Edit Monthly Amount for this subscription"
+                              >
+                                <Edit className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )}
                         </div>
                         <div>
                           <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">Pending (+)</span>
@@ -1457,7 +1551,15 @@ export default function Members() {
                         </div>
                       </div>
 
-                      <div className="flex justify-end">
+                      <div className="flex justify-between items-center pt-1">
+                        <span className="text-[10px] text-slate-400">
+                          {isMemberSpecificMonthlyAmount(selectedMember, chit, groupPaymentSettings) ? (
+                            <span className="text-sky-400 font-semibold">• Custom subscription rate</span>
+                          ) : (
+                            <span>• Inheriting group rate</span>
+                          )}
+                        </span>
+
                         <Button
                           variant="secondary"
                           size="sm"
@@ -1508,23 +1610,36 @@ export default function Members() {
         >
           <form onSubmit={handleSaveAdjustment} className="space-y-4 font-sans text-xs">
             {/* LIVE CALCULATION PREVIEW BOX */}
-            <div className="p-4 bg-slate-900 text-white rounded-2xl space-y-2 shadow-md border border-slate-800">
+            <div className="p-4 bg-slate-900 text-white rounded-2xl space-y-2.5 shadow-md border border-slate-800">
               <div className="flex justify-between items-center text-slate-300">
-                <span>Group Base Monthly:</span>
-                <span className="font-bold font-mono">₹{(targetChitForAdjustment.baseGroupMonthly || 4500).toLocaleString('en-IN')}</span>
+                <div className="flex flex-col">
+                  <span>Member Monthly Amount:</span>
+                  {targetChitForAdjustment.isCustomMemberAmount && (
+                    <span className="text-[9px] text-sky-400 font-medium tracking-wide">
+                      Using member-specific monthly amount
+                    </span>
+                  )}
+                </div>
+                <span className="font-bold font-mono text-white">
+                  ₹{(targetChitForAdjustment.baseGroupMonthly || 5000).toLocaleString('en-IN')}
+                </span>
               </div>
               <div className="flex justify-between items-center text-amber-300">
                 <span>Pending (+) Added:</span>
-                <span className="font-bold font-mono">+₹{(parseFloat(inputPendingAmount) || 0).toLocaleString('en-IN')}</span>
+                <span className="font-bold font-mono">
+                  +₹{(parseFloat(inputPendingAmount) || 0).toLocaleString('en-IN')}
+                </span>
               </div>
               <div className="flex justify-between items-center text-emerald-300">
                 <span>Balance (-) Offset:</span>
-                <span className="font-bold font-mono">-₹{(parseFloat(inputBalanceAmount) || 0).toLocaleString('en-IN')}</span>
+                <span className="font-bold font-mono">
+                  -₹{(parseFloat(inputBalanceAmount) || 0).toLocaleString('en-IN')}
+                </span>
               </div>
-              <div className="pt-2 border-t border-slate-800 flex justify-between items-center text-sm font-black text-white">
+              <div className="pt-2.5 border-t border-slate-800 flex justify-between items-center text-sm font-black text-white">
                 <span>Current Month Payable:</span>
                 <span className="text-base text-sky-400 font-mono">
-                  ₹{Math.max((targetChitForAdjustment.baseGroupMonthly || 4500) + (parseFloat(inputPendingAmount) || 0) - (parseFloat(inputBalanceAmount) || 0), 0).toLocaleString('en-IN')}
+                  ₹{Math.max((targetChitForAdjustment.baseGroupMonthly || 5000) + (parseFloat(inputPendingAmount) || 0) - (parseFloat(inputBalanceAmount) || 0), 0).toLocaleString('en-IN')}
                 </span>
               </div>
             </div>
@@ -1536,7 +1651,7 @@ export default function Members() {
               <input
                 type="number"
                 min="0"
-                step="50"
+                step="1"
                 value={inputPendingAmount}
                 onChange={(e) => setInputPendingAmount(e.target.value)}
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 font-sans"
@@ -1550,7 +1665,7 @@ export default function Members() {
               <input
                 type="number"
                 min="0"
-                step="50"
+                step="1"
                 value={inputBalanceAmount}
                 onChange={(e) => setInputBalanceAmount(e.target.value)}
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 font-sans"
@@ -1587,8 +1702,8 @@ export default function Members() {
               </label>
               <input
                 type="number"
-                min="100"
-                step="100"
+                min="1"
+                step="1"
                 required
                 value={inputMonthlyAmount}
                 onChange={(e) => setInputMonthlyAmount(e.target.value)}
@@ -1780,8 +1895,8 @@ export default function Members() {
                         <input
                           type="number"
                           required
-                          min="100"
-                          step="100"
+                          min="1"
+                          step="1"
                           value={sub.monthlyAmount}
                           onChange={(e) => handleEditSubscriptionChange(idx, 'monthlyAmount', e.target.value)}
                           className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none font-sans"
@@ -1984,8 +2099,8 @@ export default function Members() {
                         <input
                           type="number"
                           required
-                          min="100"
-                          step="100"
+                          min="1"
+                          step="1"
                           value={sub.monthlyAmount}
                           onChange={(e) => handleSubscriptionChange(idx, 'monthlyAmount', e.target.value)}
                           className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none font-sans"

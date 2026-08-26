@@ -341,31 +341,36 @@ export default function ChitsPlaceholder() {
                   </div>
 
                   <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
-                    <span className="text-xs font-black text-[#2F5D50] bg-[#EDF7F0] px-2.5 py-1 rounded-full border border-[#2F5D50]/20 flex items-center gap-1.5 shadow-xs">
-                      <Calendar className="w-3.5 h-3.5 text-[#2F5D50]" />
-                      <span>Chit Month {chitMonthInfo.display}</span>
-                    </span>
-                    <span className="text-xs font-bold text-[#1C1C1A] bg-[#F2F2EF] px-2.5 py-1 rounded-full border border-[#E5E5E1] flex items-center gap-1">
-                      <Users className="w-3.5 h-3.5 text-[#6B6B67]" />
-                      {enrolledCount} / {group.capacity || 20}
-                    </span>
-                    <Badge variant="success">ACTIVE</Badge>
+                    <Badge variant="active" dot>ACTIVE</Badge>
                   </div>
                 </div>
 
-                {/* MIDDLE 2-COLUMN STRUCTURED INFORMATION SECTION */}
-                <div className="grid grid-cols-2 gap-4 py-3.5 border-y border-[#E5E5E1] text-xs">
+                {/* 3-COLUMN METRICS: CHIT MONTH, MEMBERS, MONTHLY AMOUNT */}
+                <div className="grid grid-cols-3 gap-2 py-3 border-y border-[#E5E5E1] text-xs bg-[#F7F7F5] rounded-xl px-3 text-center">
                   <div className="space-y-0.5">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#6B6B67]">Monthly Premium</span>
-                    <span className="text-base font-black text-[#2F5D50] font-sans block">
-                      ₹{monthlyPremium.toLocaleString('en-IN')}
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#6B6B67] block">
+                      Chit Month
+                    </span>
+                    <span className="text-sm font-black text-[#1C1C1A] block">
+                      {chitMonthInfo.display}
                     </span>
                   </div>
 
                   <div className="space-y-0.5">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#6B6B67]">Total Chit Value</span>
-                    <span className="text-base font-black text-[#1C1C1A] font-sans block">
-                      ₹{(group?.totalChitValue || 100000).toLocaleString('en-IN')}
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#6B6B67] block">
+                      Members
+                    </span>
+                    <span className="text-sm font-black text-[#1C1C1A] block">
+                      {enrolledCount} / {group.capacity || 20}
+                    </span>
+                  </div>
+
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#6B6B67] block">
+                      Monthly Amount
+                    </span>
+                    <span className="text-sm font-black text-[#2F5D50] block">
+                      ₹{monthlyPremium.toLocaleString('en-IN')}
                     </span>
                   </div>
                 </div>
@@ -469,8 +474,8 @@ export default function ChitsPlaceholder() {
               </label>
               <input
                 type="number"
-                min="100"
-                step="100"
+                min="1"
+                step="1"
                 required
                 value={inputMonthlyAmount}
                 onChange={(e) => setInputMonthlyAmount(e.target.value)}

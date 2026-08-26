@@ -17,6 +17,7 @@ import Badge from '../components/Badge';
 import Toast from '../components/Toast';
 import { useBillingMonth } from '../context/BillingMonthContext';
 import { memberService, chitService, monthlyRecordService } from '../services/dbService';
+import { getEffectiveMonthlyAmount } from '../utils/amountUtils';
 
 function compareGroupIds(groupIdA = '', groupIdB = '') {
   const cleanA = String(groupIdA).trim().toUpperCase();
@@ -135,7 +136,7 @@ export default function PendingHistory() {
 
       chitSubscriptions.forEach((c) => {
         const gId = String(c.groupId || m.groupId || 'I').trim();
-        const reqChitAmount = Number(c.amountToPay || Math.floor((c.totalChitValue || 100000) / 20));
+        const reqChitAmount = getEffectiveMonthlyAmount(m, c);
 
         (availableMonths || ['August 2026']).forEach((bMonth) => {
           const key = `${m.id}_${gId}_${bMonth}`;

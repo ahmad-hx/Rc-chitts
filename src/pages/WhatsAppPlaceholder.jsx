@@ -710,50 +710,58 @@ export default function WhatsAppPlaceholder() {
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       {/* ─── LINKED DEVICE QR CODE GATEWAY CARD ────────────────────────────────────── */}
-      <div className="bg-white border border-[#E5E5E1] rounded-2xl p-5 md:p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
+      <div className="bg-white border border-[#E5E5E1] rounded-2xl p-5 md:p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-5">
+        <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#2F5D50]">Raghavendra Chitts</span>
-            <span className="text-[#959590]">•</span>
-            <span className="text-xs font-extrabold text-[#1C1C1A]">Linked Device Gateway</span>
+            <span className={`w-2.5 h-2.5 rounded-full ${qrGatewayState.connected ? 'bg-[#2F6B4F]' : 'bg-[#959590]'}`}></span>
+            <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#1C1C1A]">
+              {qrGatewayState.connected ? '● CONNECTED' : '○ NOT CONNECTED'}
+            </span>
           </div>
-          <h1 className="mt-1 text-2xl font-black text-[#1C1C1A] tracking-tight">WhatsApp Messaging Gateway</h1>
-          <p className="text-xs text-[#6B6B67] mt-1">
-            Link your WhatsApp account (`+${qrGatewayState.userPhone}`) by scanning the QR code with WhatsApp ➔ Linked Devices.
+          <h1 className="text-xl md:text-2xl font-black text-[#1C1C1A] tracking-tight">
+            WhatsApp Messaging Gateway
+          </h1>
+          <p className="text-xs text-[#6B6B67]">
+            {qrGatewayState.connected
+              ? `WhatsApp account (+${qrGatewayState.userPhone}) is ready to send messages.`
+              : 'Connect your WhatsApp account to start sending messages.'}
           </p>
         </div>
 
-        {/* QR GATEWAY STATUS & PAIRING BUTTON */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="p-3 bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl flex items-center gap-3 text-xs">
-            <div className="flex items-center gap-2">
-              <span className={`w-2.5 h-2.5 rounded-full ${qrGatewayState.connected ? 'bg-[#2F6B4F] animate-pulse' : 'bg-amber-500'}`}></span>
-              <span className="font-extrabold text-[#1C1C1A]">
-                {qrGatewayState.connected ? `WhatsApp Linked (+${qrGatewayState.userPhone})` : 'Device Not Linked'}
-              </span>
-            </div>
-          </div>
-
+        {/* QR GATEWAY ACTIONS */}
+        <div className="flex flex-wrap items-center gap-2.5">
           {!qrGatewayState.connected ? (
             <Button
               variant="primary"
-              size="sm"
-              className="rounded-xl text-xs gap-1.5 bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold cursor-pointer shadow-xs"
+              size="md"
+              className="rounded-xl text-xs gap-2 bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold cursor-pointer shadow-xs"
               onClick={handleOpenQrModal}
             >
               <QrCode className="w-4 h-4" />
-              Scan QR Code to Link WhatsApp
+              <span>Generate QR Code</span>
             </Button>
           ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              className="rounded-xl text-xs gap-1.5 border-[#F8B4B4] bg-[#FCEEEE] text-[#C53030] hover:bg-red-100 font-bold cursor-pointer"
-              onClick={handleDisconnectDevice}
-            >
-              <Unlink className="w-3.5 h-3.5" />
-              Unlink Device
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-xl text-xs gap-1.5 border-[#E5E5E1] bg-[#F7F7F5] text-[#1C1C1A] hover:bg-[#E5E5E1] font-bold cursor-pointer"
+                onClick={handleOpenQrModal}
+                title="View Connected Status or Refresh Pairing"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Device Status</span>
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                className="rounded-xl text-xs gap-1.5 bg-[#A33A3A] hover:bg-[#852E2E] text-white font-bold cursor-pointer"
+                onClick={handleDisconnectDevice}
+              >
+                <Unlink className="w-3.5 h-3.5" />
+                <span>Disconnect</span>
+              </Button>
+            </div>
           )}
         </div>
       </div>
@@ -1045,6 +1053,8 @@ export default function WhatsAppPlaceholder() {
                   </label>
                   <input
                     type="number"
+                    min="0"
+                    step="1"
                     placeholder="e.g. 25000"
                     value={chitAmount}
                     onChange={(e) => setChitAmount(e.target.value)}
@@ -1059,6 +1069,8 @@ export default function WhatsAppPlaceholder() {
                   </label>
                   <input
                     type="number"
+                    min="0"
+                    step="1"
                     placeholder="e.g. 0"
                     value={groupPendingAmount}
                     onChange={(e) => setGroupPendingAmount(e.target.value)}
@@ -1089,6 +1101,8 @@ export default function WhatsAppPlaceholder() {
                 </label>
                 <input
                   type="number"
+                  min="0"
+                  step="1"
                   placeholder="e.g. 0"
                   value={balanceAmount}
                   onChange={(e) => setBalanceAmount(e.target.value)}

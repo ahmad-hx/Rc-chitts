@@ -71,15 +71,20 @@ export const memberService = {
               const val = Number(c?.totalChitValue || c?.totalValue || c?.chitValue || rawData.totalChitValue || rawData.chitValue || 100000);
               const qty = Number(c?.quantity || 1);
               const gId = String(c?.groupId || c?.group || c?.chitGroup || rawData.groupId || rawData.group || rawData.chitGroup || 'I');
+              const explicitMonthly = Number(c?.monthlyAmount ?? c?.amountToPay ?? c?.chitAmount ?? c?.monthlyBase ?? rawData.monthlyAmount ?? rawData.amountToPay ?? 0);
+              const resolvedMonthly = explicitMonthly > 0 ? explicitMonthly : Math.floor(val / 20);
               return {
                 id: c?.id || `chit_${docSnap.id}_${gId}`,
                 name: c?.name || `₹${(val / 100000).toFixed(0)} Lakh Chit (Group ${gId})`,
                 groupId: gId,
                 totalChitValue: val,
-                amountToPay: Number(c?.amountToPay || Math.floor(val / 20)),
+                monthlyAmount: resolvedMonthly,
+                amountToPay: resolvedMonthly,
                 pending: Number(c?.pending || 0),
                 balance: Number(c?.balance || 0),
                 balanceAmount: Number(c?.balanceAmount || val),
+                hasCustomMonthlyAmount: Boolean(c?.hasCustomMonthlyAmount),
+                customMonthlyAmount: typeof c?.customMonthlyAmount === 'number' ? c.customMonthlyAmount : undefined,
                 quantity: qty,
                 status: c?.status || 'ACTIVE',
               };
@@ -90,12 +95,15 @@ export const memberService = {
         if (chits.length === 0 && (rawData.group || rawData.groupId || rawData.chitGroup || rawData.chitId)) {
           const gId = String(rawData.group || rawData.groupId || rawData.chitGroup || 'I');
           const val = Number(rawData.chitValue || rawData.totalChitValue || rawData.totalValue || 100000);
+          const explicitMonthly = Number(rawData.monthlyAmount ?? rawData.amountToPay ?? rawData.chitAmount ?? 0);
+          const resolvedMonthly = explicitMonthly > 0 ? explicitMonthly : Math.floor(val / 20);
           chits = [{
             id: `chit_${docSnap.id}_${gId}`,
             name: `₹${(val / 100000).toFixed(0)} Lakh Chit (Group ${gId})`,
             groupId: gId,
             totalChitValue: val,
-            amountToPay: Number(rawData.amountToPay || rawData.monthlyAmount || Math.floor(val / 20)),
+            monthlyAmount: resolvedMonthly,
+            amountToPay: resolvedMonthly,
             pending: Number(rawData.pending || rawData.pendingAmount || 0),
             balance: Number(rawData.balance || rawData.balanceAmount || 0),
             balanceAmount: Number(rawData.balanceAmount || val),
@@ -157,18 +165,26 @@ export const memberService = {
         const rawData = docSnap.data() || {};
         const rawChits = rawData.chits || rawData.holdings || [];
         const chits = Array.isArray(rawChits)
-          ? rawChits.map((c) => ({
-              id: c?.id || `chit_${docSnap.id}_${c?.groupId || 'I'}`,
-              name: c?.name || `₹${(Number(c?.totalChitValue || 100000) / 100000).toFixed(0)} Lakh Chit (Group ${c?.groupId || 'I'})`,
-              groupId: c?.groupId || 'I',
-              totalChitValue: Number(c?.totalChitValue || 100000),
-              amountToPay: Number(c?.amountToPay || 5000),
-              pending: Number(c?.pending || 0),
-              balance: Number(c?.balance || 0),
-              balanceAmount: Number(c?.balanceAmount || 100000),
-              quantity: Number(c?.quantity || 1),
-              status: c?.status || 'ACTIVE',
-            }))
+          ? rawChits.map((c) => {
+              const val = Number(c?.totalChitValue || 100000);
+              const explicitMonthly = Number(c?.monthlyAmount ?? c?.amountToPay ?? c?.chitAmount ?? c?.monthlyBase ?? rawData?.monthlyAmount ?? rawData?.amountToPay ?? 0);
+              const resolvedMonthly = explicitMonthly > 0 ? explicitMonthly : Math.floor(val / 20);
+              return {
+                id: c?.id || `chit_${docSnap.id}_${c?.groupId || 'I'}`,
+                name: c?.name || `₹${(val / 100000).toFixed(0)} Lakh Chit (Group ${c?.groupId || 'I'})`,
+                groupId: c?.groupId || 'I',
+                totalChitValue: val,
+                monthlyAmount: resolvedMonthly,
+                amountToPay: resolvedMonthly,
+                pending: Number(c?.pending || 0),
+                balance: Number(c?.balance || 0),
+                balanceAmount: Number(c?.balanceAmount || val),
+                hasCustomMonthlyAmount: Boolean(c?.hasCustomMonthlyAmount),
+                customMonthlyAmount: typeof c?.customMonthlyAmount === 'number' ? c.customMonthlyAmount : undefined,
+                quantity: Number(c?.quantity || 1),
+                status: c?.status || 'ACTIVE',
+              };
+            })
           : [];
 
         return {
@@ -295,6 +311,54 @@ export const memberService = {
     } catch (err) {
       console.error('Firestore updateMemberAdjustment error:', err.message);
       throw new Error('Unable to update member pending/balance adjustment in Firebase.');
+    }
+  },
+
+  async updateMemberSubscriptionMonthlyAmount(memberId, subscriptionId, newMonthlyAmount) {
+    await ensureAuthReady();
+    const parsedAmount = Number(newMonthlyAmount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      throw new Error('Please enter a valid positive monthly amount.');
+    }
+
+    try {
+      const docRef = doc(db, 'members', memberId);
+      const docSnap = await getDoc(docRef);
+      if (!docSnap.exists()) {
+        throw new Error('Member not found in Firestore.');
+      }
+
+      const data = docSnap.data() || {};
+      const currentChits = data.chits || data.holdings || [];
+      const updatedChits = currentChits.map((c, idx) => {
+        const cId = c?.id || `chit_${docSnap.id}_${c?.groupId || 'I'}`;
+        const matches = String(cId) === String(subscriptionId) ||
+          String(c?.id) === String(subscriptionId) ||
+          String(c?.groupId) === String(subscriptionId) ||
+          idx === subscriptionId;
+
+        if (matches) {
+          return {
+            ...c,
+            monthlyAmount: parsedAmount,
+            amountToPay: parsedAmount,
+            customMonthlyAmount: parsedAmount,
+            hasCustomMonthlyAmount: true,
+          };
+        }
+        return c;
+      });
+
+      await updateDoc(docRef, {
+        chits: updatedChits,
+        holdings: updatedChits,
+        updatedAt: serverTimestamp(),
+      });
+
+      return updatedChits;
+    } catch (err) {
+      console.error('Firestore updateMemberSubscriptionMonthlyAmount error:', err.message);
+      throw new Error(`Unable to update subscription monthly amount: ${err.message}`);
     }
   },
 

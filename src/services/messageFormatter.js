@@ -147,6 +147,8 @@ export function formatWhatsAppTemplate({
   return compiled;
 }
 
+import { getEffectiveMonthlyAmount } from '../utils/amountUtils.js';
+
 export function getBilingualWhatsAppMessage(member, groupPaymentSettings = {}, billingMonth = 'August 2026') {
   if (!member) return '';
   const totalAmountToPay = calculateMemberPayableAmount(member, groupPaymentSettings);
@@ -157,14 +159,11 @@ export function getBilingualWhatsAppMessage(member, groupPaymentSettings = {}, b
   activeChits.forEach((chit, idx) => {
     const val = chit.totalChitValue || 100000;
     const grp = chit.groupId || 'I';
-    const settingKey = `${val}_${grp}`;
-    const baseMonthly =
-      typeof groupPaymentSettings[settingKey] === 'number' && groupPaymentSettings[settingKey] > 0
-        ? groupPaymentSettings[settingKey]
-        : (chit.amountToPay || Math.floor(val / 20));
+    const baseMonthly = getEffectiveMonthlyAmount(member, chit, groupPaymentSettings);
+    const quantity = Number(chit.quantity || 1);
     const pending = Number(chit.pending || 0);
     const balance = Number(chit.balance || 0);
-    const chitPayable = Math.max(baseMonthly + pending - balance, 0);
+    const chitPayable = Math.max((baseMonthly * quantity) + pending - balance, 0);
     const chitMonthData = getChitMonthForGroup(chit, billingMonth, activeChits);
 
     const titlePrefix = activeChits.length > 1 ? `${idx + 1}. ` : '';
@@ -184,14 +183,11 @@ export function getBilingualWhatsAppMessage(member, groupPaymentSettings = {}, b
   activeChits.forEach((chit, idx) => {
     const val = chit.totalChitValue || 100000;
     const grp = chit.groupId || 'I';
-    const settingKey = `${val}_${grp}`;
-    const baseMonthly =
-      typeof groupPaymentSettings[settingKey] === 'number' && groupPaymentSettings[settingKey] > 0
-        ? groupPaymentSettings[settingKey]
-        : (chit.amountToPay || Math.floor(val / 20));
+    const baseMonthly = getEffectiveMonthlyAmount(member, chit, groupPaymentSettings);
+    const quantity = Number(chit.quantity || 1);
     const pending = Number(chit.pending || 0);
     const balance = Number(chit.balance || 0);
-    const chitPayable = Math.max(baseMonthly + pending - balance, 0);
+    const chitPayable = Math.max((baseMonthly * quantity) + pending - balance, 0);
     const chitMonthData = getChitMonthForGroup(chit, billingMonth, activeChits);
 
     const translatedName = (chit.name || `₹${(val / 100000).toFixed(0)} Lakh చిట్టీ (గ్రూప్ ${grp})`)

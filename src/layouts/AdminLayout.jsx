@@ -38,18 +38,36 @@ export default function AdminLayout({ children, onLogout }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const navigationItems = [
-    { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-    { name: 'Calculations', path: '/calculations', icon: Calculator },
-    { name: 'Members', path: '/members', icon: Users },
-    { name: 'Chits / Groups', path: '/chits', icon: Layers },
-    { name: 'Payments', path: '/payments', icon: IndianRupee },
-    { name: 'Pending Payments', path: '/pending-payments', icon: Clock },
-    { name: 'Pending History', path: '/pending-history', icon: HistoryIcon },
-    { name: 'WhatsApp', path: '/whatsapp', icon: MessageSquare },
-    { name: 'History', path: '/history', icon: HistoryIcon },
-    { name: 'Settings', path: '/settings', icon: Settings },
+  const navigationSections = [
+    {
+      title: 'MAIN',
+      items: [
+        { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
+        { name: 'Members', path: '/members', icon: Users },
+        { name: 'Chit Groups', path: '/chits', icon: Layers },
+        { name: 'Payments', path: '/payments', icon: IndianRupee },
+        { name: 'Pending Payments', path: '/pending-payments', icon: Clock },
+        { name: 'Pending History', path: '/pending-history', icon: HistoryIcon },
+      ],
+    },
+    {
+      title: 'TOOLS',
+      items: [
+        { name: 'Calculations', path: '/calculations', icon: Calculator },
+        { name: 'WhatsApp', path: '/whatsapp', icon: MessageSquare },
+      ],
+    },
+    {
+      title: 'SETTINGS',
+      items: [
+        { name: 'Settings', path: '/settings', icon: Settings },
+        { name: 'History', path: '/history', icon: HistoryIcon },
+      ],
+    },
   ];
+
+  const navigationItems = navigationSections.flatMap((s) => s.items);
+  const allNavigationItems = navigationItems;
 
   // Browser Fullscreen Listener
   useEffect(() => {
@@ -96,7 +114,7 @@ export default function AdminLayout({ children, onLogout }) {
   };
 
   const getPageTitle = () => {
-    const item = navigationItems.find((n) => n.path === location.pathname);
+    const item = allNavigationItems.find((n) => n.path === location.pathname);
     return item ? item.name : 'Dashboard';
   };
 
@@ -129,34 +147,43 @@ export default function AdminLayout({ children, onLogout }) {
           </div>
 
           {/* NAV ITEMS */}
-          <nav className="flex-1 space-y-2 px-3 py-5 overflow-y-auto">
-            {navigationItems.map((item) => {
-              const Icon = item.icon;
-              const active = isActivePath(item.path);
+          <nav className="flex-1 space-y-4 px-3 py-4 overflow-y-auto">
+            {navigationSections.map((section) => (
+              <div key={section.title} className="space-y-1">
+                {!isSidebarCollapsed && (
+                  <p className="px-3 text-[10px] font-black uppercase tracking-[0.18em] text-[#80807B] mb-1.5 mt-3 first:mt-0">
+                    {section.title}
+                  </p>
+                )}
+                {section.items.map((item) => {
+                  const Icon = item.icon;
+                  const active = isActivePath(item.path);
 
-              return (
-                <Link
-                  key={item.name}
-                  to={item.path}
-                  title={isSidebarCollapsed ? item.name : undefined}
-                  className={`group flex items-center gap-3.5 rounded-xl px-3.5 py-3 text-xs font-bold transition-all duration-200 ${
-                    active
-                      ? 'bg-[#2F5D50] text-white shadow-xs'
-                      : 'text-[#D8D8D3] hover:bg-[#2A2A28] hover:text-white'
-                  } ${isSidebarCollapsed ? 'justify-center px-0' : ''}`}
-                >
-                  <span
-                    className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors shrink-0 ${
-                      active ? 'bg-[#24493F] text-white' : 'bg-[#2A2A28] text-[#959590] group-hover:text-white'
-                    }`}
-                  >
-                    <Icon className="h-4 w-4 shrink-0" />
-                  </span>
-                  {!isSidebarCollapsed && <span className="flex-1 truncate">{item.name}</span>}
-                  {!isSidebarCollapsed && active && <ChevronRight className="h-4 w-4 text-emerald-200 shrink-0" />}
-                </Link>
-              );
-            })}
+                  return (
+                    <Link
+                      key={item.name}
+                      to={item.path}
+                      title={isSidebarCollapsed ? item.name : undefined}
+                      className={`group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-bold transition-all duration-150 ${
+                        active
+                          ? 'bg-[#2F5D50] text-white shadow-xs'
+                          : 'text-[#D8D8D3] hover:bg-[#2A2A28] hover:text-white'
+                      } ${isSidebarCollapsed ? 'justify-center px-0' : ''}`}
+                    >
+                      <span
+                        className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors shrink-0 ${
+                          active ? 'bg-[#24493F] text-white' : 'bg-[#2A2A28] text-[#959590] group-hover:text-white'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4 shrink-0" />
+                      </span>
+                      {!isSidebarCollapsed && <span className="flex-1 truncate">{item.name}</span>}
+                      {!isSidebarCollapsed && active && <ChevronRight className="h-3.5 w-3.5 text-emerald-200 shrink-0" />}
+                    </Link>
+                  );
+                })}
+              </div>
+            ))}
           </nav>
 
           {/* FOOTER USER / LOGOUT */}
@@ -244,26 +271,40 @@ export default function AdminLayout({ children, onLogout }) {
                   </button>
                 </div>
 
-                <nav className="flex-1 space-y-2 overflow-y-auto pr-1">
-                  {navigationItems.map((item) => {
-                    const Icon = item.icon;
-                    const active = isActivePath(item.path);
-                    return (
-                      <Link
-                        key={item.name}
-                        to={item.path}
-                        onClick={() => setIsMobileMenuOpen(false)}
-                        className={`flex items-center gap-3.5 rounded-xl px-3.5 py-3 text-xs font-bold transition-all cursor-pointer ${
-                          active
-                            ? 'bg-[#2F5D50] text-white shadow-xs'
-                            : 'text-[#D8D8D3] hover:bg-[#2A2A28] hover:text-white'
-                        }`}
-                      >
-                        <Icon className="h-4 w-4 shrink-0 text-[#2F5D50]" />
-                        <span className="truncate">{item.name}</span>
-                      </Link>
-                    );
-                  })}
+                <nav className="flex-1 space-y-4 overflow-y-auto pr-1">
+                  {navigationSections.map((section) => (
+                    <div key={section.title} className="space-y-1">
+                      <p className="px-3 text-[10px] font-black uppercase tracking-[0.18em] text-[#80807B] mb-1.5 mt-3 first:mt-0">
+                        {section.title}
+                      </p>
+                      {section.items.map((item) => {
+                        const Icon = item.icon;
+                        const active = isActivePath(item.path);
+                        return (
+                          <Link
+                            key={item.name}
+                            to={item.path}
+                            onClick={() => setIsMobileMenuOpen(false)}
+                            className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-bold transition-all cursor-pointer ${
+                              active
+                                ? 'bg-[#2F5D50] text-white shadow-xs'
+                                : 'text-[#D8D8D3] hover:bg-[#2A2A28] hover:text-white'
+                            }`}
+                          >
+                            <span
+                              className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors shrink-0 ${
+                                active ? 'bg-[#24493F] text-white' : 'bg-[#2A2A28] text-[#959590]'
+                              }`}
+                            >
+                              <Icon className="h-4 w-4 shrink-0" />
+                            </span>
+                            <span className="truncate flex-1">{item.name}</span>
+                            {active && <ChevronRight className="h-3.5 w-3.5 text-emerald-200 shrink-0" />}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  ))}
                 </nav>
 
                 <div className="pt-4 border-t border-[#2A2A28] space-y-3">

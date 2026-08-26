@@ -23,6 +23,7 @@ import {
 import { db } from '../firebase.js';
 import { memberService } from './dbService.js';
 import { formatCurrency } from './messageFormatter.js';
+import { getEffectiveMonthlyAmount } from '../utils/amountUtils.js';
 import { getChitMonthForGroup } from '../utils/chitMonthUtils.js';
 
 // ─── Default Message Templates ────────────────────────────────────────────────
@@ -236,12 +237,7 @@ export function generatePersonalizedMessage(
     const chitBreakdown = activeChits.map((c, idx) => {
       const val = Number(c.totalChitValue || c.chitValue || 100000);
       const grp = c.groupId || c.group || 'I';
-      const settingKey = `${val}_${grp}`;
-
-      const baseMonthly =
-        typeof groupPaymentSettings[settingKey] === 'number' && groupPaymentSettings[settingKey] > 0
-          ? groupPaymentSettings[settingKey]
-          : Number(c.amountToPay || c.monthlyBase || Math.floor(val / 20));
+      const baseMonthly = getEffectiveMonthlyAmount(member, c, groupPaymentSettings);
 
       const quantity = Number(c.quantity || 1);
       const monthlyAmount = baseMonthly * quantity;
@@ -375,7 +371,8 @@ Raghavendra Chitts`;
 
   const chitMonthInfo = getChitMonthForGroup(targetChit, billingMonth, member.chits || []);
 
-  const cAmt = Number(chitAmount ?? targetChit.monthlyBase ?? targetChit.amountToPay ?? 25000);
+  const baseMonthly = getEffectiveMonthlyAmount(member, targetChit, groupPaymentSettings);
+  const cAmt = Number(chitAmount ?? baseMonthly);
   const pAmt = Number(pendingAmount ?? targetChit.pending ?? 0);
   const bAmt = Number(balanceAmount ?? targetChit.balance ?? 0);
   const totAmt = totalAmount !== null && totalAmount !== undefined ? Number(totalAmount) : cAmt + pAmt;

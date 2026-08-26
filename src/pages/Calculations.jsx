@@ -335,7 +335,7 @@ export default function Calculations() {
       </div>
 
       {/* QUICK CALCULATION PANEL */}
-      <Card className="p-5 border border-[#2F5D50]/20 bg-gradient-to-br from-[#F7F7F5] to-[#EEF5F2] rounded-2xl shadow-xs space-y-3">
+      <Card className="p-5 border border-[#E5E5E1] bg-white rounded-2xl shadow-xs space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#2F5D50] text-white">

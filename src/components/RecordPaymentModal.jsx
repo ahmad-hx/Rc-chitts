@@ -2,13 +2,15 @@ import React, { useState, useEffect, useMemo } from 'react';
 import Modal from './Modal';
 import Button from './Button';
 import { IndianRupee, Layers } from 'lucide-react';
-import { memberService, paymentService, chitService } from '../services/dbService';
+import { memberService, paymentService, chitService, groupPaymentSettingsService } from '../services/dbService';
 import { useBillingMonth } from '../context/BillingMonthContext';
+import { getEffectiveMonthlyAmount } from '../utils/amountUtils';
 
-export default function RecordPaymentModal({ isOpen, onClose, onRecord, members: passedMembers }) {
+export default function RecordPaymentModal({ isOpen, onClose, onRecord, members: passedMembers, groupPaymentSettings: passedSettings }) {
   const { selectedMonth } = useBillingMonth();
   const [members, setMembers] = useState(passedMembers || []);
   const [allChits, setAllChits] = useState([]);
+  const [groupPaymentSettings, setGroupPaymentSettings] = useState(passedSettings || {});
   const [selectedMemberId, setSelectedMemberId] = useState('');
   const [selectedGroupId, setSelectedGroupId] = useState('I');
   const [amount, setAmount] = useState('');
@@ -34,7 +36,13 @@ export default function RecordPaymentModal({ isOpen, onClose, onRecord, members:
     chitService.getChits().then((cList) => {
       setAllChits(Array.isArray(cList) ? cList : []);
     }).catch(() => {});
-  }, [passedMembers]);
+
+    if (!passedSettings || Object.keys(passedSettings).length === 0) {
+      groupPaymentSettingsService.getGroupPaymentSettings().then((res) => {
+        if (res && res.settingsMap) setGroupPaymentSettings(res.settingsMap);
+      }).catch(() => {});
+    }
+  }, [passedMembers, passedSettings]);
 
   const selectedMember = useMemo(() => {
     return members.find((m) => m.id === selectedMemberId) || members[0] || null;
@@ -60,18 +68,20 @@ export default function RecordPaymentModal({ isOpen, onClose, onRecord, members:
     if (memberChits.length > 0) {
       const firstChit = memberChits[0];
       setSelectedGroupId(firstChit.groupId || 'I');
-      setAmount(String(firstChit.amountToPay || Math.floor((firstChit.totalChitValue || 100000) / 20)));
+      const eff = getEffectiveMonthlyAmount(selectedMember, firstChit, groupPaymentSettings);
+      setAmount(String(eff));
     } else if (allChits.length > 0) {
       setSelectedGroupId(allChits[0].groupId || 'I');
       setAmount(String(allChits[0].monthlyPremium || 5000));
     }
-  }, [selectedMemberId, memberChits]);
+  }, [selectedMemberId, memberChits, selectedMember, groupPaymentSettings, allChits]);
 
   const handleGroupChange = (grpId) => {
     setSelectedGroupId(grpId);
     const target = memberChits.find((c) => c.groupId === grpId);
     if (target) {
-      setAmount(String(target.amountToPay || Math.floor((target.totalChitValue || 100000) / 20)));
+      const eff = getEffectiveMonthlyAmount(selectedMember, target, groupPaymentSettings);
+      setAmount(String(eff));
     }
   };
 
@@ -187,6 +197,7 @@ export default function RecordPaymentModal({ isOpen, onClose, onRecord, members:
                 type="number"
                 required
                 min="1"
+                step="1"
                 placeholder="5000"
                 value={amount}
                 onChange={(e) => {

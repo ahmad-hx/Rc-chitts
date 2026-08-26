@@ -185,7 +185,8 @@ export default function CreateChitModal({ isOpen, onClose, onCreate }) {
             <input
               type="number"
               required
-              min="100"
+              min="1"
+              step="1"
               placeholder="5000"
               value={monthlyPremium}
               onChange={(e) => setMonthlyPremium(e.target.value)}

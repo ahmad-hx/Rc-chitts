@@ -26,27 +26,10 @@ export function saveAdminUpiConfig({ upiId, payeeName }) {
   }
 }
 
+import { calculateMemberAggregatePayable } from '../utils/amountUtils.js';
+
 export function calculateMemberPayableAmount(member, groupPaymentSettings = {}) {
-  if (!member || !member.chits || !member.chits.length) return 0;
-
-  return member.chits.reduce((total, chit) => {
-    if (chit.status && chit.status !== 'ACTIVE') return total;
-
-    const val = chit.totalChitValue || 100000;
-    const grp = chit.groupId || 'I';
-    const settingKey = `${val}_${grp}`;
-
-    const baseGroupMonthly = typeof groupPaymentSettings[settingKey] === 'number' && groupPaymentSettings[settingKey] > 0
-      ? groupPaymentSettings[settingKey]
-      : (chit.amountToPay || Math.floor(val / 20));
-
-    const quantity = Number(chit.quantity || 1);
-    const pending = Number(chit.pending || 0);
-    const balance = Number(chit.balance || 0);
-
-    const chitPayable = Math.max((baseGroupMonthly * quantity) + pending - balance, 0);
-    return total + chitPayable;
-  }, 0);
+  return calculateMemberAggregatePayable(member, groupPaymentSettings);
 }
 
 export function generateUpiPayLink({ member, groupPaymentSettings = {}, customAmount = null }) {

@@ -20,6 +20,8 @@ import {
   Award,
   Wallet,
   Calendar,
+  ImagePlus,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 import StatCard from '../components/StatCard';
@@ -29,8 +31,13 @@ import Modal from '../components/Modal';
 import RecordPaymentModal from '../components/RecordPaymentModal';
 import CreateChitModal from '../components/CreateChitModal';
 import StartAuctionModal from '../components/StartAuctionModal';
+import SaveDashboardImageModal from '../components/SaveDashboardImageModal';
+import ViewDashboardImageModal from '../components/ViewDashboardImageModal';
+import EditDashboardImageModal from '../components/EditDashboardImageModal';
+import DashboardImageGallery from '../components/DashboardImageGallery';
 import { memberService, chitService, paymentService, auctionService } from '../services/dbService';
 import { whatsappDbService } from '../services/whatsappDbService';
+import { dashboardImageService } from '../services/dashboardImageService';
 import { useBillingMonth } from '../context/BillingMonthContext';
 
 export default function Dashboard() {
@@ -43,7 +50,9 @@ export default function Dashboard() {
   const [payments, setPayments] = useState([]);
   const [waLogs, setWaLogs] = useState([]);
   const [auctionsMap, setAuctionsMap] = useState({});
+  const [dashboardImages, setDashboardImages] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingImages, setLoadingImages] = useState(false);
   const [error, setError] = useState(null);
 
   // Modals state
@@ -51,6 +60,11 @@ export default function Dashboard() {
   const [isCreateChitOpen, setIsCreateChitOpen] = useState(false);
   const [isStartAuctionOpen, setIsStartAuctionOpen] = useState(false);
   const [auctionConfirmTarget, setAuctionConfirmTarget] = useState(null);
+  const [isSaveImageOpen, setIsSaveImageOpen] = useState(false);
+  const [viewingImageDoc, setViewingImageDoc] = useState(null);
+  const [editingImageDoc, setEditingImageDoc] = useState(null);
+  const [deletingImageDoc, setDeletingImageDoc] = useState(null);
+  const [isDeletingImage, setIsDeletingImage] = useState(false);
   const [toast, setToast] = useState(null);
 
   const showToast = (message, type = 'success') => {
@@ -63,12 +77,13 @@ export default function Dashboard() {
       setLoading(true);
       setError(null);
       try {
-        const [fetchedMembers, fetchedChits, fetchedPayments, fetchedWaLogs, fetchedAuctions] = await Promise.all([
+        const [fetchedMembers, fetchedChits, fetchedPayments, fetchedWaLogs, fetchedAuctions, fetchedImages] = await Promise.all([
           memberService.getMembers(),
           chitService.getChits(),
           paymentService.getPayments().catch(() => []),
           whatsappDbService.getWhatsAppHistory().catch(() => []),
           auctionService.getAuctions(selectedMonth).catch(() => ({ auctionsMap: {} })),
+          dashboardImageService.getDashboardImages().catch(() => []),
         ]);
         if (mounted) {
           setMembers(Array.isArray(fetchedMembers) ? fetchedMembers : []);
@@ -76,6 +91,7 @@ export default function Dashboard() {
           setPayments(Array.isArray(fetchedPayments) ? fetchedPayments : []);
           setWaLogs(Array.isArray(fetchedWaLogs) ? fetchedWaLogs : []);
           setAuctionsMap(fetchedAuctions.auctionsMap || {});
+          setDashboardImages(Array.isArray(fetchedImages) ? fetchedImages : []);
         }
       } catch (e) {
         if (mounted) {
@@ -85,6 +101,7 @@ export default function Dashboard() {
           setPayments([]);
           setWaLogs([]);
           setAuctionsMap({});
+          setDashboardImages([]);
         }
       } finally {
         if (mounted) setLoading(false);
@@ -106,7 +123,7 @@ export default function Dashboard() {
   const activeGroupsCount = chits.length || 26;
 
   const dueMembersList = activeMembers.filter((member) =>
-    (member.chits || []).some((chit) => (chit.amountToPay || 0) > 0 || (chit.pending || 0) > 0)
+    (member.chits || []).some((chit) => (chit.monthlyAmount || chit.amountToPay || 0) > 0 || (chit.pending || 0) > 0)
   );
   const dueMembersCount = dueMembersList.length;
 
@@ -219,7 +236,7 @@ export default function Dashboard() {
           member: m.name,
           phone: m.phone,
           group: chit.name || `Group ${chit.groupId || 'I'}`,
-          pending: chit.pending || chit.amountToPay || 5000,
+          pending: chit.pending || chit.monthlyAmount || chit.amountToPay || 5000,
           dueStatus: idx % 2 === 0 ? 'Due in 2 days' : 'Overdue',
           dueColor: idx % 2 === 0 ? 'amber' : 'red',
         };
@@ -295,6 +312,33 @@ export default function Dashboard() {
     }
   };
 
+  // Image Handlers
+  const handleImageSaved = (savedDoc) => {
+    setDashboardImages((prev) => [savedDoc, ...prev.filter((img) => img.id !== savedDoc.id)]);
+    showToast('✓ Image saved successfully to Firebase Storage and Firestore!');
+  };
+
+  const handleImageUpdated = (updatedDoc) => {
+    setDashboardImages((prev) => prev.map((img) => (img.id === updatedDoc.id ? updatedDoc : img)));
+    showToast('✓ Image details updated successfully.');
+  };
+
+  const handleConfirmDeleteImage = async () => {
+    if (!deletingImageDoc) return;
+    setIsDeletingImage(true);
+
+    try {
+      await dashboardImageService.deleteDashboardImage(deletingImageDoc);
+      setDashboardImages((prev) => prev.filter((img) => img.id !== deletingImageDoc.id));
+      showToast('Image deleted successfully');
+      setDeletingImageDoc(null);
+    } catch (err) {
+      showToast(`Failed to delete image: ${err.message}`, 'error');
+    } finally {
+      setIsDeletingImage(false);
+    }
+  };
+
   return (
     <div className="space-y-8 font-sans">
       {toast && (
@@ -311,18 +355,18 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* DASHBOARD HERO HEADER WITH ACTION BUTTONS (Section 2 & 3) */}
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between border-b border-[#E5E5E1] pb-6">
+      {/* DASHBOARD HERO HEADER WITH ACTION BUTTONS */}
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between border-b border-[#E5E5E1] pb-6">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="flex h-2 w-2 rounded-full bg-[#2F6B4F] animate-pulse"></span>
-            <p className="text-[11px] font-extrabold uppercase tracking-[0.22em] text-[#2F5D50]">GOOD MORNING, ADMIN 👋</p>
+            <span className="flex h-2 w-2 rounded-full bg-[#2F6B4F]"></span>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#2F5D50]">DASHBOARD</p>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-[#1C1C1A]">
-            Raghavendra Chit Business Suite
+            Welcome back, Admin
           </h1>
           <p className="text-xs font-medium text-[#6B6B67]">
-            Managing <strong className="text-[#1C1C1A]">{activeGroupsCount} Active Groups</strong> • <strong className="text-[#1C1C1A]">{totalMembersCount} Registered Members</strong>
+            Quick overview of your chit business • <strong className="text-[#1C1C1A]">{activeGroupsCount} Active Groups</strong> • <strong className="text-[#1C1C1A]">{totalMembersCount} Registered Members</strong>
           </p>
         </div>
 
@@ -356,6 +400,17 @@ export default function Dashboard() {
           >
             <Gavel className="h-4 w-4 text-[#6B6B67]" />
             <span>Conduct Auction</span>
+          </Button>
+
+          {/* SAVE IMAGE BUTTON */}
+          <Button
+            variant="outline"
+            size="md"
+            className="gap-2 rounded-xl border-[#2F5D50]/30 bg-[#EDF7F0] text-[#2F5D50] hover:bg-[#2F5D50] hover:text-white font-bold shadow-xs cursor-pointer transition-colors"
+            onClick={() => setIsSaveImageOpen(true)}
+          >
+            <ImagePlus className="h-4 w-4" />
+            <span>Save Image</span>
           </Button>
 
           {/* PRIMARY ACTION: Record Payment */}
@@ -616,6 +671,16 @@ export default function Dashboard() {
         </div>
       </section>
 
+      {/* SAVED IMAGES GALLERY SECTION */}
+      <DashboardImageGallery
+        images={dashboardImages}
+        loading={loading}
+        onOpenSaveModal={() => setIsSaveImageOpen(true)}
+        onViewImage={(img) => setViewingImageDoc(img)}
+        onEditImage={(img) => setEditingImageDoc(img)}
+        onDeleteImage={(img) => setDeletingImageDoc(img)}
+      />
+
       {/* QUICK ADMINISTRATIVE SHORTCUTS */}
       <section className="rounded-2xl border border-[#E5E5E1] bg-white p-6 shadow-xs">
         <div className="mb-5 flex items-center justify-between gap-4 border-b border-[#E5E5E1] pb-4">
@@ -628,46 +693,55 @@ export default function Dashboard() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <button
             type="button"
-            onClick={() => setIsCreateChitOpen(true)}
-            className="group flex min-h-[56px] items-center justify-center gap-2 rounded-2xl border border-slate-800 bg-slate-950/80 px-3 py-3 text-xs font-bold text-slate-200 transition-all duration-200 hover:-translate-y-0.5 hover:border-sky-500/50 hover:bg-slate-900 hover:text-sky-300 cursor-pointer shadow-md"
+            onClick={() => setIsSaveImageOpen(true)}
+            className="group flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2.5 text-xs font-bold text-[#1C1C1A] transition-all duration-150 hover:border-[#2F5D50]/40 hover:bg-white cursor-pointer shadow-2xs"
           >
-            <Layers className="h-4 w-4 text-sky-400 transition-transform group-hover:scale-110" />
+            <ImagePlus className="h-4 w-4 text-[#2F5D50] transition-transform group-hover:scale-110" />
+            <span>Save Image</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsCreateChitOpen(true)}
+            className="group flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2.5 text-xs font-bold text-[#1C1C1A] transition-all duration-150 hover:border-[#2F5D50]/40 hover:bg-white cursor-pointer shadow-2xs"
+          >
+            <Layers className="h-4 w-4 text-sky-600 transition-transform group-hover:scale-110" />
             <span>Create Chit</span>
           </button>
 
           <button
             type="button"
             onClick={() => setIsRecordPaymentOpen(true)}
-            className="group flex min-h-[56px] items-center justify-center gap-2 rounded-2xl border border-slate-800 bg-slate-950/80 px-3 py-3 text-xs font-bold text-slate-200 transition-all duration-200 hover:-translate-y-0.5 hover:border-sky-500/50 hover:bg-slate-900 hover:text-sky-300 cursor-pointer shadow-md"
+            className="group flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2.5 text-xs font-bold text-[#1C1C1A] transition-all duration-150 hover:border-[#2F5D50]/40 hover:bg-white cursor-pointer shadow-2xs"
           >
-            <IndianRupee className="h-4 w-4 text-sky-400 transition-transform group-hover:scale-110" />
+            <IndianRupee className="h-4 w-4 text-[#2F5D50] transition-transform group-hover:scale-110" />
             <span>Record Payment</span>
           </button>
 
           <button
             type="button"
             onClick={() => navigate('/whatsapp')}
-            className="group flex min-h-[56px] items-center justify-center gap-2 rounded-2xl border border-slate-800 bg-slate-950/80 px-3 py-3 text-xs font-bold text-slate-200 transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-500/50 hover:bg-slate-900 hover:text-emerald-300 cursor-pointer shadow-md"
+            className="group flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2.5 text-xs font-bold text-[#1C1C1A] transition-all duration-150 hover:border-[#2F5D50]/40 hover:bg-white cursor-pointer shadow-2xs"
           >
-            <Send className="h-4 w-4 text-emerald-400 transition-transform group-hover:scale-110" />
+            <Send className="h-4 w-4 text-emerald-600 transition-transform group-hover:scale-110" />
             <span>WhatsApp</span>
           </button>
 
           <button
             type="button"
             onClick={() => navigate('/history')}
-            className="group flex min-h-[56px] items-center justify-center gap-2 rounded-2xl border border-slate-800 bg-slate-950/80 px-3 py-3 text-xs font-bold text-slate-200 transition-all duration-200 hover:-translate-y-0.5 hover:border-purple-500/50 hover:bg-slate-900 hover:text-purple-300 cursor-pointer shadow-md"
+            className="group flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2.5 text-xs font-bold text-[#1C1C1A] transition-all duration-150 hover:border-[#2F5D50]/40 hover:bg-white cursor-pointer shadow-2xs"
           >
-            <History className="h-4 w-4 text-purple-400 transition-transform group-hover:scale-110" />
+            <History className="h-4 w-4 text-purple-600 transition-transform group-hover:scale-110" />
             <span>View History</span>
           </button>
 
           <button
             type="button"
             onClick={() => navigate('/settings')}
-            className="group flex min-h-[56px] items-center justify-center gap-2 rounded-2xl border border-slate-800 bg-slate-950/80 px-3 py-3 text-xs font-bold text-slate-200 transition-all duration-200 hover:-translate-y-0.5 hover:border-amber-500/50 hover:bg-slate-900 hover:text-amber-300 cursor-pointer shadow-md"
+            className="group flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2.5 text-xs font-bold text-[#1C1C1A] transition-all duration-150 hover:border-[#2F5D50]/40 hover:bg-white cursor-pointer shadow-2xs"
           >
-            <FileSpreadsheet className="h-4 w-4 text-amber-400 transition-transform group-hover:scale-110" />
+            <FileSpreadsheet className="h-4 w-4 text-amber-600 transition-transform group-hover:scale-110" />
             <span>Import Excel</span>
           </button>
         </div>
@@ -691,6 +765,78 @@ export default function Dashboard() {
         onClose={() => setIsStartAuctionOpen(false)}
         onAuctionComplete={handleAuctionCompleted}
       />
+
+      {/* DASHBOARD IMAGE MODALS */}
+      <SaveDashboardImageModal
+        isOpen={isSaveImageOpen}
+        onClose={() => setIsSaveImageOpen(false)}
+        onImageSaved={handleImageSaved}
+      />
+
+      <ViewDashboardImageModal
+        isOpen={!!viewingImageDoc}
+        onClose={() => setViewingImageDoc(null)}
+        imageDoc={viewingImageDoc}
+      />
+
+      <EditDashboardImageModal
+        isOpen={!!editingImageDoc}
+        onClose={() => setEditingImageDoc(null)}
+        imageDoc={editingImageDoc}
+        onImageUpdated={handleImageUpdated}
+      />
+
+      {/* CONFIRMATION DIALOG FOR IMAGE DELETION */}
+      <Modal
+        isOpen={!!deletingImageDoc}
+        onClose={() => !isDeletingImage && setDeletingImageDoc(null)}
+        title="Delete Saved Image"
+        subtitle="Permanently remove image from Firebase Storage and Firestore."
+        maxWidth="max-w-md"
+      >
+        <div className="space-y-4 font-sans text-xs">
+          {deletingImageDoc && (
+            <div className="p-3 bg-[#F7F7F5] rounded-xl border border-[#E5E5E1] flex items-center gap-3">
+              <img
+                src={deletingImageDoc.imageUrl}
+                alt="Thumbnail"
+                className="w-12 h-12 rounded-lg object-cover bg-slate-900 shrink-0 border border-[#E5E5E1]"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-[#1C1C1A] truncate">
+                  {deletingImageDoc.title || deletingImageDoc.fileName || 'Untitled Image'}
+                </p>
+                <p className="text-[10px] text-[#6B6B67] truncate">{deletingImageDoc.fileName}</p>
+              </div>
+            </div>
+          )}
+
+          <p className="text-[#1C1C1A] leading-relaxed">
+            Are you sure you want to permanently delete this image? This action cannot be undone.
+          </p>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E5E1]">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={isDeletingImage}
+              onClick={() => setDeletingImageDoc(null)}
+              className="rounded-xl border-[#E5E5E1] bg-[#F7F7F5] text-[#1C1C1A] hover:bg-[#E5E5E1]"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              disabled={isDeletingImage}
+              onClick={handleConfirmDeleteImage}
+              className="gap-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold cursor-pointer"
+            >
+              {isDeletingImage ? 'Deleting image...' : 'Delete Permanently'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* CONFIRMATION DIALOG FOR AUCTION STATUS */}
       <Modal
