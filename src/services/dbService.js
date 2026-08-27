@@ -442,58 +442,84 @@ export const chitService = {
     );
 
     try {
-      const qSnap = await getDocs(collection(db, 'chits'));
-      const list = [];
-      qSnap.forEach((d) => list.push({ id: d.id, ...d.data() }));
-
-      if (list.length > 0) {
-        return list.map((g) => ({
-          ...g,
-          totalChitValue: Number(g.totalChitValue || g.totalValue || g.chitValue || 100000),
-          monthlyPremium: Number(g.monthlyPremium || Math.floor((g.totalChitValue || 100000) / 20)),
-          capacity: Number(g.capacity || 20),
-          duration: g.duration || '20 Months',
-          startingMonth: g.startingMonth || g.startMonth || 'March 2026',
-          nextAuctionDate: g.nextAuctionDate || '15th of Month',
-        }));
+      // 1. Fetch explicit group documents from Firestore 'chits' collection
+      let explicitChits = [];
+      try {
+        const qSnap = await getDocs(collection(db, 'chits'));
+        qSnap.forEach((d) => explicitChits.push({ id: d.id, ...d.data() }));
+      } catch (chitErr) {
+        console.warn('Firestore chits collection fetch notice:', chitErr?.message);
       }
 
-      // If chits collection has 0 documents, derive chit groups from Firestore members holdings!
-      const members = await memberService.getMembers();
+      // 2. Fetch member holdings to ensure all existing groups are preserved even if unseeded in 'chits' collection
+      let members = [];
+      try {
+        members = await memberService.getMembers();
+      } catch (memErr) {
+        console.warn('Member fetch in getChits notice:', memErr?.message);
+      }
+
+      // Unified Map to hold all groups keyed by `${cleanGroupId}_${totalChitValue}`
       const groupMap = new Map();
 
-      members.forEach((m) => {
-        (m.chits || []).forEach((c) => {
-          const val = Number(c.totalChitValue || 100000);
-          const key = `${c.groupId}_${val}`;
-          if (!groupMap.has(key)) {
-            groupMap.set(key, {
-              id: `group_${key}`,
-              groupId: c.groupId,
-              name: `₹${(val / 100000).toFixed(0)} Lakh Chit (Group ${c.groupId})`,
-              totalChitValue: val,
-              monthlyPremium: Math.floor(val / 20),
-              duration: '20 Months',
-              capacity: 20,
-              startingMonth: c.startingMonth || c.startMonth || 'March 2026',
-              nextAuctionDate: '15th of Month',
-              status: 'ACTIVE',
-              enrolledMembers: 0,
-            });
-          }
-          groupMap.get(key).enrolledMembers += c.quantity;
+      // First pass: Discover and populate all groups referenced across member holdings
+      if (Array.isArray(members)) {
+        members.forEach((m) => {
+          (m.chits || []).forEach((c) => {
+            const rawGId = String(c?.groupId || c?.group || 'I').trim();
+            const cleanGId = rawGId.toUpperCase();
+            const val = Number(c?.totalChitValue || c?.totalValue || c?.chitValue || 100000);
+            const key = `${cleanGId}_${val}`;
+
+            if (!groupMap.has(key)) {
+              groupMap.set(key, {
+                id: `group_${cleanGId}_${val}`,
+                groupId: cleanGId,
+                name: c?.name || `₹${(val / 100000).toFixed(0)} Lakh Chit (Group ${cleanGId})`,
+                totalChitValue: val,
+                monthlyPremium: Number(c?.monthlyAmount || Math.floor(val / 20)),
+                duration: '20 Months',
+                capacity: 20,
+                startingMonth: c?.startingMonth || c?.startMonth || 'March 2026',
+                nextAuctionDate: '15th of Month',
+                status: 'ACTIVE',
+                enrolledMembers: 0,
+              });
+            }
+            groupMap.get(key).enrolledMembers += Number(c?.quantity || 1);
+          });
+        });
+      }
+
+      // Second pass: Merge explicit 'chits' documents from Firestore (takes priority for metadata like startingMonth, custom name, etc.)
+      explicitChits.forEach((docData) => {
+        const rawGId = String(docData.groupId || docData.id || 'I').replace(/^group_/, '').split('_')[0] || 'I';
+        const cleanGId = rawGId.trim().toUpperCase();
+        const val = Number(docData.totalChitValue || docData.totalValue || docData.chitValue || 100000);
+        const key = `${cleanGId}_${val}`;
+
+        const existing = groupMap.get(key) || {};
+
+        groupMap.set(key, {
+          id: docData.id || existing.id || `group_${cleanGId}_${val}`,
+          groupId: docData.groupId ? String(docData.groupId).trim().toUpperCase() : cleanGId,
+          name: docData.name || existing.name || `₹${(val / 100000).toFixed(0)} Lakh Chit (Group ${cleanGId})`,
+          totalChitValue: val,
+          monthlyPremium: Number(docData.monthlyPremium || existing.monthlyPremium || Math.floor(val / 20)),
+          capacity: Number(docData.capacity || existing.capacity || 20),
+          duration: docData.duration || existing.duration || '20 Months',
+          startingMonth: docData.startingMonth || docData.startMonth || existing.startingMonth || 'March 2026',
+          nextAuctionDate: docData.nextAuctionDate || existing.nextAuctionDate || '15th of Month',
+          status: docData.status || existing.status || 'ACTIVE',
+          enrolledMembers: existing.enrolledMembers || 0,
+          createdAt: docData.createdAt || existing.createdAt || null,
+          updatedAt: docData.updatedAt || existing.updatedAt || null,
         });
       });
 
       return Array.from(groupMap.values());
     } catch (err) {
-      console.error('[FIREBASE READ ERROR DIAGNOSTIC]\n' +
-        `name: ${err?.name ?? 'Error'}\n` +
-        `code: ${err?.code ?? 'unknown'}\n` +
-        `message: ${err?.message ?? String(err)}\n` +
-        `stack: ${err?.stack ?? 'N/A'}`
-      );
-      console.error('FULL FIREBASE ERROR:', err);
+      console.error('[FIREBASE READ ERROR DIAGNOSTIC in getChits]\n', err);
       throw err;
     }
   },
@@ -529,7 +555,7 @@ export const chitService = {
 
   async createChit(chitData) {
     await ensureAuthReady();
-    const gId = String(chitData.groupId || chitData.id || '').trim();
+    const gId = String(chitData.groupId || chitData.id || '').trim().toUpperCase();
     const val = Number(chitData.totalChitValue || chitData.totalValue || chitData.chitValue || 100000);
     const prem = Number(chitData.monthlyPremium || Math.floor(val / 20));
     const cap = Number(chitData.capacity || 20);
@@ -593,15 +619,16 @@ export const chitService = {
     }
   },
 
-  async updateChitGroupStartingMonth(groupId, chitValue = 100000, startingMonth = 'March 2026') {
+  async updateChitGroupStartingMonth(groupId, chitValue = 100000, startingMonth = 'March 2026', groupDocId = null) {
     await ensureAuthReady();
     try {
-      const gId = String(groupId).trim();
+      const gId = String(groupId).trim().toUpperCase();
       const val = Number(chitValue || 100000);
-      const docId = `group_${gId}_${val}`;
+      const docId = groupDocId || `group_${gId}_${val}`;
       const docRef = doc(db, 'chits', docId);
 
       await setDoc(docRef, {
+        id: docId,
         groupId: gId,
         totalChitValue: val,
         startingMonth,
@@ -631,7 +658,7 @@ export const chitService = {
   async deleteChitGroup(groupId, chitValue = 100000, chitId = null) {
     await ensureAuthReady();
     try {
-      const gId = String(groupId).trim();
+      const gId = String(groupId).trim().toUpperCase();
       const val = Number(chitValue || 100000);
       const docId = chitId || `group_${gId}_${val}`;
       const docRef = doc(db, 'chits', docId);
@@ -865,22 +892,41 @@ export const auctionService = {
 
       qSnap.forEach((docSnap) => {
         const data = docSnap.data() || {};
+        const isDeleted = Boolean(data.isDeleted || data.status === 'DELETED');
+        const isCompleted = (data.isAuctioned === true || data.status === 'COMPLETED') && !isDeleted;
+
+        const formattedAuction = {
+          id: docSnap.id,
+          memberId: data.memberId,
+          memberName: data.memberName || data.winner || 'Member',
+          winnerName: data.memberName || data.winner || 'Member',
+          groupId: String(data.groupId || 'I'),
+          groupName: data.groupName || `Group ${data.groupId || 'I'}`,
+          totalChitValue: Number(data.totalChitValue || data.chitValue || data.chitAmount || 100000),
+          billingMonth: data.billingMonth || 'August 2026',
+          isAuctioned: Boolean(data.isAuctioned),
+          isDeleted,
+          status: isDeleted ? 'DELETED' : data.status || (data.isAuctioned ? 'COMPLETED' : 'CANCELLED'),
+          bidAmount: Number(data.bidAmount || 0),
+          dividend: Number(data.dividend || 0),
+          netPayout: Number(data.netPayout || data.payout || 0),
+          roundNumber: Number(data.roundNumber || data.month || 1),
+          auctionDate: data.auctionDate || (data.completedAt?.toDate ? data.completedAt.toDate().toISOString().split('T')[0] : null) || (data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString().split('T')[0] : null) || (typeof data.updatedAt === 'string' ? data.updatedAt.split('T')[0] : new Date().toISOString().split('T')[0]),
+          completedAt: data.completedAt?.toDate ? data.completedAt.toDate().toISOString() : data.completedAt || null,
+          deletedAt: data.deletedAt?.toDate ? data.deletedAt.toDate().toISOString() : data.deletedAt || null,
+          deletedBy: data.deletedBy || null,
+          updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : data.updatedAt || new Date().toISOString(),
+        };
+
+        const key = `${data.memberId}_${data.groupId}_${data.billingMonth}`;
         const monthMatch = !billingMonth || data.billingMonth === billingMonth;
-        if (monthMatch && data.isAuctioned) {
-          const key = `${data.memberId}_${data.groupId}_${data.billingMonth}`;
-          auctionsMap[key] = {
-            id: docSnap.id,
-            memberId: data.memberId,
-            memberName: data.memberName,
-            groupId: data.groupId,
-            billingMonth: data.billingMonth,
-            isAuctioned: true,
-            bidAmount: Number(data.bidAmount || 0),
-            dividend: Number(data.dividend || 0),
-            updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : data.updatedAt || new Date().toISOString(),
-          };
-          auctionsList.push(auctionsMap[key]);
+
+        if (monthMatch && isCompleted) {
+          auctionsMap[key] = formattedAuction;
         }
+
+        // Keep all auctions in the list for history and audit views
+        auctionsList.push(formattedAuction);
       });
 
       return { auctionsMap, auctionsList };
@@ -890,11 +936,26 @@ export const auctionService = {
     }
   },
 
-  async setAuctionStatus({ memberId, memberName, groupId, billingMonth, isAuctioned, bidAmount = 0, dividend = 0 }) {
+  async setAuctionStatus({
+    memberId,
+    memberName,
+    groupId,
+    groupName = '',
+    totalChitValue = 100000,
+    billingMonth = 'August 2026',
+    isAuctioned,
+    bidAmount = 0,
+    dividend = 0,
+    netPayout = 0,
+    roundNumber = 1,
+    auctionDate = null,
+  }) {
     await ensureAuthReady();
     const cleanMonthKey = String(billingMonth || 'August 2026').replace(/\s+/g, '_');
     const docId = `${memberId}_${groupId}_${cleanMonthKey}`;
     const docRef = doc(db, 'auctions', docId);
+
+    const actualDate = auctionDate || new Date().toISOString().split('T')[0];
 
     try {
       if (isAuctioned) {
@@ -902,22 +963,68 @@ export const auctionService = {
           memberId,
           memberName: memberName || 'Member',
           groupId: String(groupId),
-          billingMonth,
+          groupName: groupName || `Group ${groupId}`,
+          totalChitValue: Number(totalChitValue || 100000),
+          billingMonth: billingMonth || 'August 2026',
           isAuctioned: true,
+          isDeleted: false,
+          status: 'COMPLETED',
           bidAmount: Number(bidAmount || 0),
           dividend: Number(dividend || 0),
+          netPayout: Number(netPayout || 0),
+          roundNumber: Number(roundNumber || 1),
+          auctionDate: actualDate,
+          completedAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           updatedBy: auth.currentUser?.email || 'Admin',
         };
         await setDoc(docRef, docData, { merge: true });
         return { id: docId, ...docData };
       } else {
-        await setDoc(docRef, { isAuctioned: false, updatedAt: serverTimestamp() }, { merge: true });
+        await setDoc(docRef, { isAuctioned: false, status: 'CANCELLED', updatedAt: serverTimestamp() }, { merge: true });
         return { id: docId, isAuctioned: false };
       }
     } catch (err) {
       console.error('Firestore setAuctionStatus error:', err.message);
       throw new Error(`Failed to update auction status: ${err.message}`);
+    }
+  },
+
+  async deleteAuction(auctionDocIdOrObj) {
+    await ensureAuthReady();
+    const docId = typeof auctionDocIdOrObj === 'string' ? auctionDocIdOrObj : auctionDocIdOrObj?.id;
+    if (!docId) throw new Error('Auction document ID is required to delete.');
+
+    const docRef = doc(db, 'auctions', docId);
+    try {
+      const deletePayload = {
+        isAuctioned: false,
+        isDeleted: true,
+        status: 'DELETED',
+        deletedAt: serverTimestamp(),
+        deletedBy: auth.currentUser?.email || 'Admin',
+        updatedAt: serverTimestamp(),
+      };
+      await setDoc(docRef, deletePayload, { merge: true });
+
+      // Log immutable audit trail to history
+      try {
+        const targetObj = typeof auctionDocIdOrObj === 'object' ? auctionDocIdOrObj : {};
+        await historyService.logHistoryEvent({
+          action: 'AUCTION_DELETED',
+          category: 'Auction',
+          title: `Auction Deleted for Group ${targetObj?.groupId || ''}`,
+          details: `Auction for ${targetObj?.memberName || 'Member'} (${targetObj?.billingMonth || 'Billing Month'}) was deleted from active view and preserved in Auction History.`,
+          groupId: targetObj?.groupId,
+          chitValue: targetObj?.totalChitValue,
+          performedBy: auth.currentUser?.email || 'Admin',
+        });
+      } catch (_) {}
+
+      return { id: docId, ...deletePayload };
+    } catch (err) {
+      console.error('Firestore deleteAuction error:', err.message);
+      throw new Error(`Failed to delete auction: ${err.message}`);
     }
   },
 };

@@ -13,20 +13,34 @@ import {
   ShieldCheck,
   Archive,
   ChevronRight,
+  Gavel,
+  CheckCircle2,
+  Trash2,
+  Eye,
+  AlertTriangle,
 } from 'lucide-react';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
 import Button from '../components/Button';
 import Toast from '../components/Toast';
+import Modal from '../components/Modal';
 import { historyService } from '../services/historyService';
-import { memberService, paymentService } from '../services/dbService';
+import { memberService, paymentService, auctionService } from '../services/dbService';
 
 export default function History() {
+  const [activeTab, setActiveTab] = useState('audit'); // 'audit' | 'auctions' | 'archived'
   const [historyEvents, setHistoryEvents] = useState([]);
   const [paymentsList, setPaymentsList] = useState([]);
   const [archivedMembers, setArchivedMembers] = useState([]);
+  const [auctionsList, setAuctionsList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
+
+  // Auction history specific filter
+  const [auctionStatusFilter, setAuctionStatusFilter] = useState('all'); // 'all' | 'completed' | 'deleted'
+  const [selectedAuctionModal, setSelectedAuctionModal] = useState(null);
+  const [deletingAuctionTarget, setDeletingAuctionTarget] = useState(null);
+  const [isDeletingAuction, setIsDeletingAuction] = useState(false);
 
   // Hierarchical Filter States
   const [selectedYear, setSelectedYear] = useState('all');
@@ -45,7 +59,7 @@ export default function History() {
     async function loadHistoryData() {
       setLoading(true);
       try {
-        const [events, payments, members] = await Promise.all([
+        const [events, payments, members, auctionsRes] = await Promise.all([
           historyService.getHistoryEvents({
             year: selectedYear,
             month: selectedMonth,
@@ -56,12 +70,14 @@ export default function History() {
           }),
           paymentService.getPayments().catch(() => []),
           memberService.getMembers().catch(() => []),
+          auctionService.getAuctions().catch(() => ({ auctionsList: [] })),
         ]);
 
         if (mounted) {
           setHistoryEvents(Array.isArray(events) ? events : []);
           setPaymentsList(Array.isArray(payments) ? payments : []);
           setArchivedMembers(Array.isArray(members) ? members.filter((m) => m.status === 'archived') : []);
+          setAuctionsList(Array.isArray(auctionsRes?.auctionsList) ? auctionsRes.auctionsList : []);
         }
       } catch (e) {
         console.error('History load error:', e.message);
@@ -83,7 +99,27 @@ export default function History() {
     setSelectedCategory('all');
     setSelectedGroupId('all');
     setSearchQuery('');
+    setAuctionStatusFilter('all');
     showToast('History filters reset to default.');
+  };
+
+  const handleConfirmDeleteAuction = async () => {
+    if (!deletingAuctionTarget) return;
+    setIsDeletingAuction(true);
+    try {
+      await auctionService.deleteAuction(deletingAuctionTarget);
+      const updated = await auctionService.getAuctions();
+      setAuctionsList(Array.isArray(updated?.auctionsList) ? updated.auctionsList : []);
+      if (selectedAuctionModal?.id === deletingAuctionTarget.id) {
+        setSelectedAuctionModal(null);
+      }
+      showToast(`✓ Auction marked as DELETED and preserved in Auction History.`);
+      setDeletingAuctionTarget(null);
+    } catch (err) {
+      showToast(`Failed to delete auction: ${err.message}`, 'error');
+    } finally {
+      setIsDeletingAuction(false);
+    }
   };
 
   const getActionBadgeVariant = (action = '') => {
@@ -93,6 +129,37 @@ export default function History() {
     if (act.includes('UPDATED') || act.includes('ADJUSTMENT')) return 'warning';
     return 'info';
   };
+
+  // Filtered auctions for Auction History tab
+  const filteredAuctions = auctionsList.filter((a) => {
+    // Status filter
+    if (auctionStatusFilter === 'completed' && (a.isDeleted || a.status === 'DELETED')) return false;
+    if (auctionStatusFilter === 'deleted' && !a.isDeleted && a.status !== 'DELETED') return false;
+
+    // Group filter
+    if (selectedGroupId !== 'all' && String(a.groupId).trim().toUpperCase() !== String(selectedGroupId).trim().toUpperCase()) {
+      return false;
+    }
+
+    // Chit Value filter
+    if (selectedChitValue !== 'all' && Number(a.totalChitValue || 100000) !== Number(selectedChitValue)) {
+      return false;
+    }
+
+    // Search query
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const matchName = String(a.memberName || a.winnerName || '').toLowerCase().includes(q);
+      const matchGroup = String(a.groupId || '').toLowerCase().includes(q) || String(a.groupName || '').toLowerCase().includes(q);
+      const matchMonth = String(a.billingMonth || '').toLowerCase().includes(q);
+      if (!matchName && !matchGroup && !matchMonth) return false;
+    }
+
+    return true;
+  });
+
+  const completedAuctionsCount = auctionsList.filter((a) => !a.isDeleted && a.status !== 'DELETED').length;
+  const deletedAuctionsCount = auctionsList.filter((a) => a.isDeleted || a.status === 'DELETED').length;
 
   return (
     <div className="space-y-6 md:space-y-8 font-sans">
@@ -107,9 +174,9 @@ export default function History() {
             <span className="flex h-2 w-2 rounded-full bg-sky-400 animate-pulse"></span>
             <p className="text-[11px] font-black uppercase tracking-[0.2em] text-sky-400">Historical Audit & Archive</p>
           </div>
-          <h1 className="text-2xl md:text-3xl font-black text-white">Audit & Archive History</h1>
+          <h1 className="text-2xl md:text-3xl font-black text-white">Audit & History Logs</h1>
           <p className="text-xs font-semibold text-slate-400 mt-1">
-            Immutably preserved historical records, group archives, payment audits, and administrative logs.
+            Immutably preserved historical records, group archives, auction history, and administrative logs.
           </p>
         </div>
 
@@ -119,11 +186,87 @@ export default function History() {
         </Button>
       </div>
 
+      {/* TABS NAVIGATION */}
+      <div className="flex flex-wrap items-center gap-2 p-1.5 bg-[#111625]/90 border border-slate-800/80 rounded-2xl text-xs font-bold">
+        <button
+          type="button"
+          onClick={() => setActiveTab('audit')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'audit'
+              ? 'bg-sky-500 text-white shadow-md'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          <span>System Audit Logs ({historyEvents.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('auctions')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'auctions'
+              ? 'bg-emerald-600 text-white shadow-md'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+          }`}
+        >
+          <Gavel className="w-4 h-4" />
+          <span>Auction History ({auctionsList.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('archived')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'archived'
+              ? 'bg-amber-600 text-white shadow-md'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+          }`}
+        >
+          <Archive className="w-4 h-4" />
+          <span>Archived Members ({archivedMembers.length})</span>
+        </button>
+      </div>
+
       {/* HIERARCHICAL FILTER BAR */}
       <div className="p-5 bg-[#111625]/90 border border-slate-800/80 rounded-3xl shadow-xl space-y-4">
-        <div className="flex items-center gap-2 font-bold text-xs text-slate-300">
-          <Filter className="w-4 h-4 text-sky-400" />
-          <span>Hierarchical Filter Engine (Year → Month → Category → Group)</span>
+        <div className="flex items-center justify-between font-bold text-xs text-slate-300">
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-sky-400" />
+            <span>Search & Historical Filter Engine</span>
+          </div>
+
+          {activeTab === 'auctions' && (
+            <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
+              <button
+                type="button"
+                onClick={() => setAuctionStatusFilter('all')}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
+                  auctionStatusFilter === 'all' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                All ({auctionsList.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setAuctionStatusFilter('completed')}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
+                  auctionStatusFilter === 'completed' ? 'bg-emerald-700 text-white' : 'text-slate-400 hover:text-emerald-400'
+                }`}
+              >
+                ✓ Completed ({completedAuctionsCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setAuctionStatusFilter('deleted')}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
+                  auctionStatusFilter === 'deleted' ? 'bg-rose-700 text-white' : 'text-slate-400 hover:text-rose-400'
+                }`}
+              >
+                🗑 Deleted ({deletedAuctionsCount})
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -198,6 +341,7 @@ export default function History() {
               className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
             >
               <option value="all">All Categories</option>
+              <option value="Auction">Auction Records</option>
               <option value="Member">Member Actions</option>
               <option value="Group">Group Actions</option>
               <option value="Payment">Payment Records</option>
@@ -231,7 +375,7 @@ export default function History() {
               <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-500" />
               <input
                 type="text"
-                placeholder="Search history..."
+                placeholder={activeTab === 'auctions' ? 'Search winner or group...' : 'Search history...'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full rounded-xl border border-slate-800 bg-slate-950 pl-9 pr-3 py-2 text-xs font-semibold text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
@@ -241,97 +385,375 @@ export default function History() {
         </div>
       </div>
 
-      {/* ARCHIVED MEMBERS BANNER IF ANY */}
-      {archivedMembers.length > 0 && (
-        <Card className="p-5 border border-amber-200 bg-amber-50/50 rounded-3xl space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Archive className="w-4 h-4 text-amber-700" />
-              <h3 className="text-sm font-bold text-amber-900">Archived Members ({archivedMembers.length})</h3>
+      {/* TAB 1: AUCTION HISTORY SECTION */}
+      {activeTab === 'auctions' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between px-1">
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <Gavel className="w-5 h-5 text-emerald-400" />
+              <span>Auction History & Audit Records ({filteredAuctions.length})</span>
+            </h2>
+            <span className="text-xs text-slate-400 font-semibold">Includes completed & soft-deleted auctions</span>
+          </div>
+
+          {loading ? (
+            <Card className="p-12 text-center text-slate-400 font-bold text-sm bg-[#111625] border border-slate-800 rounded-3xl">
+              Loading auction history records...
+            </Card>
+          ) : filteredAuctions.length === 0 ? (
+            <Card className="p-12 text-center text-slate-400 font-bold text-sm bg-[#111625] border border-slate-800 rounded-3xl space-y-2">
+              <Clock className="w-8 h-8 text-slate-600 mx-auto" />
+              <p>No auction history records found matching your filters.</p>
+              <p className="text-xs text-slate-500 font-normal">Try clearing search filters or changing the status tab.</p>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredAuctions.map((auction) => {
+                const isDel = auction.isDeleted || auction.status === 'DELETED';
+                const formattedCategory = auction.totalChitValue >= 100000 ? `₹${(auction.totalChitValue / 100000).toFixed(0)} Lakh` : `₹${auction.totalChitValue?.toLocaleString('en-IN')}`;
+                const fullGroupTitle = `${formattedCategory} — Group ${auction.groupId}`;
+
+                return (
+                  <Card
+                    key={auction.id}
+                    className={`p-5 rounded-3xl border transition-all space-y-3 ${
+                      isDel
+                        ? 'border-rose-900/60 bg-rose-950/20 text-rose-200'
+                        : 'border-slate-800 bg-[#111625] text-slate-200 hover:border-slate-700'
+                    }`}
+                  >
+                    {/* TOP BADGE ROW */}
+                    <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-800/80">
+                      {isDel ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-950 border border-rose-800 text-rose-300 text-[10px] font-black tracking-wide">
+                          <Trash2 className="w-3 h-3 text-rose-400" />
+                          DELETED
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950 border border-emerald-800 text-emerald-300 text-[10px] font-black tracking-wide">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                          COMPLETED
+                        </span>
+                      )}
+
+                      <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-900 px-2 py-0.5 rounded-md border border-slate-800">
+                        Round {auction.roundNumber || 1} • {auction.billingMonth}
+                      </span>
+                    </div>
+
+                    {/* WINNER & GROUP */}
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                        Winner Member
+                      </p>
+                      <p className="text-base font-black text-white truncate">
+                        {auction.memberName || auction.winnerName || 'Member'}
+                      </p>
+                      <p className="text-xs font-bold text-sky-400">
+                        {fullGroupTitle}
+                      </p>
+                    </div>
+
+                    {/* FINANCIAL METRICS */}
+                    <div className="grid grid-cols-2 gap-2 p-2.5 bg-slate-950/70 rounded-xl border border-slate-800/80 text-xs">
+                      <div>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase block">Auction Bid</span>
+                        <span className="font-black text-white">₹{auction.bidAmount?.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase block">Dividend / Member</span>
+                        <span className="font-black text-emerald-400">₹{auction.dividend?.toLocaleString('en-IN')}</span>
+                      </div>
+                    </div>
+
+                    {/* DATES & ACTION */}
+                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800/80 text-[11px]">
+                      <span className="text-slate-400">
+                        Conducted: {auction.auctionDate || 'Recent'}
+                      </span>
+
+                      <div className="flex items-center gap-2">
+                        {!isDel && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDeletingAuctionTarget({
+                                ...auction,
+                                groupTitle: fullGroupTitle,
+                              })
+                            }
+                            title="Delete Auction"
+                            className="p-1 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSelectedAuctionModal({
+                              ...auction,
+                              groupTitle: fullGroupTitle,
+                            })
+                          }
+                          className="flex items-center gap-1 font-bold text-sky-400 hover:text-sky-300 transition-colors cursor-pointer"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Details</span>
+                        </button>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
             </div>
-            <Badge variant="warning">{archivedMembers.length} Saved in History</Badge>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            {archivedMembers.map((m) => (
-              <div key={m.id} className="p-3 bg-white border border-amber-200 rounded-2xl text-xs space-y-1">
-                <p className="font-bold text-slate-900">{m.name}</p>
-                <p className="text-slate-500">Phone: {m.phone || 'N/A'}</p>
-                <p className="text-[10px] text-amber-800 font-semibold">Holdings Preserved: {m.chits?.length || 0}</p>
-              </div>
-            ))}
-          </div>
-        </Card>
+          )}
+        </div>
       )}
 
-      {/* AUDIT LOG TIMELINE */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between px-1">
-          <h2 className="text-lg font-bold text-slate-900">Historical Audit Records ({historyEvents.length})</h2>
-          <span className="text-xs text-slate-500 font-semibold">Ordered by Date & Time</span>
-        </div>
-
-        {loading ? (
-          <Card className="p-12 text-center text-slate-500 font-bold text-sm bg-white border border-slate-200 rounded-3xl">
-            Loading historical audit data...
-          </Card>
-        ) : historyEvents.length === 0 ? (
-          <Card className="p-12 text-center text-slate-500 font-bold text-sm bg-white border border-slate-200 rounded-3xl space-y-2">
-            <Clock className="w-8 h-8 text-slate-400 mx-auto" />
-            <p>No historical audit records found for the selected filters.</p>
-            <p className="text-xs text-slate-400 font-normal">Try adjusting the Year, Month, or Category selection above.</p>
-          </Card>
-        ) : (
-          <div className="space-y-3">
-            {historyEvents.map((evt) => (
-              <Card key={evt.id} className="p-4 sm:p-5 border border-slate-200 bg-white rounded-3xl shadow-xs hover:border-sky-300 transition-all space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-2xl bg-sky-50 text-sky-700 font-bold flex items-center justify-center shrink-0">
-                      <FileText className="w-4.5 h-4.5" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-900">{evt.title || evt.action}</h3>
-                      <p className="text-xs text-slate-500 mt-0.5">{evt.details || 'No detailed note provided.'}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
-                    <Badge variant={getActionBadgeVariant(evt.action)} className="text-[10px] uppercase font-extrabold">
-                      {evt.action}
-                    </Badge>
-                    <span className="text-[11px] font-semibold text-slate-400">{evt.year} - {evt.month}</span>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 gap-2 pt-1">
-                  <div className="flex items-center gap-4">
-                    {evt.category && (
-                      <span className="font-semibold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-full">
-                        Category: {evt.category}
-                      </span>
-                    )}
-                    {evt.groupId && (
-                      <span className="font-semibold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-full">
-                        Group {evt.groupId}
-                      </span>
-                    )}
-                    {evt.chitValue && (
-                      <span className="font-semibold text-sky-800 bg-sky-50 px-2.5 py-0.5 rounded-full">
-                        ₹{(evt.chitValue / 100000).toFixed(0)} Lakh Chit
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-1.5 text-slate-400 text-[11px]">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                    <span>Performed by: {evt.performedBy || 'Admin'}</span>
-                  </div>
-                </div>
-              </Card>
-            ))}
+      {/* TAB 2: SYSTEM AUDIT LOGS */}
+      {activeTab === 'audit' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between px-1">
+            <h2 className="text-lg font-bold text-white">Historical Audit Records ({historyEvents.length})</h2>
+            <span className="text-xs text-slate-400 font-semibold">Ordered by Date & Time</span>
           </div>
-        )}
-      </div>
+
+          {loading ? (
+            <Card className="p-12 text-center text-slate-400 font-bold text-sm bg-[#111625] border border-slate-800 rounded-3xl">
+              Loading historical audit data...
+            </Card>
+          ) : historyEvents.length === 0 ? (
+            <Card className="p-12 text-center text-slate-400 font-bold text-sm bg-[#111625] border border-slate-800 rounded-3xl space-y-2">
+              <Clock className="w-8 h-8 text-slate-600 mx-auto" />
+              <p>No historical audit records found for the selected filters.</p>
+              <p className="text-xs text-slate-500 font-normal">Try adjusting the Year, Month, or Category selection above.</p>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {historyEvents.map((evt) => (
+                <Card key={evt.id} className="p-4 sm:p-5 border border-slate-800 bg-[#111625] rounded-3xl shadow-xs hover:border-sky-500/50 transition-all space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800/80">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-2xl bg-sky-500/10 text-sky-400 font-bold flex items-center justify-center shrink-0 border border-sky-500/20">
+                        <FileText className="w-4.5 h-4.5" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-white">{evt.title || evt.action}</h3>
+                        <p className="text-xs text-slate-400 mt-0.5">{evt.details || 'No detailed note provided.'}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+                      <Badge variant={getActionBadgeVariant(evt.action)} className="text-[10px] uppercase font-extrabold">
+                        {evt.action}
+                      </Badge>
+                      <span className="text-[11px] font-semibold text-slate-400">{evt.year} - {evt.month}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between text-xs text-slate-400 gap-2 pt-1">
+                    <div className="flex items-center gap-3">
+                      {evt.category && (
+                        <span className="font-semibold text-slate-300 bg-slate-900 border border-slate-800 px-2.5 py-0.5 rounded-full">
+                          Category: {evt.category}
+                        </span>
+                      )}
+                      {evt.groupId && (
+                        <span className="font-semibold text-slate-300 bg-slate-900 border border-slate-800 px-2.5 py-0.5 rounded-full">
+                          Group {evt.groupId}
+                        </span>
+                      )}
+                      {evt.chitValue && (
+                        <span className="font-semibold text-sky-400 bg-sky-950 border border-sky-800 px-2.5 py-0.5 rounded-full">
+                          ₹{(evt.chitValue / 100000).toFixed(0)} Lakh Chit
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1.5 text-slate-400 text-[11px]">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Performed by: {evt.performedBy || 'Admin'}</span>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 3: ARCHIVED MEMBERS SECTION */}
+      {activeTab === 'archived' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between px-1">
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <Archive className="w-5 h-5 text-amber-400" />
+              <span>Archived Members ({archivedMembers.length})</span>
+            </h2>
+            <Badge variant="warning">{archivedMembers.length} Saved in History</Badge>
+          </div>
+
+          {archivedMembers.length === 0 ? (
+            <Card className="p-12 text-center text-slate-400 font-bold text-sm bg-[#111625] border border-slate-800 rounded-3xl">
+              No archived members recorded in history.
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              {archivedMembers.map((m) => (
+                <div key={m.id} className="p-4 bg-[#111625] border border-slate-800 rounded-2xl text-xs space-y-2">
+                  <p className="font-bold text-white text-sm">{m.name}</p>
+                  <p className="text-slate-400">Phone: {m.phone || 'N/A'}</p>
+                  <p className="text-[11px] text-amber-400 font-semibold">Holdings Preserved: {m.chits?.length || 0}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* VIEW AUCTION MODAL IN HISTORY */}
+      {selectedAuctionModal && (
+        <Modal
+          isOpen={Boolean(selectedAuctionModal)}
+          onClose={() => setSelectedAuctionModal(null)}
+          title="Auction Historical Audit Record"
+          subtitle={`Detailed audit log for ${selectedAuctionModal.groupTitle || 'Chit Group'}.`}
+          maxWidth="max-w-md"
+        >
+          <div className="space-y-4 text-xs font-sans">
+            <div className={`p-4 rounded-2xl space-y-2 border ${
+              selectedAuctionModal.isDeleted || selectedAuctionModal.status === 'DELETED'
+                ? 'bg-rose-950/30 border-rose-800 text-rose-200'
+                : 'bg-emerald-950/30 border-emerald-800 text-emerald-200'
+            }`}>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
+                  {selectedAuctionModal.isDeleted || selectedAuctionModal.status === 'DELETED' ? (
+                    <>
+                      <Trash2 className="w-4 h-4 text-rose-400" />
+                      DELETED AUCTION RECORD
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      COMPLETED AUCTION RECORD
+                    </>
+                  )}
+                </span>
+                <span className="text-[10px] font-mono font-bold bg-slate-900 px-2 py-0.5 rounded border border-slate-700 text-slate-300">
+                  Round {selectedAuctionModal.roundNumber || 1}
+                </span>
+              </div>
+              <p className="text-base font-black text-white">
+                {selectedAuctionModal.memberName || selectedAuctionModal.winnerName || 'Member'}
+              </p>
+              <p className="text-xs font-bold text-sky-400">
+                {selectedAuctionModal.groupTitle}
+              </p>
+            </div>
+
+            <div className="space-y-2.5 bg-slate-950 border border-slate-800 p-4 rounded-xl text-slate-300">
+              <div className="flex justify-between">
+                <span className="text-slate-400 font-semibold">Total Chit Value:</span>
+                <span className="font-bold text-white">₹{selectedAuctionModal.totalChitValue?.toLocaleString('en-IN')}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400 font-semibold">Bid Discount Amount:</span>
+                <span className="font-bold text-white">₹{selectedAuctionModal.bidAmount?.toLocaleString('en-IN')}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400 font-semibold">Dividend / Member:</span>
+                <span className="font-bold text-emerald-400">₹{selectedAuctionModal.dividend?.toLocaleString('en-IN')}</span>
+              </div>
+              <div className="flex justify-between pt-2 border-t border-slate-800">
+                <span className="text-slate-200 font-bold">Net Prize Payout:</span>
+                <span className="font-black text-emerald-400 text-sm">
+                  ₹{selectedAuctionModal.netPayout?.toLocaleString('en-IN')}
+                </span>
+              </div>
+              <div className="flex justify-between pt-1 border-t border-slate-800 text-[11px]">
+                <span className="text-slate-400">Conducted Date:</span>
+                <span className="font-medium text-white">{selectedAuctionModal.auctionDate || 'N/A'}</span>
+              </div>
+              <div className="flex justify-between text-[11px]">
+                <span className="text-slate-400">Billing Cycle:</span>
+                <span className="font-medium text-white">{selectedAuctionModal.billingMonth}</span>
+              </div>
+
+              {(selectedAuctionModal.isDeleted || selectedAuctionModal.status === 'DELETED') && (
+                <div className="p-2.5 bg-rose-950/40 border border-rose-800/80 rounded-lg text-rose-300 text-[11px] space-y-1">
+                  <div className="font-bold flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                    Deletion Audit Trail
+                  </div>
+                  <div>Deleted By: {selectedAuctionModal.deletedBy || 'Admin'}</div>
+                  <div>Deleted At: {selectedAuctionModal.deletedAt ? new Date(selectedAuctionModal.deletedAt).toLocaleString() : 'Recorded'}</div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setSelectedAuctionModal(null)}
+                className="bg-slate-900 text-slate-200 border-slate-800"
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* CONFIRMATION DIALOG FOR AUCTION DELETION IN HISTORY */}
+      {deletingAuctionTarget && (
+        <Modal
+          isOpen={Boolean(deletingAuctionTarget)}
+          onClose={() => !isDeletingAuction && setDeletingAuctionTarget(null)}
+          title="Delete this auction?"
+          subtitle="Confirm removing auction from active view."
+          maxWidth="max-w-md"
+        >
+          <div className="space-y-4 font-sans text-xs">
+            <div className="p-3 bg-rose-950/30 border border-rose-800 rounded-xl space-y-1 text-rose-200">
+              <p className="font-bold text-white">
+                Winner: {deletingAuctionTarget.memberName || 'Member'}
+              </p>
+              <p className="text-[11px] text-slate-400">
+                Group: {deletingAuctionTarget.groupTitle || `Group ${deletingAuctionTarget.groupId}`} • Round {deletingAuctionTarget.roundNumber || 1}
+              </p>
+            </div>
+
+            <p className="text-slate-300 leading-relaxed">
+              The auction will be removed from the active auction view, but its complete record will remain in Auction History.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={isDeletingAuction}
+                onClick={() => setDeletingAuctionTarget(null)}
+                className="bg-slate-900 text-slate-300 border-slate-800"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                disabled={isDeletingAuction}
+                onClick={handleConfirmDeleteAuction}
+                className="bg-rose-600 hover:bg-rose-700 text-white font-bold cursor-pointer"
+              >
+                {isDeletingAuction ? 'Deleting...' : 'Delete Auction'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

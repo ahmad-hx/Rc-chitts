@@ -48,7 +48,8 @@ export default function StartAuctionModal({ isOpen, onClose, onAuctionComplete, 
 
     const result = {
       groupId: selectedGroupId,
-      groupName: chitGroup?.name || selectedGroupId,
+      groupName: chitGroup?.name || `Group ${selectedGroupId}`,
+      totalChitValue: Number(chitGroup?.totalChitValue || 100000),
       month: parseInt(auctionMonth, 10),
       winner: winnerName.trim(),
       bidAmount: parsedBid,

@@ -47,11 +47,11 @@ export const FORMATTED_MONTH_NAMES = [
 
 /**
  * Generate standard list of selectable month-year options (e.g. for dropdowns)
- * Covers current year, previous year, and next 2 years.
+ * Covers previous year, current year, and next 3 years.
  */
 export function getStandardMonthOptions() {
   const currentYear = new Date().getFullYear();
-  const years = [currentYear - 1, currentYear, currentYear + 1, currentYear + 2];
+  const years = [currentYear - 2, currentYear - 1, currentYear, currentYear + 1, currentYear + 2];
   const options = [];
 
   years.forEach((yr) => {
@@ -64,19 +64,45 @@ export function getStandardMonthOptions() {
 }
 
 /**
- * Safely parses a month string like "March 2026", "2026-03", "Aug 2026", "08/2026"
- * Returns { year: 2026, month: 2 } (0-indexed month) or null
+ * Safely parses a month string or timestamp into { year, month } (0-indexed month)
+ * Handles:
+ * - "March 2026", "Aug 2026", "August, 2026"
+ * - "2026-03", "2026-3", "2026/03"
+ * - "03/2026", "3/2026"
+ * - Date objects
+ * - Firestore Timestamp objects (.toDate() or .seconds)
+ * Returns { year, month } or null
  */
 export function parseMonthYear(input) {
   if (!input) return null;
+
+  // JS Date instance
   if (typeof input === 'object' && input instanceof Date && !isNaN(input.getTime())) {
     return { year: input.getFullYear(), month: input.getMonth() };
+  }
+
+  // Firestore Timestamp instance
+  if (typeof input === 'object') {
+    if (typeof input.toDate === 'function') {
+      try {
+        const d = input.toDate();
+        if (d instanceof Date && !isNaN(d.getTime())) {
+          return { year: d.getFullYear(), month: d.getMonth() };
+        }
+      } catch (_) {}
+    }
+    if (typeof input.seconds === 'number') {
+      const d = new Date(input.seconds * 1000);
+      if (!isNaN(d.getTime())) {
+        return { year: d.getFullYear(), month: d.getMonth() };
+      }
+    }
   }
 
   const str = String(input).trim();
   if (!str) return null;
 
-  // Format: "YYYY-MM" or "YYYY-MM-DD"
+  // Format: "YYYY-MM" or "YYYY-MM-DD" or "YYYY/MM"
   const isoMatch = str.match(/^(\d{4})[-/](\d{1,2})/);
   if (isoMatch) {
     const year = parseInt(isoMatch[1], 10);
@@ -109,54 +135,74 @@ export function parseMonthYear(input) {
     }
   }
 
+  // Format: "YYYY" alone
+  const yearOnlyMatch = str.match(/^(\d{4})$/);
+  if (yearOnlyMatch) {
+    const year = parseInt(yearOnlyMatch[1], 10);
+    if (!isNaN(year)) {
+      return { year, month: 0 };
+    }
+  }
+
   return null;
+}
+
+/**
+ * Format any parsed month/year into a clean standard string like "March 2026"
+ */
+export function formatMonthYearDisplay(input) {
+  if (!input) return 'March 2026';
+  const parsed = parseMonthYear(input);
+  if (!parsed) return String(input);
+  return `${FORMATTED_MONTH_NAMES[parsed.month]} ${parsed.year}`;
 }
 
 /**
  * Calculates Chit Month number (from 1 up to 20 max).
  * Formula: Chit Month = min(max(monthDifference + 1, 1), 20)
  *
- * @param {string|object} groupStartMonth - e.g. "March 2026"
- * @param {string|object} activeBillingMonth - e.g. "May 2026"
+ * @param {string|object} groupStartMonth - e.g. "March 2026" or "2026-03"
+ * @param {string|object} activeBillingMonth - e.g. "August 2026" or "2026-08"
  * @returns {{ currentMonth: number, totalMonths: number, display: string, formatted: string, isDefault: boolean }}
  */
 export function getChitMonth(groupStartMonth, activeBillingMonth) {
   const TOTAL_MONTHS = 20;
 
+  const defaultResult = {
+    currentMonth: 1,
+    totalMonths: TOTAL_MONTHS,
+    display: `1 / ${TOTAL_MONTHS}`,
+    formatted: `Chit Month: 1 / ${TOTAL_MONTHS}`,
+    isDefault: true,
+  };
+
   if (!groupStartMonth || !activeBillingMonth) {
-    return {
-      currentMonth: 1,
-      totalMonths: TOTAL_MONTHS,
-      display: `1 / ${TOTAL_MONTHS}`,
-      formatted: `Chit Month: 1`,
-      isDefault: true,
-    };
+    return defaultResult;
   }
 
   const start = parseMonthYear(groupStartMonth);
   const active = parseMonthYear(activeBillingMonth);
 
   if (!start || !active) {
-    return {
-      currentMonth: 1,
-      totalMonths: TOTAL_MONTHS,
-      display: `1 / ${TOTAL_MONTHS}`,
-      formatted: `Chit Month: 1`,
-      isDefault: true,
-    };
+    return defaultResult;
   }
 
-  // Calculate calendar month difference
+  // Calculate calendar month difference: (yearDiff * 12) + monthDiff
   const monthDifference = (active.year - start.year) * 12 + (active.month - start.month);
 
-  // Starting month is Month 1. Max capped at 20.
-  const currentMonth = Math.min(Math.max(monthDifference + 1, 1), TOTAL_MONTHS);
+  const rawMonthNumber = monthDifference + 1;
+  // Month Difference + 1, bounded strictly between 1 and 20
+  const currentMonth = Math.min(Math.max(rawMonthNumber, 1), TOTAL_MONTHS);
+  const isCompleted = rawMonthNumber > TOTAL_MONTHS;
 
   return {
     currentMonth,
+    rawMonthNumber,
+    monthDifference,
+    isCompleted,
     totalMonths: TOTAL_MONTHS,
     display: `${currentMonth} / ${TOTAL_MONTHS}`,
-    formatted: `Chit Month: ${currentMonth}`,
+    formatted: `Chit Month: ${currentMonth} / ${TOTAL_MONTHS}`,
     isDefault: false,
   };
 }
@@ -179,17 +225,17 @@ export function getChitMonthForGroup(groupOrChit, activeBillingMonth, allGroupsL
 
   // If not on the object directly, look up the group in allGroupsList
   if (!startMonth && Array.isArray(allGroupsList) && allGroupsList.length > 0) {
-    const gId = String(groupOrChit.groupId || groupOrChit.group || '').toLowerCase();
+    const gId = String(groupOrChit.groupId || groupOrChit.group || '').toLowerCase().trim();
     const gVal = Number(groupOrChit.totalChitValue || groupOrChit.chitValue || 0);
 
     const matched =
       allGroupsList.find((g) => {
-        const matchId = String(g.groupId || g.id || '').toLowerCase() === gId;
-        const matchVal = gVal > 0 ? Number(g.totalChitValue || 0) === gVal : true;
+        const matchId = String(g.groupId || g.id || '').toLowerCase().trim() === gId;
+        const matchVal = gVal > 0 ? Number(g.totalChitValue || g.chitValue || 0) === gVal : true;
         return matchId && matchVal;
       }) ||
       allGroupsList.find(
-        (g) => String(g.groupId || g.id || '').toLowerCase() === gId
+        (g) => String(g.groupId || g.id || '').toLowerCase().trim() === gId
       );
 
     if (matched) {
@@ -200,3 +246,27 @@ export function getChitMonthForGroup(groupOrChit, activeBillingMonth, allGroupsL
   // Safe default fallback if not yet configured
   return getChitMonth(startMonth || 'March 2026', activeBillingMonth);
 }
+
+/**
+ * Converts a Month Name and Year (e.g. "March", 2026) to standard "YYYY-MM" string (e.g. "2026-03")
+ */
+export function toYearMonthString(monthNameOrIdx, year) {
+  let monthIdx = 0;
+  if (typeof monthNameOrIdx === 'number') {
+    monthIdx = Math.max(0, Math.min(11, monthNameOrIdx));
+  } else if (typeof monthNameOrIdx === 'string') {
+    const clean = monthNameOrIdx.trim();
+    const idx = FORMATTED_MONTH_NAMES.findIndex(
+      (m) => m.toLowerCase() === clean.toLowerCase()
+    );
+    if (idx !== -1) {
+      monthIdx = idx;
+    } else {
+      const parsed = parseMonthYear(clean);
+      if (parsed) monthIdx = parsed.month;
+    }
+  }
+  const cleanYear = parseInt(year, 10) || new Date().getFullYear();
+  return `${cleanYear}-${String(monthIdx + 1).padStart(2, '0')}`;
+}
+

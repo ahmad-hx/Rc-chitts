@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Users,
@@ -6,7 +6,6 @@ import {
   IndianRupee,
   MessageSquare,
   Plus,
-  CircleDollarSign,
   ArrowRight,
   Send,
   Gavel,
@@ -16,12 +15,10 @@ import {
   FileSpreadsheet,
   CheckCircle2,
   Clock,
-  TrendingUp,
-  Award,
-  Wallet,
   Calendar,
   ImagePlus,
   Image as ImageIcon,
+  Trash2,
 } from 'lucide-react';
 
 import StatCard from '../components/StatCard';
@@ -39,6 +36,51 @@ import { memberService, chitService, paymentService, auctionService } from '../s
 import { whatsappDbService } from '../services/whatsappDbService';
 import { dashboardImageService } from '../services/dashboardImageService';
 import { useBillingMonth } from '../context/BillingMonthContext';
+import { getChitMonth } from '../utils/chitMonthUtils';
+
+// Helper to check if auction conducted date is within 1 calendar month
+function isAuctionWithinLastMonth(auctionDateInput, referenceDate = new Date()) {
+  if (!auctionDateInput) return false;
+  let aDate;
+  if (typeof auctionDateInput === 'object' && auctionDateInput instanceof Date && !isNaN(auctionDateInput.getTime())) {
+    aDate = new Date(auctionDateInput);
+  } else if (typeof auctionDateInput === 'object' && typeof auctionDateInput.toDate === 'function') {
+    aDate = auctionDateInput.toDate();
+  } else if (typeof auctionDateInput === 'object' && typeof auctionDateInput.seconds === 'number') {
+    aDate = new Date(auctionDateInput.seconds * 1000);
+  } else {
+    aDate = new Date(String(auctionDateInput).trim());
+  }
+
+  if (isNaN(aDate.getTime())) return false;
+
+  const now = new Date(referenceDate);
+  const visibleUntil = new Date(aDate);
+  visibleUntil.setMonth(visibleUntil.getMonth() + 1);
+
+  // Start of auction date to end of visibleUntil date
+  const start = new Date(aDate.getFullYear(), aDate.getMonth(), aDate.getDate(), 0, 0, 0, 0);
+  const end = new Date(visibleUntil.getFullYear(), visibleUntil.getMonth(), visibleUntil.getDate(), 23, 59, 59, 999);
+
+  return now >= start && now <= end;
+}
+
+// Helper to format auction date
+function formatAuctionDateDisplay(dateInput) {
+  if (!dateInput) return 'Recently Conducted';
+  let d;
+  if (typeof dateInput === 'object' && dateInput instanceof Date) {
+    d = dateInput;
+  } else if (typeof dateInput === 'object' && typeof dateInput.toDate === 'function') {
+    d = dateInput.toDate();
+  } else if (typeof dateInput === 'object' && typeof dateInput.seconds === 'number') {
+    d = new Date(dateInput.seconds * 1000);
+  } else {
+    d = new Date(String(dateInput).trim());
+  }
+  if (isNaN(d.getTime())) return String(dateInput);
+  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -50,6 +92,7 @@ export default function Dashboard() {
   const [payments, setPayments] = useState([]);
   const [waLogs, setWaLogs] = useState([]);
   const [auctionsMap, setAuctionsMap] = useState({});
+  const [auctionsList, setAuctionsList] = useState([]);
   const [dashboardImages, setDashboardImages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingImages, setLoadingImages] = useState(false);
@@ -60,6 +103,9 @@ export default function Dashboard() {
   const [isCreateChitOpen, setIsCreateChitOpen] = useState(false);
   const [isStartAuctionOpen, setIsStartAuctionOpen] = useState(false);
   const [auctionConfirmTarget, setAuctionConfirmTarget] = useState(null);
+  const [selectedAuctionDetails, setSelectedAuctionDetails] = useState(null);
+  const [deletingAuctionTarget, setDeletingAuctionTarget] = useState(null);
+  const [isDeletingAuction, setIsDeletingAuction] = useState(false);
   const [isSaveImageOpen, setIsSaveImageOpen] = useState(false);
   const [viewingImageDoc, setViewingImageDoc] = useState(null);
   const [editingImageDoc, setEditingImageDoc] = useState(null);
@@ -82,7 +128,7 @@ export default function Dashboard() {
           chitService.getChits(),
           paymentService.getPayments().catch(() => []),
           whatsappDbService.getWhatsAppHistory().catch(() => []),
-          auctionService.getAuctions(selectedMonth).catch(() => ({ auctionsMap: {} })),
+          auctionService.getAuctions().catch(() => ({ auctionsMap: {}, auctionsList: [] })),
           dashboardImageService.getDashboardImages().catch(() => []),
         ]);
         if (mounted) {
@@ -90,7 +136,8 @@ export default function Dashboard() {
           setChits(Array.isArray(fetchedChits) ? fetchedChits : []);
           setPayments(Array.isArray(fetchedPayments) ? fetchedPayments : []);
           setWaLogs(Array.isArray(fetchedWaLogs) ? fetchedWaLogs : []);
-          setAuctionsMap(fetchedAuctions.auctionsMap || {});
+          setAuctionsMap(fetchedAuctions?.auctionsMap || {});
+          setAuctionsList(Array.isArray(fetchedAuctions?.auctionsList) ? fetchedAuctions.auctionsList : []);
           setDashboardImages(Array.isArray(fetchedImages) ? fetchedImages : []);
         }
       } catch (e) {
@@ -101,6 +148,7 @@ export default function Dashboard() {
           setPayments([]);
           setWaLogs([]);
           setAuctionsMap({});
+          setAuctionsList([]);
           setDashboardImages([]);
         }
       } finally {
@@ -119,7 +167,6 @@ export default function Dashboard() {
   const singleChitCount = activeMembers.filter((m) => (m.classification ? m.classification === 'SINGLE' : (m.chits || []).reduce((sum, c) => sum + (c.quantity || 1), 0) <= 1)).length || 129;
   const multiChitCount = activeMembers.filter((m) => (m.classification ? m.classification === 'MULTIPLE' : (m.chits || []).reduce((sum, c) => sum + (c.quantity || 1), 0) > 1)).length || 68;
 
-  const totalTicketsCount = activeMembers.reduce((sum, m) => sum + (m.chits || []).reduce((cSum, c) => cSum + (c.quantity || 1), 0), 0) || 283;
   const activeGroupsCount = chits.length || 26;
 
   const dueMembersList = activeMembers.filter((member) =>
@@ -131,19 +178,16 @@ export default function Dashboard() {
     return sum + (m.chits || []).reduce((cSum, c) => cSum + (c.pending || 0), 0);
   }, 0);
 
-  // Derive Today & Monthly Collection
+  // Derive Today Collection
   const todayStr = new Date().toISOString().split('T')[0];
   const todayCollection = payments
     .filter((p) => String(p.date || '').startsWith(todayStr))
     .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
-  const monthlyCollection = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0) || 1450000;
-  const totalCommission = Math.round((chits.reduce((sum, g) => sum + (Number(g.totalChitValue) || 100000), 0) * 0.05)) || 360000;
-
-  // 8 Statistics Cards Configuration
+  // 4 Primary Summary Cards
   const statsCards = [
     {
-      title: 'Total Active Chits / Groups',
+      title: 'Active Chit Groups',
       value: String(activeGroupsCount),
       icon: Layers,
       badgeText: loading ? 'Loading...' : `${activeGroupsCount} Active Groups`,
@@ -170,51 +214,49 @@ export default function Dashboard() {
       onClick: () => navigate('/payments'),
     },
     {
-      title: 'Monthly Collection',
-      value: `₹${(monthlyCollection / 100000).toFixed(2)} L`,
-      icon: TrendingUp,
-      badgeText: 'Current Cycle Total',
-      badgeColor: 'success',
-      description: 'Real-time ledger total',
-      onClick: () => navigate('/payments'),
-    },
-    {
-      title: 'Pending Dues',
-      value: totalPendingAmount > 0 ? `₹${totalPendingAmount.toLocaleString('en-IN')}` : '₹1,85,000',
+      title: 'Pending Due',
+      value: totalPendingAmount > 0 ? `₹${totalPendingAmount.toLocaleString('en-IN')}` : '₹0',
       icon: Clock,
       badgeText: `${dueMembersCount} Members Pending`,
       badgeColor: 'warning',
       description: 'Follow-ups required',
       onClick: () => navigate('/pending-payments'),
     },
-    {
-      title: 'Total Commission',
-      value: `₹${(totalCommission / 100000).toFixed(2)} L`,
-      icon: Award,
-      badgeText: '5% Foreman Dividend',
-      badgeColor: 'info',
-      description: 'Projected group commission',
-      onClick: () => navigate('/chits'),
-    },
-    {
-      title: 'Total Chit Tickets / Slots',
-      value: String(totalTicketsCount),
-      icon: CircleDollarSign,
-      badgeText: `${totalTicketsCount} Allocated Slots`,
-      badgeColor: 'purple',
-      description: 'Across all active groups',
-      onClick: () => navigate('/members'),
-    },
-    {
-      title: 'Active Chit Pools',
-      value: '₹1.42 Cr',
-      icon: Wallet,
-      badgeText: 'Total Portfolio Capital',
-      badgeColor: 'info',
-      description: 'Aggregated chit value pool',
-      onClick: () => navigate('/chits'),
-    },
   ];
+
+  // Recent Completed Auctions (Lifecycle-based: Visible across the 20-month duration of the group, newest first)
+  const recentCompletedAuctions = useMemo(() => {
+    const list = Array.isArray(auctionsList) ? auctionsList : [];
+
+    return list
+      .filter((a) => {
+        // 1. Exclude soft-deleted auctions
+        const isNotDeleted = !a.isDeleted && a.status !== 'DELETED';
+        const isCompleted = (a.isAuctioned === true || a.status === 'COMPLETED') && isNotDeleted;
+        if (!isCompleted) return false;
+
+        // 2. Dynamic group matching
+        const chitGroup = chits.find(
+          (c) =>
+            String(c.groupId).trim().toUpperCase() === String(a.groupId).trim().toUpperCase() &&
+            (a.totalChitValue ? Number(c.totalChitValue) === Number(a.totalChitValue) : true)
+        ) || chits.find((c) => String(c.groupId).trim().toUpperCase() === String(a.groupId).trim().toUpperCase());
+
+        const startMonth = chitGroup?.startingMonth || a.billingMonth || 'August 2026';
+        const capacity = Number(chitGroup?.capacity || chitGroup?.duration || 20);
+
+        // 3. Chit Lifecycle Calculation (Months 1 through 20)
+        const chitMonthInfo = getChitMonth(startMonth, selectedMonth);
+        const isGroupLifecycleActive = chitMonthInfo.rawMonthNumber <= capacity && chitMonthInfo.rawMonthNumber >= 1;
+
+        return isGroupLifecycleActive;
+      })
+      .sort((a, b) => {
+        const timeA = new Date(a.auctionDate || a.completedAt || a.updatedAt || 0).getTime();
+        const timeB = new Date(b.auctionDate || b.completedAt || b.updatedAt || 0).getTime();
+        return timeB - timeA;
+      });
+  }, [auctionsList, chits, selectedMonth]);
 
   // Derived Recent Payments Sample
   const recentPaymentsList = payments.length > 0
@@ -277,14 +319,20 @@ export default function Dashboard() {
         memberId: winnerMem.id,
         memberName: result.winner,
         groupId: result.groupId,
+        groupName: result.groupName,
+        totalChitValue: result.totalChitValue,
         billingMonth: selectedMonth,
         isAuctioned: true,
         bidAmount: result.bidAmount,
         dividend: result.dividend,
+        netPayout: result.payout,
+        roundNumber: result.month,
+        auctionDate: result.date || new Date().toISOString().split('T')[0],
       });
 
-      const updated = await auctionService.getAuctions(selectedMonth);
-      setAuctionsMap(updated.auctionsMap || {});
+      const updated = await auctionService.getAuctions();
+      setAuctionsMap(updated?.auctionsMap || {});
+      setAuctionsList(Array.isArray(updated?.auctionsList) ? updated.auctionsList : []);
     } catch (_) {}
 
     showToast(`✓ Auction completed for Group ${result.groupId}! Winner: ${result.winner} (Dividend: ₹${result.dividend.toLocaleString('en-IN')}/mem)`);
@@ -296,19 +344,42 @@ export default function Dashboard() {
     setAuctionConfirmTarget(null);
 
     try {
+      const gId = String(member.group || member.groupId || 'I').replace(/^Group\s+/i, '').split(' ')[0];
       await auctionService.setAuctionStatus({
         memberId: member.id,
-        memberName: member.member,
-        groupId: member.groupId || 'I',
+        memberName: member.member || member.name,
+        groupId: gId,
         billingMonth: selectedMonth,
         isAuctioned: !isAuctioned,
+        auctionDate: new Date().toISOString().split('T')[0],
       });
 
-      const updated = await auctionService.getAuctions(selectedMonth);
-      setAuctionsMap(updated.auctionsMap || {});
-      showToast(`✓ Auction status updated for ${member.member} (${selectedMonth}).`, 'success');
+      const updated = await auctionService.getAuctions();
+      setAuctionsMap(updated?.auctionsMap || {});
+      setAuctionsList(Array.isArray(updated?.auctionsList) ? updated.auctionsList : []);
+      showToast(`✓ Auction status updated for ${member.member || member.name} (${selectedMonth}).`, 'success');
     } catch (err) {
       showToast(`Failed to update auction status: ${err.message}`, 'error');
+    }
+  };
+
+  const handleConfirmDeleteAuction = async () => {
+    if (!deletingAuctionTarget) return;
+    setIsDeletingAuction(true);
+    try {
+      await auctionService.deleteAuction(deletingAuctionTarget);
+      const updated = await auctionService.getAuctions();
+      setAuctionsMap(updated?.auctionsMap || {});
+      setAuctionsList(Array.isArray(updated?.auctionsList) ? updated.auctionsList : []);
+      if (selectedAuctionDetails?.id === deletingAuctionTarget.id) {
+        setSelectedAuctionDetails(null);
+      }
+      showToast(`✓ Auction for Group ${deletingAuctionTarget.groupId} removed from active view and preserved in Auction History.`);
+      setDeletingAuctionTarget(null);
+    } catch (err) {
+      showToast(`Failed to delete auction: ${err.message}`, 'error');
+    } finally {
+      setIsDeletingAuction(false);
     }
   };
 
@@ -426,8 +497,8 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* 8-GRID STATISTIC CARDS (Section 4) */}
-      <section className="grid gap-4.5 sm:grid-cols-2 lg:grid-cols-4">
+      {/* 4 PRIMARY SUMMARY CARDS */}
+      <section className="grid gap-4.5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         {statsCards.map((stat) => (
           <div
             key={stat.title}
@@ -451,8 +522,8 @@ export default function Dashboard() {
         ))}
       </section>
 
-      {/* DASHBOARD LOWER SECTIONS: 3 PANELS */}
-      <section className="grid gap-6 xl:grid-cols-3">
+      {/* DASHBOARD LOWER SECTIONS: PAYMENTS & PENDING */}
+      <section className="grid gap-6 lg:grid-cols-2">
         {/* PANEL 1: RECENT PAYMENTS */}
         <div className="rounded-2xl border border-[#E5E5E1] bg-white p-6 shadow-xs space-y-5 flex flex-col justify-between">
           <div>
@@ -581,94 +652,269 @@ export default function Dashboard() {
             Send Payment Reminders via WhatsApp
           </button>
         </div>
+      </section>
 
-        {/* PANEL 3: RECENT WHATSAPP ACTIVITY & MONTHLY MESSAGES */}
-        <div className="rounded-2xl border border-[#E5E5E1] bg-white p-6 shadow-xs space-y-5 flex flex-col justify-between">
+      {/* SECTION: RECENT COMPLETED AUCTIONS (Chit Lifecycle-based) */}
+      <section className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#E5E5E1] pb-3">
           <div>
-            <div className="flex items-center justify-between gap-3 pb-4 border-b border-[#E5E5E1]">
-              <div>
-                <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#2F5D50]">Broadcast Engine</p>
-                <h2 className="mt-0.5 text-lg font-black text-[#1C1C1A]">WhatsApp Messages This Month</h2>
-              </div>
-              <MessageSquare className="h-5 w-5 text-[#2F5D50]" />
+            <div className="flex items-center gap-2">
+              <span className="flex h-2 w-2 rounded-full bg-[#2F5D50]"></span>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#2F5D50]">Auction History</p>
             </div>
-
-            {/* REALTIME METRICS BADGES */}
-            <div className="grid grid-cols-3 gap-2 text-center pt-3 font-sans">
-              <div className="p-2.5 bg-[#EDF7F0] border border-[#2F6B4F]/20 rounded-xl">
-                <span className="text-[9px] font-bold text-[#2F6B4F] uppercase block">Sent</span>
-                <span className="text-base font-black text-[#2F6B4F]">
-                  {waLogs.filter((l) => l.status === 'Sent' || l.status === 'SENT').length}
-                </span>
-              </div>
-              <div className="p-2.5 bg-[#FFF7E6] border border-[#B86B14]/20 rounded-xl">
-                <span className="text-[9px] font-bold text-[#B86B14] uppercase block">Pending</span>
-                <span className="text-base font-black text-[#B86B14]">
-                  {dueMembersList.length}
-                </span>
-              </div>
-              <div className="p-2.5 bg-[#FCEEEE] border border-[#C53030]/20 rounded-xl">
-                <span className="text-[9px] font-bold text-[#C53030] uppercase block">Failed</span>
-                <span className="text-base font-black text-[#C53030]">
-                  {waLogs.filter((l) => l.status === 'Failed' || l.status === 'FAILED').length}
-                </span>
-              </div>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {waLogs.length > 0 ? (
-                waLogs.slice(0, 3).map((wa) => (
-                  <div
-                    key={wa.id}
-                    className="p-3.5 rounded-xl bg-[#F7F7F5] border border-[#E5E5E1] space-y-1.5"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className={`flex h-2 w-2 rounded-full ${wa.status === 'Sent' || wa.status === 'SENT' ? 'bg-[#2F6B4F]' : 'bg-[#C53030]'}`}></span>
-                        <p className="text-xs font-bold text-[#1C1C1A]">{wa.memberName}</p>
-                      </div>
-                      <span className="text-[10px] font-semibold text-[#6B6B67]">Group {wa.chitGroupId}</span>
-                    </div>
-
-                    <div className="flex items-center justify-between text-[10px] text-[#6B6B67] pt-1 border-t border-[#E5E5E1]">
-                      <span className="font-semibold text-[#2F5D50]">+{wa.phoneNumber}</span>
-                      <span>{wa.sentAt ? new Date(wa.sentAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'Recent'}</span>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                recentWhatsAppActivity.map((wa) => (
-                  <div
-                    key={wa.id}
-                    className="p-3.5 rounded-xl bg-[#F7F7F5] border border-[#E5E5E1] space-y-1.5"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="flex h-2 w-2 rounded-full bg-[#2F6B4F]"></span>
-                        <p className="text-xs font-bold text-[#1C1C1A]">{wa.type}</p>
-                      </div>
-                      <span className="text-[10px] font-semibold text-[#6B6B67]">{wa.group}</span>
-                    </div>
-
-                    <div className="flex items-center justify-between text-[10px] text-[#6B6B67] pt-1 border-t border-[#E5E5E1]">
-                      <span className="font-semibold text-[#2F5D50]">{wa.count} Members Broadcast</span>
-                      <span>{wa.date}</span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+            <h2 className="text-xl font-black text-[#1C1C1A]">Recent Completed Auctions</h2>
+            <p className="text-xs text-[#6B6B67] mt-0.5">
+              Auctions conducted and active across current chit group lifecycles.
+            </p>
           </div>
 
           <Button
-            variant="primary"
-            className="mt-4 w-full justify-center gap-2 rounded-xl py-3 text-xs font-bold bg-[#2F5D50] hover:bg-[#24493F] text-white cursor-pointer shadow-xs"
-            onClick={() => navigate('/whatsapp')}
+            variant="outline"
+            size="sm"
+            className="rounded-xl border-[#E5E5E1] bg-white text-[#1C1C1A] hover:bg-[#F7F7F5] font-bold text-xs gap-1.5 self-start sm:self-auto cursor-pointer"
+            onClick={() => setIsStartAuctionOpen(true)}
           >
-            <Send className="h-4 w-4" />
-            <span>Open WhatsApp Messaging Studio</span>
+            <Gavel className="w-3.5 h-3.5 text-[#2F5D50]" />
+            <span>Conduct Auction</span>
           </Button>
         </div>
+
+        {recentCompletedAuctions.length === 0 ? (
+          <div className="p-8 text-center bg-white border border-[#E5E5E1] rounded-2xl space-y-1">
+            <div className="w-10 h-10 mx-auto rounded-full bg-[#EDF7F0] border border-[#2F5D50]/20 flex items-center justify-center text-[#2F5D50] mb-2">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+            <p className="text-sm font-bold text-[#1C1C1A]">No active completed auctions</p>
+            <p className="text-xs text-[#6B6B67]">Completed auctions for active chit groups will appear here.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4.5">
+            {recentCompletedAuctions.map((auction) => {
+              const chitGroup = chits.find((c) =>
+                String(c.groupId).trim().toUpperCase() === String(auction.groupId).trim().toUpperCase() &&
+                (auction.totalChitValue ? Number(c.totalChitValue) === Number(auction.totalChitValue) : true)
+              ) || chits.find((c) => String(c.groupId).trim().toUpperCase() === String(auction.groupId).trim().toUpperCase());
+
+              const totalVal = Number(auction.totalChitValue || chitGroup?.totalChitValue || 100000);
+              const gId = auction.groupId ? String(auction.groupId).replace(/^GROUP\s+/i, '').trim() : 'I';
+              const formattedCategory = totalVal >= 100000 ? `₹${(totalVal / 100000).toFixed(0)} Lakh` : `₹${totalVal.toLocaleString('en-IN')}`;
+              const fullGroupTitle = `${formattedCategory} — Group ${gId}`;
+
+              const chitMonthInfo = getChitMonth(chitGroup?.startingMonth || auction.billingMonth, selectedMonth);
+
+              return (
+                <div
+                  key={auction.id}
+                  className="rounded-2xl border border-[#E5E5E1] bg-white p-5 shadow-xs space-y-4 hover:border-[#2F5D50]/40 transition-all flex flex-col justify-between"
+                >
+                  <div className="space-y-3">
+                    {/* STATUS BADGE & DELETE BUTTON */}
+                    <div className="flex items-center justify-between gap-2 border-b border-[#E5E5E1] pb-3">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#EDF7F0] border border-[#2F5D50]/30 text-[#2F5D50] text-[11px] font-black tracking-wide">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-[#2F5D50]" />
+                        AUCTION COMPLETED
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDeletingAuctionTarget({
+                            ...auction,
+                            groupTitle: fullGroupTitle,
+                            totalChitValue: totalVal,
+                          })
+                        }
+                        title="Delete Auction"
+                        className="flex h-7 w-7 items-center justify-center rounded-lg border border-transparent text-[#6B6B67] hover:border-red-200 hover:bg-red-50 hover:text-red-600 transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    {/* WINNER & CHIT GROUP & CHIT MONTH */}
+                    <div className="space-y-2">
+                      <div>
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#6B6B67] block">
+                          👤 Winner
+                        </span>
+                        <p className="text-base font-black text-[#1C1C1A] truncate mt-0.5">
+                          {auction.memberName || auction.winnerName || 'Member'}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 pt-1 border-t border-[#E5E5E1]/60">
+                        <div>
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#6B6B67] block">
+                            🏷️ Chit Group
+                          </span>
+                          <p className="text-xs font-black text-[#2F5D50] mt-0.5">
+                            {fullGroupTitle}
+                          </p>
+                        </div>
+
+                        <div className="text-right">
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#6B6B67] block">
+                            Chit Month
+                          </span>
+                          <span className="inline-block text-xs font-black text-[#1C1C1A] bg-[#F7F7F5] px-2 py-0.5 rounded-md border border-[#E5E5E1] mt-0.5">
+                            {chitMonthInfo.display}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* FINANCIAL METRICS GRID */}
+                    <div className="grid grid-cols-2 gap-2 p-3 bg-[#F7F7F5] rounded-xl border border-[#E5E5E1] text-xs">
+                      {auction.bidAmount > 0 && (
+                        <div>
+                          <span className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block">
+                            💰 Auction Amount
+                          </span>
+                          <span className="font-black text-[#1C1C1A] text-xs">
+                            ₹{auction.bidAmount.toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                      )}
+
+                      {auction.dividend > 0 && (
+                        <div>
+                          <span className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block">
+                            Discount / Dividend
+                          </span>
+                          <span className="font-black text-[#2F5D50] text-xs">
+                            ₹{auction.dividend.toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                      )}
+
+                      {auction.netPayout > 0 && (
+                        <div className="col-span-2 pt-1 border-t border-[#E5E5E1] flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider">
+                            Net Prize Payout:
+                          </span>
+                          <span className="font-black text-[#2F5D50] text-xs">
+                            ₹{auction.netPayout.toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* CONDUCTED DATE & ACTION */}
+                  <div className="flex items-center justify-between gap-2 pt-3 border-t border-[#E5E5E1] text-xs">
+                    <div className="flex items-center gap-1.5 text-[#6B6B67]">
+                      <Calendar className="w-3.5 h-3.5 text-[#6B6B67]" />
+                      <span className="text-[11px] font-medium">
+                        Conducted: {formatAuctionDateDisplay(auction.auctionDate || auction.completedAt || auction.updatedAt)}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelectedAuctionDetails({
+                          ...auction,
+                          groupTitle: fullGroupTitle,
+                          totalChitValue: totalVal,
+                          chitMonthDisplay: chitMonthInfo.display,
+                        })
+                      }
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-[#2F5D50] hover:text-[#24493F] transition-colors cursor-pointer"
+                    >
+                      <span>View Details</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* SECTION: RECENT WHATSAPP BROADCAST ENGINE */}
+      <section className="rounded-2xl border border-[#E5E5E1] bg-white p-6 shadow-xs space-y-5">
+        <div className="flex items-center justify-between gap-3 pb-4 border-b border-[#E5E5E1]">
+          <div>
+            <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#2F5D50]">Broadcast Engine</p>
+            <h2 className="mt-0.5 text-lg font-black text-[#1C1C1A]">WhatsApp Messages This Month</h2>
+          </div>
+          <MessageSquare className="h-5 w-5 text-[#2F5D50]" />
+        </div>
+
+        {/* REALTIME METRICS BADGES */}
+        <div className="grid grid-cols-3 gap-2 text-center pt-1 font-sans">
+          <div className="p-2.5 bg-[#EDF7F0] border border-[#2F6B4F]/20 rounded-xl">
+            <span className="text-[9px] font-bold text-[#2F6B4F] uppercase block">Sent</span>
+            <span className="text-base font-black text-[#2F6B4F]">
+              {waLogs.filter((l) => l.status === 'Sent' || l.status === 'SENT').length}
+            </span>
+          </div>
+          <div className="p-2.5 bg-[#FFF7E6] border border-[#B86B14]/20 rounded-xl">
+            <span className="text-[9px] font-bold text-[#B86B14] uppercase block">Pending</span>
+            <span className="text-base font-black text-[#B86B14]">
+              {dueMembersList.length}
+            </span>
+          </div>
+          <div className="p-2.5 bg-[#FCEEEE] border border-[#C53030]/20 rounded-xl">
+            <span className="text-[9px] font-bold text-[#C53030] uppercase block">Failed</span>
+            <span className="text-base font-black text-[#C53030]">
+              {waLogs.filter((l) => l.status === 'Failed' || l.status === 'FAILED').length}
+            </span>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+          {waLogs.length > 0 ? (
+            waLogs.slice(0, 3).map((wa) => (
+              <div
+                key={wa.id}
+                className="p-3.5 rounded-xl bg-[#F7F7F5] border border-[#E5E5E1] space-y-1.5"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className={`flex h-2 w-2 rounded-full ${wa.status === 'Sent' || wa.status === 'SENT' ? 'bg-[#2F6B4F]' : 'bg-[#C53030]'}`}></span>
+                    <p className="text-xs font-bold text-[#1C1C1A] truncate max-w-[150px]">{wa.memberName}</p>
+                  </div>
+                  <span className="text-[10px] font-semibold text-[#6B6B67]">Group {wa.chitGroupId}</span>
+                </div>
+
+                <div className="flex items-center justify-between text-[10px] text-[#6B6B67] pt-1 border-t border-[#E5E5E1]">
+                  <span className="font-semibold text-[#2F5D50]">+{wa.phoneNumber}</span>
+                  <span>{wa.sentAt ? new Date(wa.sentAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'Recent'}</span>
+                </div>
+              </div>
+            ))
+          ) : (
+            recentWhatsAppActivity.map((wa) => (
+              <div
+                key={wa.id}
+                className="p-3.5 rounded-xl bg-[#F7F7F5] border border-[#E5E5E1] space-y-1.5"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-2 w-2 rounded-full bg-[#2F6B4F]"></span>
+                    <p className="text-xs font-bold text-[#1C1C1A]">{wa.type}</p>
+                  </div>
+                  <span className="text-[10px] font-semibold text-[#6B6B67]">{wa.group}</span>
+                </div>
+
+                <div className="flex items-center justify-between text-[10px] text-[#6B6B67] pt-1 border-t border-[#E5E5E1]">
+                  <span className="font-semibold text-[#2F5D50]">{wa.count} Members Broadcast</span>
+                  <span>{wa.date}</span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        <Button
+          variant="primary"
+          className="mt-4 w-full justify-center gap-2 rounded-xl py-3 text-xs font-bold bg-[#2F5D50] hover:bg-[#24493F] text-white cursor-pointer shadow-xs"
+          onClick={() => navigate('/whatsapp')}
+        >
+          <Send className="h-4 w-4" />
+          <span>Open WhatsApp Messaging Studio</span>
+        </Button>
       </section>
 
       {/* SAVED IMAGES GALLERY SECTION */}
@@ -865,6 +1111,157 @@ export default function Dashboard() {
           </div>
         </div>
       </Modal>
+
+      {/* VIEW COMPLETED AUCTION DETAILS MODAL */}
+      {selectedAuctionDetails && (
+        <Modal
+          isOpen={Boolean(selectedAuctionDetails)}
+          onClose={() => setSelectedAuctionDetails(null)}
+          title="Completed Auction Details"
+          subtitle={`Full auction breakdown for ${selectedAuctionDetails.groupTitle || 'Chit Group'}.`}
+          maxWidth="max-w-md"
+        >
+          <div className="space-y-4 text-xs font-sans">
+            <div className="p-4 bg-[#EDF7F0] border border-[#2F5D50]/20 rounded-2xl space-y-2">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-[#2F5D50]" />
+                <span className="text-xs font-black text-[#2F5D50] uppercase tracking-wider">
+                  Verified Completed Auction
+                </span>
+              </div>
+              <p className="text-base font-black text-[#1C1C1A]">
+                {selectedAuctionDetails.memberName || selectedAuctionDetails.winnerName || 'Member'}
+              </p>
+              <p className="text-xs font-bold text-[#2F5D50]">
+                {selectedAuctionDetails.groupTitle} • Round {selectedAuctionDetails.roundNumber || 1}
+              </p>
+            </div>
+
+            <div className="space-y-2.5 bg-[#F7F7F5] border border-[#E5E5E1] p-4 rounded-xl">
+              <div className="flex justify-between">
+                <span className="text-[#6B6B67] font-semibold">Total Chit Value:</span>
+                <span className="font-bold text-[#1C1C1A]">₹{selectedAuctionDetails.totalChitValue?.toLocaleString('en-IN')}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#6B6B67] font-semibold">Chit Month:</span>
+                <span className="font-bold text-[#1C1C1A]">{selectedAuctionDetails.chitMonthDisplay || 'Active'}</span>
+              </div>
+              {selectedAuctionDetails.bidAmount > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-[#6B6B67] font-semibold">Bid Discount Amount:</span>
+                  <span className="font-bold text-[#1C1C1A]">₹{selectedAuctionDetails.bidAmount?.toLocaleString('en-IN')}</span>
+                </div>
+              )}
+              {selectedAuctionDetails.dividend > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-[#6B6B67] font-semibold">Dividend / Member:</span>
+                  <span className="font-bold text-[#2F5D50]">₹{selectedAuctionDetails.dividend?.toLocaleString('en-IN')}</span>
+                </div>
+              )}
+              {selectedAuctionDetails.netPayout > 0 && (
+                <div className="flex justify-between pt-2 border-t border-[#E5E5E1]">
+                  <span className="text-[#1C1C1A] font-bold">Net Prize Payout:</span>
+                  <span className="font-black text-[#2F5D50] text-sm">
+                    ₹{selectedAuctionDetails.netPayout?.toLocaleString('en-IN')}
+                  </span>
+                </div>
+              )}
+              <div className="flex justify-between pt-1 border-t border-[#E5E5E1] text-[11px]">
+                <span className="text-[#6B6B67]">Conducted On:</span>
+                <span className="font-medium text-[#1C1C1A]">
+                  {formatAuctionDateDisplay(selectedAuctionDetails.auctionDate || selectedAuctionDetails.completedAt || selectedAuctionDetails.updatedAt)}
+                </span>
+              </div>
+              <div className="flex justify-between text-[11px]">
+                <span className="text-[#6B6B67]">Billing Cycle:</span>
+                <span className="font-medium text-[#1C1C1A]">{selectedAuctionDetails.billingMonth}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#E5E5E1]">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1 rounded-xl text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300 font-bold"
+                onClick={() => {
+                  setDeletingAuctionTarget(selectedAuctionDetails);
+                }}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Auction</span>
+              </Button>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setSelectedAuctionDetails(null)}
+                >
+                  Close
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold"
+                  onClick={() => {
+                    setSelectedAuctionDetails(null);
+                    navigate('/chits');
+                  }}
+                >
+                  Chit Groups →
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* CONFIRMATION DIALOG FOR AUCTION DELETION */}
+      {deletingAuctionTarget && (
+        <Modal
+          isOpen={Boolean(deletingAuctionTarget)}
+          onClose={() => !isDeletingAuction && setDeletingAuctionTarget(null)}
+          title="Delete this auction?"
+          subtitle="Confirm removing auction from active view."
+          maxWidth="max-w-md"
+        >
+          <div className="space-y-4 font-sans text-xs">
+            <div className="p-3 bg-[#FFF7E6] border border-[#B86B14]/30 rounded-xl space-y-1">
+              <p className="font-bold text-[#1C1C1A]">
+                Winner: {deletingAuctionTarget.memberName || 'Member'}
+              </p>
+              <p className="text-[11px] text-[#6B6B67]">
+                Group: {deletingAuctionTarget.groupTitle || `Group ${deletingAuctionTarget.groupId}`} • Round {deletingAuctionTarget.roundNumber || 1}
+              </p>
+            </div>
+
+            <p className="text-[#1C1C1A] leading-relaxed">
+              The auction will be removed from the active auction view, but its complete record will remain in Auction History.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#E5E5E1]">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={isDeletingAuction}
+                onClick={() => setDeletingAuctionTarget(null)}
+                className="rounded-xl border-[#E5E5E1]"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                disabled={isDeletingAuction}
+                onClick={handleConfirmDeleteAuction}
+                className="rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold cursor-pointer"
+              >
+                {isDeletingAuction ? 'Deleting...' : 'Delete Auction'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

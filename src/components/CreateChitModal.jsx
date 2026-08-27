@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import Modal from './Modal';
 import Button from './Button';
-import { Layers, Loader2, Calendar } from 'lucide-react';
+import { Layers, Calendar } from 'lucide-react';
 import { useBillingMonth } from '../context/BillingMonthContext';
-import { getStandardMonthOptions } from '../utils/chitMonthUtils';
+import { getChitMonth, parseMonthYear, FORMATTED_MONTH_NAMES, toYearMonthString } from '../utils/chitMonthUtils';
 
 export default function CreateChitModal({ isOpen, onClose, onCreate }) {
   const { selectedMonth } = useBillingMonth();
   const [groupId, setGroupId] = useState('');
   const [name, setName] = useState('');
   const [totalChitValue, setTotalChitValue] = useState('100000');
-  const [startingMonth, setStartingMonth] = useState(selectedMonth || 'March 2026');
+  const [startingMonthName, setStartingMonthName] = useState('March');
+  const [startingYear, setStartingYear] = useState('2026');
   const duration = '20 Months';
   const [monthlyPremium, setMonthlyPremium] = useState('5000');
   const [capacity, setCapacity] = useState('20');
@@ -20,11 +21,13 @@ export default function CreateChitModal({ isOpen, onClose, onCreate }) {
 
   useEffect(() => {
     if (selectedMonth) {
-      setStartingMonth(selectedMonth);
+      const parsed = parseMonthYear(selectedMonth);
+      if (parsed) {
+        setStartingMonthName(FORMATTED_MONTH_NAMES[parsed.month] || 'March');
+        setStartingYear(String(parsed.year || 2026));
+      }
     }
   }, [selectedMonth, isOpen]);
-
-  const monthOptions = getStandardMonthOptions();
 
   const handleTotalChitValueChange = (valStr) => {
     setTotalChitValue(valStr);
@@ -40,6 +43,7 @@ export default function CreateChitModal({ isOpen, onClose, onCreate }) {
     const prem = parseFloat(monthlyPremium);
     const cap = parseInt(capacity, 10);
     const cleanGroupId = groupId.trim().toUpperCase();
+    const cleanYear = parseInt(startingYear, 10);
 
     if (!cleanGroupId) {
       setError('Please provide a Chit Group ID (e.g. I, II, RC-01).');
@@ -57,9 +61,15 @@ export default function CreateChitModal({ isOpen, onClose, onCreate }) {
       setError('Please enter a valid member capacity.');
       return;
     }
+    if (isNaN(cleanYear) || cleanYear < 2000 || cleanYear > 2100) {
+      setError('Please enter a valid 4-digit starting year (e.g. 2026).');
+      return;
+    }
 
     setIsSubmitting(true);
     setError('');
+
+    const isoStartingMonth = toYearMonthString(startingMonthName, cleanYear);
 
     const newChitGroup = {
       id: cleanGroupId,
@@ -69,7 +79,7 @@ export default function CreateChitModal({ isOpen, onClose, onCreate }) {
       monthlyPremium: prem,
       duration,
       capacity: cap,
-      startingMonth: startingMonth || selectedMonth || 'March 2026',
+      startingMonth: isoStartingMonth,
       currentMembers: 0,
       nextAuctionDate,
       status: 'ACTIVE',
@@ -87,6 +97,9 @@ export default function CreateChitModal({ isOpen, onClose, onCreate }) {
       setIsSubmitting(false);
     }
   };
+
+  const combinedDateStr = `${startingMonthName} ${startingYear}`;
+  const calculatedChitMonth = getChitMonth(combinedDateStr, selectedMonth);
 
   return (
     <Modal
@@ -132,29 +145,69 @@ export default function CreateChitModal({ isOpen, onClose, onCreate }) {
           </div>
         </div>
 
-        {/* STARTING MONTH SELECTOR WITH EXPLANATION */}
-        <div className="p-3 bg-[#EDF7F0] border border-[#2F5D50]/20 rounded-xl space-y-1.5">
+        {/* STARTING MONTH & YEAR INPUTS WITH LIVE PREVIEW */}
+        <div className="p-3.5 bg-[#EDF7F0] border border-[#2F5D50]/20 rounded-xl space-y-2.5">
           <div className="flex items-center justify-between">
             <label className="text-[10px] font-extrabold text-[#2F5D50] uppercase tracking-wider flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5" />
-              Starting Month (Chit Month 1) *
+              Starting Month & Year (Chit Month 1) *
             </label>
             <span className="text-[10px] font-bold text-[#2F5D50] bg-white px-2 py-0.5 rounded-md border border-[#2F5D50]/20">
-              Chit Month 1
+              Month 1 / 20
             </span>
           </div>
 
-          <select
-            value={startingMonth}
-            onChange={(e) => setStartingMonth(e.target.value)}
-            className="w-full px-3 py-2 text-xs font-bold bg-white border border-[#E5E5E1] rounded-xl text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50] cursor-pointer"
-          >
-            {monthOptions.map((opt) => (
-              <option key={opt} value={opt}>
-                {opt}
-              </option>
-            ))}
-          </select>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block">
+                Starting Month
+              </label>
+              <select
+                value={startingMonthName}
+                onChange={(e) => setStartingMonthName(e.target.value)}
+                className="w-full px-3 py-2 text-xs font-bold bg-white border border-[#E5E5E1] rounded-xl text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50] cursor-pointer"
+              >
+                {FORMATTED_MONTH_NAMES.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block">
+                Starting Year
+              </label>
+              <input
+                type="number"
+                required
+                min="2020"
+                max="2040"
+                value={startingYear}
+                onChange={(e) => setStartingYear(e.target.value)}
+                placeholder="2026"
+                className="w-full px-3 py-2 text-xs font-bold bg-white border border-[#E5E5E1] rounded-xl text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+              />
+            </div>
+          </div>
+
+          <div className="pt-2 border-t border-[#2F5D50]/20 space-y-1">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-[#6B6B67] font-semibold">Selected Starting Date:</span>
+              <span className="font-bold text-[#1C1C1A]">{startingMonthName} {startingYear}</span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-[#6B6B67] font-semibold">Active Billing Month:</span>
+              <span className="font-bold text-[#1C1C1A]">{selectedMonth}</span>
+            </div>
+            <div className="flex items-center justify-between text-xs pt-1 border-t border-[#2F5D50]/15">
+              <span className="text-[#2F5D50] font-extrabold uppercase tracking-wider">Chit Month Preview:</span>
+              <span className="font-black text-[#2F5D50] bg-white px-2.5 py-0.5 rounded-lg border border-[#2F5D50]/25 text-sm">
+                {calculatedChitMonth.display}
+              </span>
+            </div>
+          </div>
 
           <p className="text-[11px] text-[#2F5D50] font-medium leading-relaxed">
             ℹ The selected starting month is Chit Month 1. The chit month will automatically increase every month up to 20/20 based on the active billing month.

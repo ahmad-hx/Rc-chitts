@@ -9,7 +9,7 @@ import { Calendar, Users, ArrowRight, Plus, Layers, Gavel, CheckCircle2, Trash2,
 import { chitService, memberService, groupPaymentSettingsService } from '../services/dbService';
 import { useNavigate } from 'react-router-dom';
 import { useBillingMonth } from '../context/BillingMonthContext';
-import { getChitMonth, getStandardMonthOptions } from '../utils/chitMonthUtils';
+import { getChitMonth, parseMonthYear, formatMonthYearDisplay, FORMATTED_MONTH_NAMES, toYearMonthString } from '../utils/chitMonthUtils';
 
 // Roman numeral parsing helper
 function parseRomanNumeral(str = '') {
@@ -70,7 +70,8 @@ export default function ChitsPlaceholder() {
   // Group starting month edit modal state
   const [isEditStartingMonthModalOpen, setIsEditStartingMonthModalOpen] = useState(false);
   const [targetGroupForStartingMonth, setTargetGroupForStartingMonth] = useState(null);
-  const [inputStartingMonth, setInputStartingMonth] = useState('March 2026');
+  const [inputStartingMonth, setInputStartingMonth] = useState('March');
+  const [inputStartingYear, setInputStartingYear] = useState('2026');
   const [isSavingStartingMonth, setIsSavingStartingMonth] = useState(false);
 
   // Delete group modal state
@@ -116,23 +117,36 @@ export default function ChitsPlaceholder() {
   }, []);
 
   const getGroupMonthlyPremium = (group) => {
-    const val = group?.totalChitValue || 100000;
-    const grp = group?.groupId || 'I';
+    const val = Number(group?.totalChitValue || 100000);
+    const grp = String(group?.groupId || 'I').trim().toUpperCase();
     const key = `${val}_${grp}`;
     if (typeof groupPaymentSettings[key] === 'number' && groupPaymentSettings[key] > 0) {
       return groupPaymentSettings[key];
     }
-    return group?.monthlyPremium || Math.floor(val / 20);
+    return Number(group?.monthlyPremium || Math.floor(val / 20));
   };
 
   const handleChitCreated = async (newGroup) => {
     try {
       const saved = await chitService.createChit(newGroup);
-      setChits((prev) => [saved, ...prev.filter((c) => c.groupId !== saved.groupId || c.totalChitValue !== saved.totalChitValue)]);
+      setChits((prev) => {
+        const safePrev = Array.isArray(prev) ? prev : [];
+        const existingFiltered = safePrev.filter(
+          (c) =>
+            !(
+              String(c.groupId).toUpperCase() === String(saved.groupId).toUpperCase() &&
+              Number(c.totalChitValue || 100000) === Number(saved.totalChitValue || 100000)
+            )
+        );
+        return [saved, ...existingFiltered];
+      });
       showToast(`✓ Chit Group ${newGroup.groupId} (${newGroup.name}) created and saved to Firebase!`, 'success');
-      // Reload chits to ensure complete synchronization
+      
+      // Reload chits to ensure complete synchronization with all member groups and Firestore documents
       const fetched = await chitService.getChits().catch(() => null);
-      if (fetched) setChits(fetched);
+      if (Array.isArray(fetched) && fetched.length > 0) {
+        setChits(fetched);
+      }
     } catch (err) {
       showToast(`Failed to save chit group: ${err.message}`, 'error');
       throw err;
@@ -142,7 +156,8 @@ export default function ChitsPlaceholder() {
   const getEnrolledMembers = (groupId, chitValue = null) => {
     const targetGrp = String(groupId || '').trim().toUpperCase();
     const targetVal = chitValue ? Number(chitValue) : null;
-    return members.filter((m) =>
+    const safeMembers = Array.isArray(members) ? members.filter(Boolean) : [];
+    return safeMembers.filter((m) =>
       (m.chits || []).some((c) => {
         const cGrp = String(c?.groupId || c?.group || '').trim().toUpperCase();
         const cVal = Number(c?.totalChitValue || c?.totalValue || c?.chitValue || 100000);
@@ -155,8 +170,8 @@ export default function ChitsPlaceholder() {
   };
 
   const handleOpenEditMonthly = (group) => {
-    const val = group?.totalChitValue || 100000;
-    const grp = group?.groupId || 'I';
+    const val = Number(group?.totalChitValue || 100000);
+    const grp = String(group?.groupId || 'I').trim().toUpperCase();
     const current = getGroupMonthlyPremium(group);
 
     setTargetGroupForMonthly({
@@ -170,9 +185,10 @@ export default function ChitsPlaceholder() {
   };
 
   const handleOpenEditStartingMonth = (group) => {
-    const val = group?.totalChitValue || 100000;
-    const grp = group?.groupId || 'I';
+    const val = Number(group?.totalChitValue || 100000);
+    const grp = String(group?.groupId || 'I').trim().toUpperCase();
     const currentStart = group?.startingMonth || 'March 2026';
+    const parsed = parseMonthYear(currentStart) || { month: 2, year: 2026 };
 
     setTargetGroupForStartingMonth({
       id: group?.id,
@@ -181,7 +197,8 @@ export default function ChitsPlaceholder() {
       fullFormattedValue: `₹${(val / 100000).toFixed(0)} Lakh Group ${grp}`,
       startingMonth: currentStart,
     });
-    setInputStartingMonth(currentStart);
+    setInputStartingMonth(FORMATTED_MONTH_NAMES[parsed.month] || 'March');
+    setInputStartingYear(String(parsed.year || 2026));
     setIsEditStartingMonthModalOpen(true);
     setActiveMenuId(null);
   };
@@ -219,28 +236,40 @@ export default function ChitsPlaceholder() {
     e.preventDefault();
     if (!targetGroupForStartingMonth) return;
 
+    const cleanYear = parseInt(inputStartingYear, 10);
+    if (isNaN(cleanYear) || cleanYear < 2000 || cleanYear > 2100) {
+      showToast('Please enter a valid starting year (e.g. 2026).', 'error');
+      return;
+    }
+
+    const isoStartingMonth = toYearMonthString(inputStartingMonth, cleanYear);
+    const formattedDisplay = `${inputStartingMonth} ${cleanYear}`;
+
     setIsSavingStartingMonth(true);
     try {
       await chitService.updateChitGroupStartingMonth(
         targetGroupForStartingMonth.groupId,
         targetGroupForStartingMonth.chitValue,
-        inputStartingMonth
+        isoStartingMonth,
+        targetGroupForStartingMonth.id
       );
 
-      setChits((prev) =>
-        prev.map((c) => {
-          if (
-            String(c.groupId).toLowerCase() === String(targetGroupForStartingMonth.groupId).toLowerCase() &&
-            Number(c.totalChitValue || 100000) === Number(targetGroupForStartingMonth.chitValue)
-          ) {
-            return { ...c, startingMonth: inputStartingMonth };
+      setChits((prev) => {
+        const safePrev = Array.isArray(prev) ? prev : [];
+        return safePrev.map((c) => {
+          const matchId = targetGroupForStartingMonth.id && c.id === targetGroupForStartingMonth.id;
+          const matchKey =
+            String(c.groupId).trim().toUpperCase() === String(targetGroupForStartingMonth.groupId).trim().toUpperCase() &&
+            Number(c.totalChitValue || 100000) === Number(targetGroupForStartingMonth.chitValue);
+          if (matchId || matchKey) {
+            return { ...c, startingMonth: isoStartingMonth };
           }
           return c;
-        })
-      );
+        });
+      });
 
       setIsEditStartingMonthModalOpen(false);
-      showToast(`✓ Starting month for Group ${targetGroupForStartingMonth.groupId} updated to ${inputStartingMonth}!`);
+      showToast(`✓ Starting month for Group ${targetGroupForStartingMonth.groupId} updated to ${formattedDisplay}!`);
     } catch (err) {
       showToast(`Failed to save starting month: ${err.message}`, 'error');
     } finally {
@@ -263,16 +292,17 @@ export default function ChitsPlaceholder() {
         deletingGroup.id
       );
 
-      setChits((prev) =>
-        prev.filter(
+      setChits((prev) => {
+        const safePrev = Array.isArray(prev) ? prev : [];
+        return safePrev.filter(
           (c) =>
             c.id !== deletingGroup.id &&
             !(
-              String(c.groupId).toUpperCase() === String(deletingGroup.groupId).toUpperCase() &&
+              String(c.groupId).trim().toUpperCase() === String(deletingGroup.groupId).trim().toUpperCase() &&
               Number(c.totalChitValue || 100000) === Number(deletingGroup.totalChitValue || 100000)
             )
-        )
-      );
+        );
+      });
 
       showToast('Chit group deleted successfully.', 'success');
       setDeletingGroup(null);
@@ -285,10 +315,14 @@ export default function ChitsPlaceholder() {
 
   // Sort and filter chits
   const filteredChits = useMemo(() => {
-    let list = chits.filter((c) => c.status !== 'ARCHIVED');
+    const safeGroups = Array.isArray(chits) ? chits.filter(Boolean) : [];
+    let list = safeGroups.filter((c) => c.status !== 'ARCHIVED');
 
     if (selectedChitCategory !== 'all') {
-      list = list.filter((c) => String(c.totalChitValue || 100000) === String(selectedChitCategory));
+      list = list.filter((c) => {
+        const val = Number(c.totalChitValue || c.totalValue || c.chitValue || 100000);
+        return String(val) === String(selectedChitCategory);
+      });
     }
 
     return list.sort((a, b) => compareGroupIds(a.groupId, b.groupId));
@@ -349,8 +383,8 @@ export default function ChitsPlaceholder() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {filteredChits.map((group) => {
-            const enrolled = getEnrolledMembers(group.groupId);
-            const enrolledCount = enrolled.length || group.currentMembers || 18;
+            const enrolled = getEnrolledMembers(group.groupId, group.totalChitValue);
+            const enrolledCount = enrolled.length;
             const monthlyPremium = getGroupMonthlyPremium(group);
             const isMenuOpen = activeMenuId === group.id;
             const chitMonthInfo = getChitMonth(group.startingMonth || 'March 2026', selectedMonth);
@@ -364,10 +398,12 @@ export default function ChitsPlaceholder() {
                       <span className="text-xs font-extrabold font-mono text-[#2F5D50] bg-[#DDE8E2] px-2 py-0.5 rounded-lg border border-[#2F5D50]/20">
                         Group {group.groupId || 'I'}
                       </span>
-                      <h3 className="text-base font-black text-[#1C1C1A]">{group.name}</h3>
+                      <h3 className="text-base font-black text-[#1C1C1A]">
+                        {group.name || `₹${((group.totalChitValue || 100000) / 100000).toFixed(0)} Lakh Chit (Group ${group.groupId || 'I'})`}
+                      </h3>
                     </div>
                     <p className="text-xs text-[#6B6B67] mt-1 font-medium">
-                      Duration: {group.duration || '20 Months'} • Starts: {group.startingMonth || 'March 2026'}
+                      Value: ₹{(group.totalChitValue || 100000).toLocaleString('en-IN')} • Starts: {formatMonthYearDisplay(group.startingMonth || 'March 2026')}
                     </p>
                   </div>
 
@@ -546,70 +582,105 @@ export default function ChitsPlaceholder() {
       )}
 
       {/* EDIT GROUP STARTING MONTH MODAL */}
-      {isEditStartingMonthModalOpen && targetGroupForStartingMonth && (
-        <Modal
-          isOpen={isEditStartingMonthModalOpen}
-          onClose={() => setIsEditStartingMonthModalOpen(false)}
-          title="Edit Group Starting Month"
-          subtitle={`Configure the starting month (Chit Month 1) for ${targetGroupForStartingMonth?.fullFormattedValue}.`}
-          maxWidth="max-w-md"
-        >
-          <form onSubmit={handleSaveStartingMonth} className="space-y-4 text-xs font-sans">
-            <div className="p-3.5 bg-[#EDF7F0] border border-[#2F5D50]/20 rounded-xl space-y-2">
-              <label className="block text-[11px] font-extrabold text-[#2F5D50] uppercase tracking-wider">
-                Select Starting Month (Chit Month 1)
-              </label>
-              <select
-                value={inputStartingMonth}
-                onChange={(e) => setInputStartingMonth(e.target.value)}
-                className="w-full px-3 py-2.5 text-xs font-bold bg-white border border-[#E5E5E1] rounded-xl text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50] cursor-pointer"
-              >
-                {getStandardMonthOptions().map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
+      {isEditStartingMonthModalOpen && targetGroupForStartingMonth && (() => {
+        const combinedDateStr = `${inputStartingMonth} ${inputStartingYear}`;
+        const calculatedPreview = getChitMonth(combinedDateStr, selectedMonth);
 
-              <div className="pt-2 border-t border-[#2F5D50]/20 flex items-center justify-between text-xs">
-                <span className="text-[#6B6B67] font-semibold">Active Billing Month:</span>
-                <span className="font-bold text-[#1C1C1A]">{selectedMonth}</span>
+        return (
+          <Modal
+            isOpen={isEditStartingMonthModalOpen}
+            onClose={() => !isSavingStartingMonth && setIsEditStartingMonthModalOpen(false)}
+            title="Edit Starting Month"
+            subtitle={`Set manual starting Month and Year for ${targetGroupForStartingMonth?.fullFormattedValue}.`}
+            maxWidth="max-w-md"
+          >
+            <form onSubmit={handleSaveStartingMonth} className="space-y-4 text-xs font-sans">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block">
+                    Starting Month *
+                  </label>
+                  <select
+                    value={inputStartingMonth}
+                    onChange={(e) => setInputStartingMonth(e.target.value)}
+                    className="w-full px-3 py-2 text-xs font-bold bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50] cursor-pointer"
+                  >
+                    {FORMATTED_MONTH_NAMES.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block">
+                    Starting Year *
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="2020"
+                    max="2040"
+                    step="1"
+                    placeholder="e.g. 2026"
+                    value={inputStartingYear}
+                    onChange={(e) => setInputStartingYear(e.target.value)}
+                    className="w-full px-3 py-2 text-xs font-bold bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+                  />
+                </div>
               </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-[#6B6B67] font-semibold">Calculated Chit Month:</span>
-                <span className="font-black text-[#2F5D50] bg-white px-2 py-0.5 rounded-md border border-[#2F5D50]/20">
-                  {getChitMonth(inputStartingMonth, selectedMonth).display}
-                </span>
+
+              {/* LIVE PREVIEW SECTION */}
+              <div className="p-3.5 bg-[#EDF7F0] border border-[#2F5D50]/20 rounded-xl space-y-2">
+                <p className="text-[10px] font-extrabold uppercase tracking-wider text-[#2F5D50]">
+                  Preview
+                </p>
+                <div className="flex items-center justify-between text-xs pt-1 border-t border-[#2F5D50]/15">
+                  <span className="text-[#6B6B67] font-semibold">Selected Starting Date:</span>
+                  <span className="font-bold text-[#1C1C1A]">{inputStartingMonth} {inputStartingYear}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[#6B6B67] font-semibold">Current Selected Month:</span>
+                  <span className="font-bold text-[#1C1C1A]">{selectedMonth}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs pt-1 border-t border-[#2F5D50]/15">
+                  <span className="text-[#2F5D50] font-extrabold uppercase tracking-wider">Chit Month:</span>
+                  <span className="font-black text-[#2F5D50] bg-white px-2.5 py-0.5 rounded-lg border border-[#2F5D50]/25 text-sm">
+                    {calculatedPreview.display}
+                  </span>
+                </div>
               </div>
-            </div>
 
-            <p className="text-[11px] text-[#6B6B67] leading-relaxed">
-              ℹ Changing the starting month recalculates the active Chit Month dynamically across all group dashboards, member views, and WhatsApp message previews. Historical financial ledger entries remain intact.
-            </p>
+              <p className="text-[11px] text-[#6B6B67] leading-relaxed">
+                ℹ The selected starting month is Chit Month 1. The Chit Month automatically recalculates across all group cards, member tables, and WhatsApp payment reminders.
+              </p>
 
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#E5E5E1]">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => setIsEditStartingMonthModalOpen(false)}
-                disabled={isSavingStartingMonth}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                size="sm"
-                className="bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold"
-                disabled={isSavingStartingMonth}
-              >
-                {isSavingStartingMonth ? 'Saving...' : 'Save Starting Month'}
-              </Button>
-            </div>
-          </form>
-        </Modal>
-      )}
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#E5E5E1]">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setIsEditStartingMonthModalOpen(false)}
+                  disabled={isSavingStartingMonth}
+                  className="rounded-xl border-[#E5E5E1]"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="sm"
+                  className="bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold rounded-xl cursor-pointer"
+                  disabled={isSavingStartingMonth}
+                >
+                  {isSavingStartingMonth ? 'Saving...' : 'Save Starting Month'}
+                </Button>
+              </div>
+            </form>
+          </Modal>
+        );
+      })()}
 
       {/* SAFE DELETE GROUP MODAL */}
       {deletingGroup && (() => {
