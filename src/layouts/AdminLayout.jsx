@@ -327,90 +327,102 @@ export default function AdminLayout({ children, onLogout }) {
             </div>
           )}
 
-          {/* DESKTOP TOP HEADER (PURE WHITE #FFFFFF) */}
-          <header className="hidden lg:flex items-center justify-between border-b border-[#E5E5E1] bg-white px-8 py-3.5 sticky top-0 z-20">
-            {/* GLOBAL SEARCH BAR */}
-            <form onSubmit={handleGlobalSearchSubmit} className="relative w-full max-w-md">
-              <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-[#959590] pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Search member name, phone, chit..."
-                value={globalSearchQuery}
-                onChange={(e) => setGlobalSearchQuery(e.target.value)}
-                className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] pl-10 pr-4 py-2 text-xs font-semibold text-[#1C1C1A] placeholder-[#959590] focus:border-[#2F5D50] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#2F5D50] transition-all"
-              />
-            </form>
+          {/* TOP HEADER (PURE WHITE #FFFFFF) */}
+          <header className="border-b border-[#E5E5E1] bg-white px-4 sm:px-6 lg:px-8 py-3 lg:py-3.5 relative lg:sticky lg:top-0 z-20">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 sm:gap-3.5 lg:gap-4 w-full">
+              {/* GLOBAL SEARCH BAR */}
+              <form onSubmit={handleGlobalSearchSubmit} className="relative w-full lg:flex-1 lg:min-w-[280px] lg:max-w-[620px]">
+                <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-[#959590] pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search member name, phone, chit..."
+                  value={globalSearchQuery}
+                  onChange={(e) => setGlobalSearchQuery(e.target.value)}
+                  className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] pl-10 pr-4 py-2 text-xs font-semibold text-[#1C1C1A] placeholder-[#959590] focus:border-[#2F5D50] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#2F5D50] transition-all"
+                />
+              </form>
 
-            <div className="flex items-center gap-3">
-              {/* EDITABLE ACTIVE BILLING MONTH SELECTOR */}
-              <div className="flex items-center gap-2 rounded-xl border border-[#2F5D50]/30 bg-[#EDF7F0] px-3 py-1.5 shadow-2xs">
-                <CalendarIcon className="h-4 w-4 text-[#2F5D50] shrink-0" />
-                <div className="flex items-center gap-1">
-                  <span className="text-[10px] font-black uppercase text-[#2F5D50] tracking-wider hidden xl:inline">Month:</span>
-                  <select
-                    value={selectedMonth}
-                    onChange={(e) => {
-                      if (e.target.value === '__NEW__') {
-                        const m = window.prompt('Enter new billing month name (e.g. November 2026):');
-                        if (m) addNewMonth(m);
+              {/* RIGHT CONTROLS WRAPPER */}
+              <div className="flex flex-wrap items-center justify-between sm:justify-start lg:justify-end gap-2.5 sm:gap-3 shrink-0">
+                {/* EDITABLE ACTIVE BILLING MONTH SELECTOR */}
+                <div className="flex items-center gap-2 rounded-xl border border-[#2F5D50]/30 bg-[#EDF7F0] px-3.5 py-1.5 shadow-2xs shrink-0 w-full sm:w-[300px]">
+                  <CalendarIcon className="h-4 w-4 text-[#2F5D50] shrink-0" />
+                  <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                    <span className="text-[10px] font-black uppercase text-[#2F5D50] tracking-wider shrink-0">Month:</span>
+                    <select
+                      value={selectedMonth}
+                      onChange={(e) => {
+                        if (e.target.value === '__NEW__') {
+                          const m = window.prompt('Enter new billing month name (e.g. November 2026):');
+                          if (m) addNewMonth(m);
+                        } else {
+                          setSelectedMonth(e.target.value);
+                        }
+                      }}
+                      className="bg-transparent text-xs font-black text-[#1C1C1A] focus:outline-none cursor-pointer pr-1 flex-1 min-w-0 truncate"
+                    >
+                      {availableMonths.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                      <option value="__NEW__">+ Add New Month...</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* ACTION BUTTONS GROUP */}
+                <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+                  {/* SIDEBAR COLLAPSE / EXPAND CONTROL BUTTON */}
+                  <button
+                    onClick={() => {
+                      if (window.innerWidth < 1024) {
+                        setIsMobileMenuOpen(!isMobileMenuOpen);
                       } else {
-                        setSelectedMonth(e.target.value);
+                        setIsSidebarCollapsed(!isSidebarCollapsed);
                       }
                     }}
-                    className="bg-transparent text-xs font-black text-[#1C1C1A] focus:outline-none cursor-pointer pr-1"
+                    className="flex items-center gap-1.5 sm:gap-2 rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-1.5 text-xs font-bold text-[#1C1C1A] hover:bg-[#F2F2EF] transition-colors cursor-pointer shrink-0"
+                    title={isSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
                   >
-                    {availableMonths.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                    <option value="__NEW__">+ Add New Month...</option>
-                  </select>
+                    {isSidebarCollapsed ? <ChevronsRight className="h-4 w-4 text-[#2F5D50]" /> : <ChevronsLeft className="h-4 w-4 text-[#2F5D50]" />}
+                    <span>{isSidebarCollapsed ? 'Expand' : 'Collapse'}</span>
+                  </button>
+
+                  {/* FULLSCREEN BUTTON */}
+                  <button
+                    onClick={toggleFullscreen}
+                    className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] text-[#6B6B67] hover:text-[#1C1C1A] hover:bg-[#F2F2EF] transition-all cursor-pointer shrink-0"
+                    title={isFullscreen ? 'Exit Fullscreen' : 'Maximize Fullscreen'}
+                    aria-label="Toggle fullscreen"
+                  >
+                    {isFullscreen ? <Minimize className="h-4 w-4 text-[#2F5D50]" /> : <Maximize className="h-4 w-4 text-[#2F5D50]" />}
+                  </button>
+
+                  {/* NOTIFICATION INDICATOR */}
+                  <div className="relative shrink-0">
+                    <button
+                      onClick={() => navigate('/whatsapp')}
+                      className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] text-[#6B6B67] hover:text-[#1C1C1A] hover:bg-[#F2F2EF] transition-all cursor-pointer"
+                      title="Notifications"
+                    >
+                      <Bell className="h-4 w-4 text-[#6B6B67]" />
+                    </button>
+                    <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-[#2F6B4F] ring-2 ring-white"></span>
+                  </div>
                 </div>
-              </div>
 
-              {/* SIDEBAR COLLAPSE CONTROL BUTTON */}
-              <button
-                onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-                className="flex items-center gap-2 rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-1.5 text-xs font-bold text-[#1C1C1A] hover:bg-[#F2F2EF] transition-colors cursor-pointer"
-                title={isSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-              >
-                {isSidebarCollapsed ? <ChevronsRight className="h-4 w-4 text-[#2F5D50]" /> : <ChevronsLeft className="h-4 w-4 text-[#2F5D50]" />}
-                <span>{isSidebarCollapsed ? 'Expand' : 'Collapse'}</span>
-              </button>
-
-              {/* FULLSCREEN BUTTON */}
-              <button
-                onClick={toggleFullscreen}
-                className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] text-[#6B6B67] hover:text-[#1C1C1A] hover:bg-[#F2F2EF] transition-all cursor-pointer"
-                title={isFullscreen ? 'Exit Fullscreen' : 'Maximize Fullscreen'}
-                aria-label="Toggle fullscreen"
-              >
-                {isFullscreen ? <Minimize className="h-4 w-4 text-[#2F5D50]" /> : <Maximize className="h-4 w-4 text-[#2F5D50]" />}
-              </button>
-
-              {/* NOTIFICATION INDICATOR */}
-              <div className="relative">
-                <button
-                  onClick={() => navigate('/whatsapp')}
-                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] text-[#6B6B67] hover:text-[#1C1C1A] hover:bg-[#F2F2EF] transition-all cursor-pointer"
-                  title="Notifications"
-                >
-                  <Bell className="h-4 w-4 text-[#6B6B67]" />
-                </button>
-                <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-[#2F6B4F] ring-2 ring-white"></span>
-              </div>
-
-              {/* ADMIN PROFILE PILL */}
-              <div className="flex items-center gap-2.5 rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-1.5">
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#2F5D50] text-[10px] font-black text-white">
-                  RA
-                </div>
-                <div className="text-left">
-                  <p className="text-xs font-bold text-[#1C1C1A] leading-tight">Raghavendra Admin</p>
-                  <p className="text-[9px] font-semibold text-[#2F6B4F] leading-tight flex items-center gap-1">
-                    <span className="h-1.5 w-1.5 rounded-full bg-[#2F6B4F] animate-pulse"></span> System Active
-                  </p>
+                {/* ADMIN PROFILE PILL */}
+                <div className="flex items-center gap-2.5 rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-1.5 shrink-0">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#2F5D50] text-[10px] font-black text-white shrink-0">
+                    RA
+                  </div>
+                  <div className="text-left min-w-0">
+                    <p className="text-xs font-bold text-[#1C1C1A] leading-tight truncate">Raghavendra Admin</p>
+                    <p className="text-[9px] font-semibold text-[#2F6B4F] leading-tight flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-[#2F6B4F] animate-pulse"></span> System Active
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
