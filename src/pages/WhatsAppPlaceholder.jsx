@@ -22,6 +22,7 @@ import {
   generatePersonalizedMessage,
   createMessageHistoryDoc,
   fetchMessageHistory,
+  getActiveChits,
 } from '../services/messagingService';
 import {
   sendSingleWhatsAppMessage,
@@ -32,6 +33,7 @@ import {
 } from '../services/whatsappService';
 import { memberService, chitService, groupPaymentSettingsService } from '../services/dbService';
 import { useBillingMonth } from '../context/BillingMonthContext';
+import { getEffectiveMonthlyAmount } from '../utils/amountUtils';
 
 function parseRomanNumeral(str = '') {
   const clean = String(str).toUpperCase().trim().replace(/^GROUP\s+/, '');
@@ -67,20 +69,16 @@ function compareGroupIds(groupIdA = '', groupIdB = '') {
   return cleanA.localeCompare(cleanB, undefined, { numeric: true, sensitivity: 'base' });
 }
 
-function getActiveChits(member) {
-  return (member?.chits || []).filter((chit) => (chit.status ? chit.status === 'ACTIVE' : true));
-}
-
 export default function WhatsAppPlaceholder() {
   const { selectedMonth } = useBillingMonth();
 
-  // Core Data States
+  // 1. Core Data States
   const [members, setMembers] = useState([]);
   const [chits, setChits] = useState([]);
   const [groupPaymentSettings, setGroupPaymentSettings] = useState({});
   const [toast, setToast] = useState(null);
 
-  // QR Code Gateway States
+  // 2. QR Code Gateway States
   const [qrGatewayState, setQrGatewayState] = useState({
     ok: true,
     connected: false,
@@ -91,26 +89,99 @@ export default function WhatsAppPlaceholder() {
   const [qrFetchError, setQrFetchError] = useState(null);
   const [isQrLoading, setIsQrLoading] = useState(false);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+  const [consecutiveQrErrors, setConsecutiveQrErrors] = useState(0);
+  const [latestQrGenId, setLatestQrGenId] = useState(0);
 
-  // Template & Language States
+  // 3. Template & Language States
   const [selectedTemplateId, setSelectedTemplateId] = useState('PAYMENT_REMINDER');
   const [language, setLanguage] = useState('english');
   const [customTemplateText, setCustomTemplateText] = useState(MESSAGE_TEMPLATES.PAYMENT_REMINDER.englishText);
 
-  // Parameter Inputs
+  // 4. Parameter Inputs
   const [selectedGroupId, setSelectedGroupId] = useState('all');
   const [billingMonth, setBillingMonth] = useState(selectedMonth || 'August 2026');
+  const [dueDate, setDueDate] = useState('15th of Month');
+  const [chitAmount, setChitAmount] = useState('25000');
+  const [groupPendingAmount, setGroupPendingAmount] = useState('0');
+  const [balanceAmount, setBalanceAmount] = useState('0');
 
+  // 5. Recipient Filter States
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [groupFilter, setGroupFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+
+  // 6. Selection States
+  const [selectedMemberIds, setSelectedMemberIds] = useState([]);
+  const [selectedPreviewMember, setSelectedPreviewMember] = useState(null);
+
+  // 7. Sending States
+  const [isSendingSingle, setIsSendingSingle] = useState(false);
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({
+    isSending: false,
+    current: 0,
+    total: 0,
+    sentCount: 0,
+    failedCount: 0,
+  });
+  const [bulkSummaryModal, setBulkSummaryModal] = useState(null);
+
+  // 8. History & Audit Logs
+  const [historyLogs, setHistoryLogs] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyStatusFilter, setHistoryStatusFilter] = useState('all');
+  const [detailsLogModal, setDetailsLogModal] = useState(null);
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+  };
+
+  // Sync billing month from global context
   useEffect(() => {
     if (selectedMonth) {
       setBillingMonth(selectedMonth);
     }
   }, [selectedMonth]);
 
-  const [dueDate, setDueDate] = useState('15th of Month');
-  const [chitAmount, setChitAmount] = useState('25000');
-  const [groupPendingAmount, setGroupPendingAmount] = useState('0');
-  const [balanceAmount, setBalanceAmount] = useState('0');
+  // Dynamically sync amount parameters with selected preview member
+  useEffect(() => {
+    if (selectedPreviewMember) {
+      const activeChits = getActiveChits(selectedPreviewMember);
+      const isMulti = selectedPreviewMember.classification === 'MULTIPLE' || activeChits.length > 1;
+      if (isMulti) {
+        let sumChit = 0;
+        let sumPending = 0;
+        let sumBalance = 0;
+        activeChits.forEach((c) => {
+          const baseMonthly = getEffectiveMonthlyAmount(selectedPreviewMember, c, groupPaymentSettings);
+          const qty = Number(c.quantity || 1);
+          sumChit += baseMonthly * qty;
+          sumPending += Number(c.pending || 0);
+          sumBalance += Number(c.balance || 0);
+        });
+        setChitAmount(String(sumChit));
+        setGroupPendingAmount(String(sumPending));
+        setBalanceAmount(String(sumBalance));
+      } else {
+        const targetChit = activeChits[0] || (selectedPreviewMember.groupId || selectedPreviewMember.group || selectedPreviewMember.chitGroup ? {
+          groupId: selectedPreviewMember.groupId || selectedPreviewMember.group || selectedPreviewMember.chitGroup,
+          totalChitValue: selectedPreviewMember.calculatedTotalChitValue || selectedPreviewMember.totalChitValue || 100000,
+          pending: selectedPreviewMember.pending || 0,
+          balance: selectedPreviewMember.balance || 0,
+          quantity: 1,
+        } : {});
+        const baseMonthly = getEffectiveMonthlyAmount(selectedPreviewMember, targetChit, groupPaymentSettings);
+        const qty = Number(targetChit.quantity || 1);
+        const singleMonthly = baseMonthly * qty;
+        const singlePending = Number(targetChit.pending ?? selectedPreviewMember.pending ?? 0);
+        const singleBalance = Number(targetChit.balance ?? selectedPreviewMember.balance ?? 0);
+        setChitAmount(String(singleMonthly));
+        setGroupPendingAmount(String(singlePending));
+        setBalanceAmount(String(singleBalance));
+      }
+    }
+  }, [selectedPreviewMember, groupPaymentSettings]);
 
   // Auto-Calculated Amounts
   const totalAmount = useMemo(() => {
@@ -123,12 +194,6 @@ export default function WhatsAppPlaceholder() {
     const b = Number(balanceAmount) || 0;
     return totalAmount - b;
   }, [totalAmount, balanceAmount]);
-
-  // Recipient Filters
-  const [searchQuery, setSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('all');
-  const [groupFilter, setGroupFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
 
   // Sync group selection between filters and parameters
   const handleGroupFilterChange = (val) => {
@@ -202,36 +267,6 @@ export default function WhatsAppPlaceholder() {
 
     return sortedCategories;
   }, [availableGroups, chits, members]);
-
-  // Selection States
-  const [selectedMemberIds, setSelectedMemberIds] = useState([]);
-  const [selectedPreviewMember, setSelectedPreviewMember] = useState(null);
-
-  // Sending States
-  const [isSendingSingle, setIsSendingSingle] = useState(false);
-  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
-  const [bulkProgress, setBulkProgress] = useState({
-    isSending: false,
-    current: 0,
-    total: 0,
-    sentCount: 0,
-    failedCount: 0,
-  });
-  const [bulkSummaryModal, setBulkSummaryModal] = useState(null);
-
-  // History & Audit Logs
-  const [historyLogs, setHistoryLogs] = useState([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyStatusFilter, setHistoryStatusFilter] = useState('all');
-  const [detailsLogModal, setDetailsLogModal] = useState(null);
-
-  // QR Gateway failure counter for graceful cold start retry
-  const [consecutiveQrErrors, setConsecutiveQrErrors] = useState(0);
-  const [latestQrGenId, setLatestQrGenId] = useState(0);
-
-  const showToast = (message, type = 'success') => {
-    setToast({ message, type });
-  };
 
   // Poll QR Code Gateway Status with generational tracking and cold start tolerance
   const fetchQrGatewayStatus = useCallback(async () => {
@@ -479,11 +514,6 @@ export default function WhatsAppPlaceholder() {
     return generatePersonalizedMessage(member, customTemplateText, {
       groupId: selectedGroupId,
       billingMonth,
-      chitAmount,
-      pendingAmount: groupPendingAmount,
-      balanceAmount,
-      totalAmount,
-      finalAmount,
       dueDate,
       groupPaymentSettings,
     });

@@ -8,11 +8,15 @@ This is a payment reminder from Raghavendra Chitts.
 Chit Group: {{groupName}}
 Chit Month: {{chitMonth}}
 Billing Month: {{billingMonth}}
-Chit Amount: ₹{{chitAmount}}
-Pending Amount: ₹{{pendingAmount}}
 Due Date: {{dueDate}}
 
-Please make the payment on time.
+Monthly Chit Amount: ₹{{chitAmount}}
+Pending Amount: ₹{{pendingAmount}}
+Balance Credit: ₹{{balanceAmount}}
+----------------------------------------
+Final Payable Amount: ₹{{finalAmount}}
+
+Please make your payment at your earliest convenience.
 
 Thank you,
 Raghavendra Chitts`;
@@ -24,11 +28,15 @@ export const DEFAULT_TELUGU_TEMPLATE = `నమస్కారం {{memberName}} 
 చిట్టీ గ్రూప్: {{groupName}}
 చిట్టీ నెల: {{chitMonth}}
 బిల్లింగ్ నెల: {{billingMonth}}
-చిట్టీ విలువ: ₹{{chitAmount}}
-బాకీ మొత్తం: ₹{{pendingAmount}}
 గడువు తేదీ: {{dueDate}}
 
-దయచేసి సమయానికి చెల్లింపు పూర్తి చేయండి.
+నెలవారీ చిట్టీ మొత్తం: ₹{{chitAmount}}
+బాకీ ఉన్న మొత్తం: ₹{{pendingAmount}}
+బ్యాలెన్స్ క్రెడిట్: ₹{{balanceAmount}}
+----------------------------------------
+ఫైనల్ చెల్లించాల్సిన మొత్తం: ₹{{finalAmount}}
+
+దయచేసి మీ చెల్లింపును త్వరగా పూర్తి చేయండి.
 
 ధన్యవాదములు,
 రాఘవేంద్ర చిట్స్`;
@@ -100,7 +108,7 @@ export function formatDisplayPhoneNumber(value = '') {
 
 /**
  * Replace placeholders dynamically in custom WhatsApp templates.
- * Supported variables: {{memberName}}, {{phone}}, {{groupName}}, {{chitMonth}}, {{chitAmount}}, {{pendingAmount}}, {{billingMonth}}, {{dueDate}}
+ * Supported variables: {{memberName}}, {{phone}}, {{groupName}}, {{chitMonth}}, {{chitAmount}}, {{pendingAmount}}, {{balanceAmount}}, {{totalAmount}}, {{finalAmount}}, {{billingMonth}}, {{dueDate}}
  */
 export function formatWhatsAppTemplate({
   templateText = '',
@@ -108,8 +116,11 @@ export function formatWhatsAppTemplate({
   phone = '',
   groupName = 'Chit Group',
   chitMonth = '1',
-  chitAmount = '1,00,000',
+  chitAmount = '0',
   pendingAmount = '0',
+  balanceAmount = '0',
+  totalAmount = '0',
+  finalAmount = '0',
   billingMonth = 'August 2026',
   dueDate = '15th of Month',
   upiUrl = null,
@@ -118,6 +129,9 @@ export function formatWhatsAppTemplate({
 
   const cleanChitAmt = formatRawNumber(chitAmount);
   const cleanPendingAmt = formatRawNumber(pendingAmount);
+  const cleanBalanceAmt = formatRawNumber(balanceAmount);
+  const cleanTotalAmt = formatRawNumber(totalAmount);
+  const cleanFinalAmt = formatRawNumber(finalAmount);
   const formattedPhone = formatDisplayPhoneNumber(phone);
 
   let compiled = templateText
@@ -129,11 +143,22 @@ export function formatWhatsAppTemplate({
     .replace(/\{\{chitMonth\}\}/g, String(chitMonth || '1'))
     .replace(/\{CHIT_MONTH\}/g, String(chitMonth || '1'))
     .replace(/\{\{chit_month\}\}/g, String(chitMonth || '1'))
+    .replace(/\{chitMonth\}/g, String(chitMonth || '1'))
     .replace(/\{\{chitAmount\}\}/g, cleanChitAmt)
     .replace(/\{CHIT_AMOUNT\}/g, cleanChitAmt)
+    .replace(/\{MONTHLY_AMOUNT\}/g, cleanChitAmt)
     .replace(/\{\{pendingAmount\}\}/g, cleanPendingAmt)
     .replace(/\{PENDING_AMOUNT\}/g, cleanPendingAmt)
+    .replace(/\{\{balanceAmount\}\}/g, cleanBalanceAmt)
+    .replace(/\{BALANCE_AMOUNT\}/g, cleanBalanceAmt)
+    .replace(/\{\{totalAmount\}\}/g, cleanTotalAmt)
+    .replace(/\{TOTAL_AMOUNT\}/g, cleanTotalAmt)
+    .replace(/\{\{finalAmount\}\}/g, cleanFinalAmt)
+    .replace(/\{FINAL_AMOUNT\}/g, cleanFinalAmt)
+    .replace(/\{\{amountToPay\}\}/g, cleanFinalAmt)
+    .replace(/\{AMOUNT_TO_PAY\}/g, cleanFinalAmt)
     .replace(/\{\{billingMonth\}\}/g, billingMonth || 'August 2026')
+    .replace(/\{BILLING_MONTH\}/g, billingMonth || 'August 2026')
     .replace(/\{\{dueDate\}\}/g, dueDate || '15th of Month')
     .replace(/\{DUE_DATE\}/g, dueDate || '15th of Month');
 
@@ -148,65 +173,170 @@ export function formatWhatsAppTemplate({
 }
 
 import { getEffectiveMonthlyAmount } from '../utils/amountUtils.js';
+import { getActiveChits } from './messagingService.js';
 
-export function getBilingualWhatsAppMessage(member, groupPaymentSettings = {}, billingMonth = 'August 2026') {
+export function getBilingualWhatsAppMessage(member, groupPaymentSettings = {}, billingMonth = 'August 2026', dueDate = '15th of Month') {
   if (!member) return '';
-  const totalAmountToPay = calculateMemberPayableAmount(member, groupPaymentSettings);
-  const activeChits = (member?.chits || []).filter((c) => !c.status || c.status === 'ACTIVE');
+  const activeChits = getActiveChits(member);
+  const memberName = member.name || 'Member';
+  const isMulti = activeChits.length > 1;
 
-  // English Section
-  let englishMessage = `Hello ${member.name} Garu,\n\nYour Chit Payment Details:\n\n`;
-  activeChits.forEach((chit, idx) => {
-    const val = chit.totalChitValue || 100000;
-    const grp = chit.groupId || 'I';
-    const baseMonthly = getEffectiveMonthlyAmount(member, chit, groupPaymentSettings);
-    const quantity = Number(chit.quantity || 1);
-    const pending = Number(chit.pending || 0);
-    const balance = Number(chit.balance || 0);
-    const chitPayable = Math.max((baseMonthly * quantity) + pending - balance, 0);
-    const chitMonthData = getChitMonthForGroup(chit, billingMonth, activeChits);
+  // ── 1. SINGLE CHIT MEMBER (Exactly 1 active chit or single holding) ──
+  if (!isMulti) {
+    const targetChit = activeChits[0] || (member?.groupId || member?.group || member?.chitGroup ? {
+      groupId: member.groupId || member.group || member.chitGroup,
+      totalChitValue: member.calculatedTotalChitValue || member.totalChitValue || 100000,
+      pending: member.pending || 0,
+      balance: member.balance || 0,
+      quantity: 1,
+    } : {});
 
-    const titlePrefix = activeChits.length > 1 ? `${idx + 1}. ` : '';
-    englishMessage += `${titlePrefix}*${chit.name || `₹${(val / 100000).toFixed(0)} Lakh Chit (Group ${grp})`}*\n`;
-    englishMessage += `   Monthly Amount: ₹${baseMonthly.toLocaleString('en-IN')}\n`;
-    englishMessage += `   Chit Month: ${chitMonthData.currentMonth}\n`;
-    if (pending > 0) englishMessage += `   Pending Overdue: ₹${pending.toLocaleString('en-IN')}\n`;
-    if (balance > 0) englishMessage += `   Balance Credit: ₹${balance.toLocaleString('en-IN')}\n`;
-    if (pending > 0 || balance > 0) englishMessage += `   Payable Amount: ₹${chitPayable.toLocaleString('en-IN')}\n`;
-    englishMessage += '\n';
+    const val = Number(targetChit.totalChitValue || member.calculatedTotalChitValue || member.totalChitValue || 100000);
+    const grp = targetChit.groupId || targetChit.group || member.groupId || member.group || member.chitGroup || 'I';
+    const chitGroupName = targetChit.name || (val >= 100000 ? `₹${(val / 100000).toFixed(0)} Lakh Group ${grp}` : `Group ${grp}`);
+    const teluguChitGroupName = chitGroupName.replace(/Chit/g, 'చిట్టీ').replace(/Group/g, 'గ్రూప్');
+
+    const chitMonthData = getChitMonthForGroup(targetChit, billingMonth, activeChits);
+    const chitMonth = chitMonthData.currentMonth;
+
+    const baseMonthly = getEffectiveMonthlyAmount(member, targetChit, groupPaymentSettings);
+    const quantity = Number(targetChit.quantity || 1);
+    const monthlyAmount = baseMonthly * quantity;
+    const pending = Number(targetChit.pending ?? member.pending ?? 0);
+    const balance = Number(targetChit.balance ?? member.balance ?? 0);
+    const finalPayable = Math.max(monthlyAmount + pending - balance, 0);
+
+    const englishMessage = `Hello ${memberName},
+
+This is a payment reminder from Raghavendra Chitts.
+
+Chit Group: ${chitGroupName}
+Chit Month: ${chitMonth}
+Billing Month: ${billingMonth}
+Due Date: ${dueDate}
+
+Monthly Chit Amount: ₹${monthlyAmount.toLocaleString('en-IN')}
+Pending Amount: ₹${pending.toLocaleString('en-IN')}
+Balance Credit: ₹${balance.toLocaleString('en-IN')}
+----------------------------------------
+Final Payable Amount: ₹${finalPayable.toLocaleString('en-IN')}
+
+Please make your payment at your earliest convenience.
+
+Thank you,
+Raghavendra Chitts`;
+
+    const teluguMessage = `నమస్కారం ${memberName} గారు,
+
+రాఘవేంద్ర చిట్స్ నుండి చెల్లింపు రిమైండర్.
+
+చిట్టీ గ్రూప్: ${teluguChitGroupName}
+చిట్టీ నెల: ${chitMonth}
+బిల్లింగ్ నెల: ${billingMonth}
+గడువు తేదీ: ${dueDate}
+
+నెలవారీ చిట్టీ మొత్తం: ₹${monthlyAmount.toLocaleString('en-IN')}
+బాకీ ఉన్న మొత్తం: ₹${pending.toLocaleString('en-IN')}
+బ్యాలెన్స్ క్రెడిట్: ₹${balance.toLocaleString('en-IN')}
+----------------------------------------
+ఫైనల్ చెల్లించాల్సిన మొత్తం: ₹${finalPayable.toLocaleString('en-IN')}
+
+దయచేసి మీ చెల్లింపును త్వరగా పూర్తి చేయండి.
+
+ధన్యవాదములు,
+రాఘవేంద్ర చిట్స్`;
+
+    return `${englishMessage}\n\n-------------------\n\n${teluguMessage}`;
+  }
+
+  // ── 2. MULTI CHIT MEMBER (2+ active chits) ──
+  const chitBreakdown = activeChits.map((c, idx) => {
+    const val = Number(c.totalChitValue || c.chitValue || 100000);
+    const grp = c.groupId || c.group || 'I';
+    const baseMonthly = getEffectiveMonthlyAmount(member, c, groupPaymentSettings);
+    const quantity = Number(c.quantity || 1);
+    const monthlyAmount = baseMonthly * quantity;
+    const cPending = Number(c.pending || 0);
+    const cBalance = Number(c.balance || 0);
+    const cPayable = Math.max(monthlyAmount + cPending - cBalance, 0);
+    const chitMonthData = getChitMonthForGroup(c, billingMonth, activeChits);
+
+    const groupTitle = c.name && c.name.trim() ? c.name : (val >= 100000 ? `₹${(val / 100000).toFixed(0)} Lakh Group ${grp}` : `Group ${grp}`);
+    const teluguGroupTitle = groupTitle.replace(/Chit/g, 'చిట్టీ').replace(/Group/g, 'గ్రూప్');
+
+    return {
+      index: idx + 1,
+      groupTitle,
+      teluguGroupTitle,
+      chitMonth: chitMonthData.currentMonth,
+      monthlyAmount,
+      pending: cPending,
+      balance: cBalance,
+      payableAmount: cPayable,
+    };
   });
 
-  englishMessage += `────────────────────────────────────────\nTotal Amount Payable: ₹${totalAmountToPay.toLocaleString('en-IN')}\n\nPlease make your payment on time.\n\nThank you,\nRaghavendra Chitts`;
+  const totalCombinedPayable = chitBreakdown.reduce((sum, item) => sum + item.payableAmount, 0);
 
-  // Telugu Section
-  let teluguMessage = `నమస్కారం ${member.name} గారు,\n\nమీ చిట్టీ చెల్లింపు వివరాలు:\n\n`;
-  activeChits.forEach((chit, idx) => {
-    const val = chit.totalChitValue || 100000;
-    const grp = chit.groupId || 'I';
-    const baseMonthly = getEffectiveMonthlyAmount(member, chit, groupPaymentSettings);
-    const quantity = Number(chit.quantity || 1);
-    const pending = Number(chit.pending || 0);
-    const balance = Number(chit.balance || 0);
-    const chitPayable = Math.max((baseMonthly * quantity) + pending - balance, 0);
-    const chitMonthData = getChitMonthForGroup(chit, billingMonth, activeChits);
+  const englishBreakdownText = chitBreakdown
+    .map((item) => {
+      return `${item.index}. ${item.groupTitle}
+   Chit Month: ${item.chitMonth}
+   Billing Month: ${billingMonth}
+   Due Date: ${dueDate}
+   Monthly Amount: ₹${item.monthlyAmount.toLocaleString('en-IN')}
+   Pending Amount: ₹${item.pending.toLocaleString('en-IN')}
+   Balance Credit: ₹${item.balance.toLocaleString('en-IN')}
+   Final Payable Amount: ₹${item.payableAmount.toLocaleString('en-IN')}`;
+    })
+    .join('\n\n');
 
-    const translatedName = (chit.name || `₹${(val / 100000).toFixed(0)} Lakh చిట్టీ (గ్రూప్ ${grp})`)
-      .replace(/Chit/g, 'చిట్టీ')
-      .replace(/Group/g, 'గ్రూప్');
+  const teluguBreakdownText = chitBreakdown
+    .map((item) => {
+      return `${item.index}. ${item.teluguGroupTitle}
+   చిట్టీ నెల: ${item.chitMonth}
+   బిల్లింగ్ నెల: ${billingMonth}
+   గడువు తేదీ: ${dueDate}
+   నెలవారీ మొత్తం: ₹${item.monthlyAmount.toLocaleString('en-IN')}
+   బాకీ ఉన్న మొత్తం: ₹${item.pending.toLocaleString('en-IN')}
+   బ్యాలెన్స్ క్రెడిట్: ₹${item.balance.toLocaleString('en-IN')}
+   ఫైనల్ చెల్లించాల్సిన మొత్తం: ₹${item.payableAmount.toLocaleString('en-IN')}`;
+    })
+    .join('\n\n');
 
-    const titlePrefix = activeChits.length > 1 ? `${idx + 1}. ` : '';
-    teluguMessage += `${titlePrefix}*${translatedName}*\n`;
-    teluguMessage += `   నెలవారీ మొత్తం: ₹${baseMonthly.toLocaleString('en-IN')}\n`;
-    teluguMessage += `   చిట్టీ నెల: ${chitMonthData.currentMonth}\n`;
-    if (pending > 0) teluguMessage += `   పెండింగ్ బకాయి: ₹${pending.toLocaleString('en-IN')}\n`;
-    if (balance > 0) teluguMessage += `   మిగిలిన బ్యాలెన్స్: ₹${balance.toLocaleString('en-IN')}\n`;
-    if (pending > 0 || balance > 0) teluguMessage += `   చెల్లించాల్సిన మొత్తం: ₹${chitPayable.toLocaleString('en-IN')}\n`;
-    teluguMessage += '\n';
-  });
+  const englishMessage = `Hello ${memberName},
 
-  teluguMessage += `────────────────────────────────────────\nమొత్తం చెల్లించాల్సిన విలువ: ₹${totalAmountToPay.toLocaleString('en-IN')}\n\nదయచేసి మీ చెల్లింపును సమయానికే పూర్తి చేయండి.\n\nధన్యవాదములు,\nరాఘవేంద్ర చిట్స్`;
+This is a payment reminder from Raghavendra Chitts.
 
-  return `${englishMessage}\n-------------------\n\n${teluguMessage}`;
+Your Active Chits:
+
+${englishBreakdownText}
+
+────────────────────────────────────────
+Total Combined Final Payable: ₹${totalCombinedPayable.toLocaleString('en-IN')}
+
+Please make your payment at your earliest convenience.
+
+Thank you,
+Raghavendra Chitts`;
+
+  const teluguMessage = `నమస్కారం ${memberName} గారు,
+
+రాఘవేంద్ర చిట్స్ నుండి చెల్లింపు రిమైండర్.
+
+మీ యాక్టివ్ చిట్టీల వివరాలు:
+
+${teluguBreakdownText}
+
+────────────────────────────────────────
+మొత్తం కలిపి చెల్లించాల్సిన ఫైనల్ విలువ: ₹${totalCombinedPayable.toLocaleString('en-IN')}
+
+దయచేసి మీ చెల్లింపును త్వరగా పూర్తి చేయండి.
+
+ధన్యవాదములు,
+రాఘవేంద్ర చిట్స్`;
+
+  return `${englishMessage}\n\n-------------------\n\n${teluguMessage}`;
 }
 
 
