@@ -34,6 +34,30 @@ async function ensureAuthReady() {
   }
 }
 
+// Helper to recursively strip undefined properties so Firestore SDK does not fail
+export function sanitizeForFirestore(data) {
+  if (data === null || data === undefined) {
+    return null;
+  }
+  if (typeof data !== 'object') {
+    return data;
+  }
+  if (data.constructor && data.constructor.name !== 'Object' && !Array.isArray(data)) {
+    return data;
+  }
+  if (Array.isArray(data)) {
+    return data.map((item) => sanitizeForFirestore(item));
+  }
+  const sanitized = {};
+  for (const key of Object.keys(data)) {
+    const value = data[key];
+    if (value !== undefined) {
+      sanitized[key] = sanitizeForFirestore(value);
+    }
+  }
+  return sanitized;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // MEMBER SERVICE (Firestore-only, NO mock fallbacks)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -267,14 +291,20 @@ export const memberService = {
     await ensureAuthReady();
     try {
       const docRef = doc(db, 'members', memberId);
+      const sanitizedData = sanitizeForFirestore(updateData);
       await updateDoc(docRef, {
-        ...updateData,
+        ...sanitizedData,
         updatedAt: serverTimestamp(),
       });
       return true;
     } catch (err) {
-      console.error('Firestore updateMember error:', err.message);
-      throw new Error('Unable to update member in Firebase.');
+      console.error("Firebase member update failed", {
+        code: err?.code,
+        message: err?.message,
+        memberId,
+        updateData
+      });
+      throw err;
     }
   },
 

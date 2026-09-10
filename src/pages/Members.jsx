@@ -454,6 +454,7 @@ export default function Members() {
           customMonthlyAmount: c.customMonthlyAmount,
           pending: String(c.pending || 0),
           balance: String(c.balance || 0),
+          originalChit: c,
         }))
       : [
           {
@@ -555,20 +556,30 @@ export default function Members() {
         const groupAmt = groupPaymentSettings[key];
         const isCustom = typeof groupAmt === 'number' && groupAmt > 0 ? monthly !== groupAmt : monthly !== Math.floor(val / 20);
 
-        return {
+        const baseObj = sub.originalChit ? { ...sub.originalChit } : {};
+
+        const chitObj = {
+          ...baseObj,
           id: sub.id || `chit_${Date.now()}_${idx}_${grp}`,
           name: `₹${(val / 100000).toFixed(0)} Lakh Chit (Group ${grp})`,
           groupId: grp,
           totalChitValue: val,
           monthlyAmount: monthly,
           amountToPay: monthly,
-          customMonthlyAmount: isCustom ? monthly : undefined,
           hasCustomMonthlyAmount: isCustom,
           pending: Math.max(Number(sub.pending) || 0, 0),
           balance: Math.max(Number(sub.balance) || 0, 0),
           quantity: 1,
-          status: 'ACTIVE',
+          status: sub.status || 'ACTIVE',
         };
+
+        if (isCustom) {
+          chitObj.customMonthlyAmount = monthly;
+        } else {
+          delete chitObj.customMonthlyAmount;
+        }
+
+        return chitObj;
       });
 
       const updatedData = {
@@ -593,7 +604,8 @@ export default function Members() {
       setIsEditModalOpen(false);
       showToast(`✓ Member profile and subscriptions updated for "${editName}"!`);
     } catch (err) {
-      showToast(`Failed to update member: ${err.message}`, 'error');
+      console.error("Failed to update member in UI:", err);
+      showToast(`Failed to add chit: ${err.message || 'Please try again.'}`, 'error');
     } finally {
       setIsSavingEdit(false);
     }
