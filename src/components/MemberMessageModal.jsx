@@ -6,7 +6,7 @@ import { getBilingualWhatsAppMessage } from '../services/messageFormatter';
 import { generateUpiPayLink } from '../services/upiService';
 import { useBillingMonth } from '../context/BillingMonthContext';
 
-export default function MemberMessageModal({ isOpen, onClose, member, onSent, groupPaymentSettings = {} }) {
+export default function MemberMessageModal({ isOpen, onClose, member, onSent, groupPaymentSettings = {}, chits = [] }) {
   const [copied, setCopied] = useState(false);
   const { selectedMonth } = useBillingMonth();
 
@@ -15,7 +15,7 @@ export default function MemberMessageModal({ isOpen, onClose, member, onSent, gr
   const upiInfo = generateUpiPayLink({ member, groupPaymentSettings });
   const activeChits = (member.chits || []).filter((c) => (c.status ? c.status === 'ACTIVE' : true));
 
-  const whatsappMessage = getBilingualWhatsAppMessage(member, groupPaymentSettings, selectedMonth);
+  const whatsappMessage = getBilingualWhatsAppMessage(member, groupPaymentSettings, selectedMonth, '15th of Month', chits);
 
   const handleLaunchUpiIntent = () => {
     if (!upiInfo.success || !upiInfo.upiUrl) {

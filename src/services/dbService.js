@@ -97,6 +97,8 @@ export const memberService = {
               const gId = String(c?.groupId || c?.group || c?.chitGroup || rawData.groupId || rawData.group || rawData.chitGroup || 'I');
               const explicitMonthly = Number(c?.monthlyAmount ?? c?.amountToPay ?? c?.chitAmount ?? c?.monthlyBase ?? rawData.monthlyAmount ?? rawData.amountToPay ?? 0);
               const resolvedMonthly = explicitMonthly > 0 ? explicitMonthly : Math.floor(val / 20);
+              const cMonth = Number(c?.currentChitMonth ?? c?.currentMonth ?? c?.chitMonth ?? c?.month ?? 0);
+              const tMonths = Number(c?.totalMonths ?? c?.duration ?? 20);
               return {
                 id: c?.id || `chit_${docSnap.id}_${gId}`,
                 name: c?.name || `₹${(val / 100000).toFixed(0)} Lakh Chit (Group ${gId})`,
@@ -109,6 +111,9 @@ export const memberService = {
                 balanceAmount: Number(c?.balanceAmount || val),
                 hasCustomMonthlyAmount: Boolean(c?.hasCustomMonthlyAmount),
                 customMonthlyAmount: typeof c?.customMonthlyAmount === 'number' ? c.customMonthlyAmount : undefined,
+                currentMonth: cMonth > 0 ? cMonth : undefined,
+                currentChitMonth: cMonth > 0 ? cMonth : undefined,
+                totalMonths: tMonths,
                 quantity: qty,
                 status: c?.status || 'ACTIVE',
               };
@@ -271,8 +276,9 @@ export const memberService = {
     }
 
     try {
+      const sanitizedData = sanitizeForFirestore(memberData);
       const docRef = await addDoc(collection(db, 'members'), {
-        ...memberData,
+        ...sanitizedData,
         phone: normalizePhone(memberData.phone),
         whatsapp: normalizePhone(memberData.whatsapp || memberData.phone),
         status: memberData.status || 'active',
@@ -282,25 +288,40 @@ export const memberService = {
 
       return { id: docRef.id, ...memberData };
     } catch (err) {
-      console.error('Firestore addMember error:', err.message);
-      throw new Error('Unable to add member to Firebase.');
+      console.error("=== FIREBASE ADD MEMBER ERROR ===", {
+        code: err?.code,
+        name: err?.name,
+        message: err?.message,
+        stack: err?.stack,
+        memberData
+      });
+      throw err;
     }
   },
 
   async updateMember(memberId, updateData) {
     await ensureAuthReady();
+    console.log("Firebase auth user:", auth.currentUser);
+    console.log("=== ADD CHIT FIREBASE UPDATE ===");
+    console.log("memberId:", memberId);
+    console.log("updateData:", updateData);
+    console.log("activeChits:", updateData?.chits || updateData?.activeChits);
     try {
       const docRef = doc(db, 'members', memberId);
       const sanitizedData = sanitizeForFirestore(updateData);
+      console.log("Sanitized data sent to updateDoc:", sanitizedData);
       await updateDoc(docRef, {
         ...sanitizedData,
         updatedAt: serverTimestamp(),
       });
+      console.log("=== FIREBASE UPDATE SUCCESS ===");
       return true;
     } catch (err) {
-      console.error("Firebase member update failed", {
+      console.error("=== FIREBASE UPDATE ERROR ===", {
         code: err?.code,
+        name: err?.name,
         message: err?.message,
+        stack: err?.stack,
         memberId,
         updateData
       });
@@ -389,6 +410,55 @@ export const memberService = {
     } catch (err) {
       console.error('Firestore updateMemberSubscriptionMonthlyAmount error:', err.message);
       throw new Error(`Unable to update subscription monthly amount: ${err.message}`);
+    }
+  },
+
+  async updateMemberChitMonth(memberId, chitIdOrGroupId, newMonth) {
+    await ensureAuthReady();
+    const parsedMonth = Number(newMonth);
+    if (isNaN(parsedMonth) || parsedMonth <= 0) {
+      throw new Error('Please enter a valid positive chit month number.');
+    }
+
+    try {
+      const docRef = doc(db, 'members', memberId);
+      const docSnap = await getDoc(docRef);
+      if (!docSnap.exists()) {
+        throw new Error('Member not found in Firestore.');
+      }
+
+      const data = docSnap.data() || {};
+      const currentChits = data.chits || data.holdings || [];
+      const updatedChits = currentChits.map((c, idx) => {
+        const cId = c?.id || `chit_${docSnap.id}_${c?.groupId || 'I'}`;
+        const matches =
+          String(cId) === String(chitIdOrGroupId) ||
+          String(c?.id) === String(chitIdOrGroupId) ||
+          String(c?.groupId).toUpperCase() === String(chitIdOrGroupId).toUpperCase() ||
+          idx === chitIdOrGroupId;
+
+        if (matches) {
+          return {
+            ...c,
+            currentMonth: parsedMonth,
+            currentChitMonth: parsedMonth,
+            chitMonth: parsedMonth,
+          };
+        }
+        return c;
+      });
+
+      const sanitizedPayload = sanitizeForFirestore({
+        chits: updatedChits,
+        holdings: updatedChits,
+        updatedAt: serverTimestamp(),
+      });
+
+      await updateDoc(docRef, sanitizedPayload);
+      return updatedChits;
+    } catch (err) {
+      console.error('Firestore updateMemberChitMonth error:', err);
+      throw new Error(`Unable to update chit month: ${err.message}`);
     }
   },
 
@@ -530,7 +600,12 @@ export const chitService = {
 
         const existing = groupMap.get(key) || {};
 
+        const parsedMonth = parseInt(docData.currentChitMonth ?? docData.currentMonth ?? existing.currentChitMonth, 10);
+        const validMonth = !isNaN(parsedMonth) && parsedMonth > 0 ? parsedMonth : null;
+
         groupMap.set(key, {
+          ...existing,
+          ...docData,
           id: docData.id || existing.id || `group_${cleanGId}_${val}`,
           groupId: docData.groupId ? String(docData.groupId).trim().toUpperCase() : cleanGId,
           name: docData.name || existing.name || `₹${(val / 100000).toFixed(0)} Lakh Chit (Group ${cleanGId})`,
@@ -539,6 +614,7 @@ export const chitService = {
           capacity: Number(docData.capacity || existing.capacity || 20),
           duration: docData.duration || existing.duration || '20 Months',
           startingMonth: docData.startingMonth || docData.startMonth || existing.startingMonth || 'March 2026',
+          ...(validMonth ? { currentChitMonth: validMonth } : {}),
           nextAuctionDate: docData.nextAuctionDate || existing.nextAuctionDate || '15th of Month',
           status: docData.status || existing.status || 'ACTIVE',
           enrolledMembers: existing.enrolledMembers || 0,
@@ -682,6 +758,44 @@ export const chitService = {
     } catch (err) {
       console.error('Firestore updateChitGroupStartingMonth error:', err.message);
       throw new Error(`Failed to update starting month: ${err.message}`);
+    }
+  },
+
+  async updateChitGroupMonth(groupId, chitValue = 100000, currentChitMonth = 1, groupDocId = null) {
+    await ensureAuthReady();
+    try {
+      const gId = String(groupId).trim().toUpperCase();
+      const val = Number(chitValue || 100000);
+      const docId = groupDocId || `group_${gId}_${val}`;
+      const docRef = doc(db, 'chits', docId);
+
+      const monthNum = Math.max(1, parseInt(currentChitMonth, 10) || 1);
+
+      await setDoc(docRef, {
+        id: docId,
+        groupId: gId,
+        totalChitValue: val,
+        currentChitMonth: monthNum,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+
+      try {
+        await historyService.logHistoryEvent({
+          category: 'Group',
+          action: 'GROUP_CHIT_MONTH_UPDATED',
+          title: `Chit Group ${gId} Month Updated: ${monthNum}`,
+          details: `Chit Group ${gId} (₹${(val / 100000).toFixed(0)}L) current chit month updated to ${monthNum}.`,
+          entityId: docId,
+          entityType: 'GROUP',
+          groupId: gId,
+          chitValue: val,
+        });
+      } catch (_) {}
+
+      return true;
+    } catch (err) {
+      console.error('Firestore updateChitGroupMonth error:', err.message);
+      throw new Error(`Failed to update chit month: ${err.message}`);
     }
   },
 

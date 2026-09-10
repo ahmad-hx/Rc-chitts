@@ -3,12 +3,12 @@ import { getBilingualWhatsAppMessage } from '../services/messageFormatter';
 import { Copy, Check, MessageSquare } from 'lucide-react';
 import Button from './Button';
 
-export default function MessagePreview({ member }) {
+export default function MessagePreview({ member, chits = [] }) {
   const [copied, setCopied] = useState(false);
   
   if (!member) return null;
 
-  const messageText = getBilingualWhatsAppMessage(member);
+  const messageText = getBilingualWhatsAppMessage(member, {}, 'August 2026', '15th of Month', chits);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(messageText);

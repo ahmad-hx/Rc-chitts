@@ -175,7 +175,7 @@ export function formatWhatsAppTemplate({
 import { getEffectiveMonthlyAmount } from '../utils/amountUtils.js';
 import { getActiveChits } from './messagingService.js';
 
-export function getBilingualWhatsAppMessage(member, groupPaymentSettings = {}, billingMonth = 'August 2026', dueDate = '15th of Month') {
+export function getBilingualWhatsAppMessage(member, groupPaymentSettings = {}, billingMonth = 'August 2026', dueDate = '15th of Month', allGroupsList = []) {
   if (!member) return '';
   const activeChits = getActiveChits(member);
   const memberName = member.name || 'Member';
@@ -196,8 +196,8 @@ export function getBilingualWhatsAppMessage(member, groupPaymentSettings = {}, b
     const chitGroupName = targetChit.name || (val >= 100000 ? `₹${(val / 100000).toFixed(0)} Lakh Group ${grp}` : `Group ${grp}`);
     const teluguChitGroupName = chitGroupName.replace(/Chit/g, 'చిట్టీ').replace(/Group/g, 'గ్రూప్');
 
-    const chitMonthData = getChitMonthForGroup(targetChit, billingMonth, activeChits);
-    const chitMonth = chitMonthData.currentMonth;
+    const chitMonthData = getChitMonthForGroup(targetChit, billingMonth, allGroupsList);
+    const chitMonthStr = chitMonthData.display || `${chitMonthData.currentMonth}/${chitMonthData.totalMonths || 20}`;
 
     const baseMonthly = getEffectiveMonthlyAmount(member, targetChit, groupPaymentSettings);
     const quantity = Number(targetChit.quantity || 1);
@@ -211,7 +211,7 @@ export function getBilingualWhatsAppMessage(member, groupPaymentSettings = {}, b
 This is a payment reminder from Raghavendra Chitts.
 
 Chit Group: ${chitGroupName}
-Chit Month: ${chitMonth}
+Chit Month: ${chitMonthStr}
 Billing Month: ${billingMonth}
 Due Date: ${dueDate}
 
@@ -231,7 +231,7 @@ Raghavendra Chitts`;
 రాఘవేంద్ర చిట్స్ నుండి చెల్లింపు రిమైండర్.
 
 చిట్టీ గ్రూప్: ${teluguChitGroupName}
-చిట్టీ నెల: ${chitMonth}
+చిట్టీ నెల: ${chitMonthStr}
 బిల్లింగ్ నెల: ${billingMonth}
 గడువు తేదీ: ${dueDate}
 
@@ -259,7 +259,8 @@ Raghavendra Chitts`;
     const cPending = Number(c.pending || 0);
     const cBalance = Number(c.balance || 0);
     const cPayable = Math.max(monthlyAmount + cPending - cBalance, 0);
-    const chitMonthData = getChitMonthForGroup(c, billingMonth, activeChits);
+    const chitMonthData = getChitMonthForGroup(c, billingMonth, allGroupsList);
+    const chitMonthStr = chitMonthData.display || `${chitMonthData.currentMonth}/${chitMonthData.totalMonths || 20}`;
 
     const groupTitle = c.name && c.name.trim() ? c.name : (val >= 100000 ? `₹${(val / 100000).toFixed(0)} Lakh Group ${grp}` : `Group ${grp}`);
     const teluguGroupTitle = groupTitle.replace(/Chit/g, 'చిట్టీ').replace(/Group/g, 'గ్రూప్');
@@ -268,7 +269,7 @@ Raghavendra Chitts`;
       index: idx + 1,
       groupTitle,
       teluguGroupTitle,
-      chitMonth: chitMonthData.currentMonth,
+      chitMonthStr,
       monthlyAmount,
       pending: cPending,
       balance: cBalance,
@@ -281,7 +282,7 @@ Raghavendra Chitts`;
   const englishBreakdownText = chitBreakdown
     .map((item) => {
       return `${item.index}. ${item.groupTitle}
-   Chit Month: ${item.chitMonth}
+   Chit Month: ${item.chitMonthStr}
    Billing Month: ${billingMonth}
    Due Date: ${dueDate}
    Monthly Amount: ₹${item.monthlyAmount.toLocaleString('en-IN')}
@@ -294,7 +295,7 @@ Raghavendra Chitts`;
   const teluguBreakdownText = chitBreakdown
     .map((item) => {
       return `${item.index}. ${item.teluguGroupTitle}
-   చిట్టీ నెల: ${item.chitMonth}
+   చిట్టీ నెల: ${item.chitMonthStr}
    బిల్లింగ్ నెల: ${billingMonth}
    గడువు తేదీ: ${dueDate}
    నెలవారీ మొత్తం: ₹${item.monthlyAmount.toLocaleString('en-IN')}
@@ -336,7 +337,7 @@ ${teluguBreakdownText}
 ధన్యవాదములు,
 రాఘవేంద్ర చిట్స్`;
 
-  return `${englishMessage}\n\n-------------------\n\n${teluguMessage}`;
+  return englishMessage;
 }
 
 

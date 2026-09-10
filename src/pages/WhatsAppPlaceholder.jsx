@@ -34,6 +34,7 @@ import {
 import { memberService, chitService, groupPaymentSettingsService } from '../services/dbService';
 import { useBillingMonth } from '../context/BillingMonthContext';
 import { getEffectiveMonthlyAmount } from '../utils/amountUtils';
+import { getChitMonthForGroup } from '../utils/chitMonthUtils';
 
 function parseRomanNumeral(str = '') {
   const clean = String(str).toUpperCase().trim().replace(/^GROUP\s+/, '');
@@ -516,6 +517,7 @@ export default function WhatsAppPlaceholder() {
       billingMonth,
       dueDate,
       groupPaymentSettings,
+      chitsList: chits,
     });
   };
 
@@ -1029,11 +1031,25 @@ export default function WhatsAppPlaceholder() {
                 className="w-full px-3 py-2 bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] font-bold focus:outline-none focus:ring-1 focus:ring-[#2F5D50] cursor-pointer"
               >
                 <option value="all">All Groups</option>
-                {availableGroups.map((g) => (
-                  <option key={g} value={g}>
-                    Group {g}
-                  </option>
-                ))}
+                {chits.length > 0
+                  ? chits.map((c) => {
+                      const lakhVal = (Number(c.totalChitValue || 100000) / 100000).toFixed(0);
+                      const monthInfo = getChitMonthForGroup(c, selectedMonth, chits);
+                      const grpId = c.groupId || 'I';
+                      const optVal = chits.filter((cg) => String(cg.groupId).toUpperCase() === String(grpId).toUpperCase()).length > 1
+                        ? (c.id || `group_${grpId}_${c.totalChitValue || 100000}`)
+                        : grpId;
+                      return (
+                        <option key={c.id || `${grpId}_${c.totalChitValue}`} value={optVal}>
+                          ₹{lakhVal} Lakh Group {grpId} (Month: {monthInfo.display})
+                        </option>
+                      );
+                    })
+                  : availableGroups.map((g) => (
+                      <option key={g} value={g}>
+                        Group {g}
+                      </option>
+                    ))}
               </select>
             </div>
 

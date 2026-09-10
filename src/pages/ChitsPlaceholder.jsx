@@ -5,11 +5,12 @@ import Button from '../components/Button';
 import Toast from '../components/Toast';
 import CreateChitModal from '../components/CreateChitModal';
 import Modal from '../components/Modal';
+import ChitMonthEditor from '../components/ChitMonthEditor';
 import { Calendar, Users, ArrowRight, Plus, Layers, Gavel, CheckCircle2, Trash2, UserPlus, AlertTriangle, Edit, MoreVertical, Clock } from 'lucide-react';
 import { chitService, memberService, groupPaymentSettingsService } from '../services/dbService';
 import { useNavigate } from 'react-router-dom';
 import { useBillingMonth } from '../context/BillingMonthContext';
-import { getChitMonth, parseMonthYear, formatMonthYearDisplay, FORMATTED_MONTH_NAMES, toYearMonthString } from '../utils/chitMonthUtils';
+import { getChitMonth, getChitMonthForGroup, parseMonthYear, formatMonthYearDisplay, FORMATTED_MONTH_NAMES, toYearMonthString } from '../utils/chitMonthUtils';
 
 // Roman numeral parsing helper
 function parseRomanNumeral(str = '') {
@@ -387,7 +388,7 @@ export default function ChitsPlaceholder() {
             const enrolledCount = enrolled.length;
             const monthlyPremium = getGroupMonthlyPremium(group);
             const isMenuOpen = activeMenuId === group.id;
-            const chitMonthInfo = getChitMonth(group.startingMonth || 'March 2026', selectedMonth);
+            const chitMonthInfo = getChitMonthForGroup(group, selectedMonth);
 
             return (
               <Card key={group.id} className="border border-[#E5E5E1] bg-white rounded-2xl p-6 shadow-xs space-y-4 relative">
@@ -418,9 +419,33 @@ export default function ChitsPlaceholder() {
                     <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#6B6B67] block">
                       Chit Month
                     </span>
-                    <span className="text-sm font-black text-[#1C1C1A] block">
-                      {chitMonthInfo.display}
-                    </span>
+                    <div className="flex items-center justify-center pt-0.5">
+                      <ChitMonthEditor
+                        currentMonth={chitMonthInfo.currentMonth}
+                        totalMonths={group.capacity || 20}
+                        onSave={async (newMonth) => {
+                          await chitService.updateChitGroupMonth(
+                            group.groupId,
+                            group.totalChitValue,
+                            newMonth,
+                            group.id
+                          );
+                          setChits((prev) =>
+                            (Array.isArray(prev) ? prev : []).map((c) => {
+                              const matchId = group.id && c.id === group.id;
+                              const matchKey =
+                                String(c.groupId).trim().toUpperCase() === String(group.groupId).trim().toUpperCase() &&
+                                Number(c.totalChitValue || 100000) === Number(group.totalChitValue || 100000);
+                              if (matchId || matchKey) {
+                                return { ...c, currentChitMonth: newMonth };
+                              }
+                              return c;
+                            })
+                          );
+                          showToast(`✓ Chit Month for Group ${group.groupId} updated to ${newMonth}/${group.capacity || 20}!`);
+                        }}
+                      />
+                    </div>
                   </div>
 
                   <div className="space-y-0.5">

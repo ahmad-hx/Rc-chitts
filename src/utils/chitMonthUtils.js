@@ -207,6 +207,12 @@ export function getChitMonth(groupStartMonth, activeBillingMonth) {
   };
 }
 
+function safePositiveInt(val) {
+  if (val === null || val === undefined) return null;
+  const num = typeof val === 'number' ? val : parseInt(String(val).trim(), 10);
+  return !isNaN(num) && isFinite(num) && num > 0 ? Math.floor(num) : null;
+}
+
 /**
  * Helper to get Chit Month for a specific chit group or subscription object
  * Checks group's startingMonth, or looks up in allGroupsList if provided.
@@ -216,35 +222,82 @@ export function getChitMonthForGroup(groupOrChit, activeBillingMonth, allGroupsL
     return getChitMonth(null, activeBillingMonth);
   }
 
-  // Direct startingMonth or startMonth property
-  let startMonth =
-    groupOrChit.startingMonth ||
-    groupOrChit.startMonth ||
-    groupOrChit.firstMonth ||
-    null;
+  const totalMonths = safePositiveInt(
+    groupOrChit.totalMonths ??
+    groupOrChit.capacity ??
+    groupOrChit.duration
+  ) || 20;
 
-  // If not on the object directly, look up the group in allGroupsList
-  if (!startMonth && Array.isArray(allGroupsList) && allGroupsList.length > 0) {
-    const gId = String(groupOrChit.groupId || groupOrChit.group || '').toLowerCase().trim();
-    const gVal = Number(groupOrChit.totalChitValue || groupOrChit.chitValue || 0);
+  // 1. Direct currentChitMonth property on groupOrChit
+  const directMonth = safePositiveInt(
+    groupOrChit.currentChitMonth ??
+    groupOrChit.currentMonth ??
+    groupOrChit.chitMonth ??
+    groupOrChit.month
+  );
 
-    const matched =
+  if (directMonth) {
+    const clamped = Math.min(Math.max(directMonth, 1), totalMonths);
+    return {
+      currentMonth: clamped,
+      totalMonths,
+      display: `${clamped}/${totalMonths}`,
+      formatted: `Chit Month: ${clamped}/${totalMonths}`,
+      isDefault: false,
+    };
+  }
+
+  // 2. Lookup parent group in allGroupsList by UNIQUE MATCH (id OR (groupId AND totalChitValue))
+  let matchedGroup = null;
+  if (Array.isArray(allGroupsList) && allGroupsList.length > 0) {
+    const targetId = String(groupOrChit.id || groupOrChit.docId || '').trim();
+    const gId = String(groupOrChit.groupId || groupOrChit.group || groupOrChit.chitGroup || '').trim().toUpperCase();
+    const gVal = Number(groupOrChit.totalChitValue || groupOrChit.chitValue || groupOrChit.totalValue || groupOrChit.calculatedTotalChitValue || 0);
+
+    matchedGroup =
+      (targetId ? allGroupsList.find((g) => g.id === targetId) : null) ||
       allGroupsList.find((g) => {
-        const matchId = String(g.groupId || g.id || '').toLowerCase().trim() === gId;
+        const matchGId = String(g.groupId || g.id || '').trim().toUpperCase() === gId;
         const matchVal = gVal > 0 ? Number(g.totalChitValue || g.chitValue || 0) === gVal : true;
-        return matchId && matchVal;
+        return matchGId && matchVal;
       }) ||
-      allGroupsList.find(
-        (g) => String(g.groupId || g.id || '').toLowerCase().trim() === gId
-      );
+      allGroupsList.find((g) => String(g.groupId || g.id || '').trim().toUpperCase() === gId);
+  }
 
-    if (matched) {
-      startMonth = matched.startingMonth || matched.startMonth;
+  if (matchedGroup) {
+    const groupMonth = safePositiveInt(
+      matchedGroup.currentChitMonth ??
+      matchedGroup.currentMonth ??
+      matchedGroup.chitMonth
+    );
+    const groupTotal = safePositiveInt(
+      matchedGroup.totalMonths ??
+      matchedGroup.capacity ??
+      matchedGroup.duration
+    ) || totalMonths;
+
+    if (groupMonth) {
+      const clamped = Math.min(Math.max(groupMonth, 1), groupTotal);
+      return {
+        currentMonth: clamped,
+        totalMonths: groupTotal,
+        display: `${clamped}/${groupTotal}`,
+        formatted: `Chit Month: ${clamped}/${groupTotal}`,
+        isDefault: false,
+      };
     }
   }
 
-  // Safe default fallback if not yet configured
-  return getChitMonth(startMonth || 'March 2026', activeBillingMonth);
+  // 3. Fallback: derive from startingMonth if currentChitMonth is not explicitly set
+  const startMonth =
+    groupOrChit.startingMonth ||
+    groupOrChit.startMonth ||
+    groupOrChit.firstMonth ||
+    matchedGroup?.startingMonth ||
+    matchedGroup?.startMonth ||
+    'March 2026';
+
+  return getChitMonth(startMonth, activeBillingMonth);
 }
 
 /**

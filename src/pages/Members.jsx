@@ -39,6 +39,8 @@ import {
   isMemberSpecificMonthlyAmount,
   calculateHoldingPayable,
 } from '../utils/amountUtils';
+import { getChitMonthForGroup } from '../utils/chitMonthUtils';
+import { useBillingMonth } from '../context/BillingMonthContext';
 
 // Roman numeral parsing helper (Group I -> 1, Group II -> 2 ... Group XVII -> 17)
 function parseRomanNumeral(str = '') {
@@ -79,6 +81,7 @@ function compareGroupIds(groupIdA = '', groupIdB = '') {
 export default function Members() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { selectedMonth } = useBillingMonth();
 
   // Core Data States
   const [members, setMembers] = useState([]);
@@ -596,6 +599,9 @@ export default function Members() {
         totalHoldings: chits.length,
       };
 
+      console.log("=== CALLING UPDATE MEMBER ===");
+      console.log("selectedMember.id:", selectedMember?.id);
+      console.log("updatedData:", updatedData);
       await memberService.updateMember(selectedMember.id, updatedData);
 
       setMembers((prev) =>
@@ -604,8 +610,15 @@ export default function Members() {
       setIsEditModalOpen(false);
       showToast(`✓ Member profile and subscriptions updated for "${editName}"!`);
     } catch (err) {
-      console.error("Failed to update member in UI:", err);
-      showToast(`Failed to add chit: ${err.message || 'Please try again.'}`, 'error');
+      console.error("=== FIREBASE UI UPDATE ERROR ===", {
+        code: err?.code,
+        name: err?.name,
+        message: err?.message,
+        stack: err?.stack,
+        memberId: selectedMember?.id,
+        updatedData
+      });
+      showToast(`Failed to update member: ${err?.message || 'Unable to update member in Firebase.'}`, 'error');
     } finally {
       setIsSavingEdit(false);
     }
@@ -1349,13 +1362,16 @@ export default function Members() {
                         {activeChits.map((c) => {
                           const valLakh = (Number(c.totalChitValue || 100000) / 100000).toFixed(0);
                           const qty = Number(c.quantity || 1);
+                          const monthInfo = getChitMonthForGroup(c, selectedMonth, chits);
                           return (
                             <span
                               key={c.id}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-[#F7F7F5] border border-[#E5E5E1] text-[#1C1C1A] font-sans"
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold bg-[#F7F7F5] border border-[#E5E5E1] text-[#1C1C1A] font-sans"
                             >
                               <span>₹{valLakh}L • Group {c.groupId || 'I'}</span>
                               {qty > 1 && <span className="text-[#2F5D50] font-extrabold bg-[#EDF7F0] px-1.5 py-0.2 rounded-md">× {qty}</span>}
+                              <span className="text-[#E5E5E1]">|</span>
+                              <span className="text-[#2F5D50] font-extrabold">{monthInfo.display}</span>
                             </span>
                           );
                         })}
@@ -1530,7 +1546,13 @@ export default function Members() {
                           Payable: ₹{payable.toLocaleString('en-IN')}
                         </span>
                       </div>
-                      <div className="grid grid-cols-3 gap-2 text-center bg-slate-900 p-2.5 rounded-xl border border-slate-800">
+                      <div className="grid grid-cols-4 gap-2 text-center bg-slate-900 p-2.5 rounded-xl border border-slate-800">
+                        <div>
+                          <span className="text-[10px] font-bold text-sky-400 uppercase tracking-wider block">Chit Month</span>
+                          <span className="text-sm font-black text-white block mt-0.5 font-mono">
+                            {getChitMonthForGroup(chit, selectedMonth, chits).display}
+                          </span>
+                        </div>
                         <div>
                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Base Monthly</span>
                           {editingSubscriptionId === (chit.id || chit.groupId) ? (
