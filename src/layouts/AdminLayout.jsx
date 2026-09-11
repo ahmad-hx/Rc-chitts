@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -26,17 +26,82 @@ import {
 import { Calendar as CalendarIcon } from 'lucide-react';
 import Logo from '../components/Logo';
 import { useBillingMonth } from '../context/BillingMonthContext';
+import { memberService } from '../services/dbService';
 
 export default function AdminLayout({ children, onLogout }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+  const [allMembers, setAllMembers] = useState([]);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const searchContainerRef = useRef(null);
 
   const { selectedMonth, setSelectedMonth, availableMonths, addNewMonth } = useBillingMonth();
 
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Keep isFullscreen in sync with browser controls (e.g. Esc key)
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(
+        !!(
+          document.fullscreenElement ||
+          document.webkitFullscreenElement ||
+          document.mozFullScreenElement ||
+          document.msFullscreenElement
+        )
+      );
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+    };
+  }, []);
+
+  // Toggle fullscreen handler using browser Fullscreen API safely
+  const toggleFullscreen = async () => {
+    try {
+      if (
+        !document.fullscreenElement &&
+        !document.webkitFullscreenElement &&
+        !document.mozFullScreenElement &&
+        !document.msFullscreenElement
+      ) {
+        const docEl = document.documentElement;
+        if (docEl.requestFullscreen) {
+          await docEl.requestFullscreen();
+        } else if (docEl.webkitRequestFullscreen) {
+          await docEl.webkitRequestFullscreen();
+        } else if (docEl.mozRequestFullScreen) {
+          await docEl.mozRequestFullScreen();
+        } else if (docEl.msRequestFullscreen) {
+          await docEl.msRequestFullscreen();
+        }
+      } else {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+          await document.webkitExitFullscreen();
+        } else if (document.mozCancelFullScreen) {
+          await document.mozCancelFullScreen();
+        } else if (document.msExitFullscreen) {
+          await document.msExitFullscreen();
+        }
+      }
+    } catch (err) {
+      console.warn('Fullscreen toggle failed:', err);
+    }
+  };
 
   const navigationSections = [
     {
@@ -69,34 +134,94 @@ export default function AdminLayout({ children, onLogout }) {
   const navigationItems = navigationSections.flatMap((s) => s.items);
   const allNavigationItems = navigationItems;
 
-  // Browser Fullscreen Listener
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, []);
-
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch((err) => {
-        console.warn('Fullscreen mode error:', err.message);
-      });
-    } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen().catch((err) => {
-          console.warn('Exit fullscreen error:', err.message);
-        });
+  // Load all members for global header search
+  const loadAllMembers = async () => {
+    try {
+      const data = await memberService.getMembers();
+      if (Array.isArray(data)) {
+        setAllMembers(data);
       }
+    } catch (e) {
+      console.warn('Global search member load error:', e.message);
     }
   };
 
+  useEffect(() => {
+    loadAllMembers();
+  }, []);
+
+  // Close search dropdown on click outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target)) {
+        setIsSearchFocused(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Global member search filter with full normalization
+  const searchResults = useMemo(() => {
+    const q = globalSearchQuery.trim().toLowerCase();
+    if (!q) return [];
+
+    const qDigits = q.replace(/\D/g, '');
+
+    return allMembers.filter((m) => {
+      // 1. Name match
+      const name = String(m.name || '').toLowerCase();
+      if (name.includes(q)) return true;
+
+      // 2. Phone / WhatsApp match (string & digits match)
+      const phone = String(m.phone || '');
+      const wa = String(m.whatsapp || '');
+      if (phone.toLowerCase().includes(q) || wa.toLowerCase().includes(q)) return true;
+
+      if (qDigits.length >= 2) {
+        const phoneDigits = phone.replace(/\D/g, '');
+        const waDigits = wa.replace(/\D/g, '');
+        if (phoneDigits.includes(qDigits) || waDigits.includes(qDigits)) return true;
+      }
+
+      // 3. Member ID match
+      const id = String(m.id || '').toLowerCase();
+      const memberKey = String(m.memberKey || '').toLowerCase();
+      if (id.includes(q) || memberKey.includes(q)) return true;
+
+      // 4. Group Name / Chit match
+      const activeChits = (m.chits || []).filter((c) => !c.status || c.status === 'ACTIVE');
+      const chitMatch = activeChits.some((c) => {
+        const gId = String(c.groupId || '').toLowerCase();
+        const cName = String(c.name || '').toLowerCase();
+        const val = Number(c.totalChitValue || 100000);
+        const lakhStr = `${(val / 100000).toFixed(0)} lakh`;
+
+        if (gId && (gId === q || `group ${gId}` === q || `group${gId}` === q || gId.includes(q))) return true;
+        if (cName && cName.includes(q)) return true;
+        if (lakhStr.includes(q) || String(val).includes(q)) return true;
+
+        return false;
+      });
+
+      return chitMatch;
+    });
+  }, [allMembers, globalSearchQuery]);
+
   const handleGlobalSearchSubmit = (e) => {
     e.preventDefault();
-    if (globalSearchQuery.trim()) {
+    if (searchResults.length > 0) {
+      handleSelectSearchResult(searchResults[0]);
+    } else if (globalSearchQuery.trim()) {
       navigate(`/members?search=${encodeURIComponent(globalSearchQuery.trim())}`);
+      setIsSearchFocused(false);
     }
+  };
+
+  const handleSelectSearchResult = (member) => {
+    setIsSearchFocused(false);
+    setGlobalSearchQuery('');
+    navigate(`/members?memberId=${encodeURIComponent(member.id)}`);
   };
 
   const handleLogout = () => {
@@ -330,17 +455,115 @@ export default function AdminLayout({ children, onLogout }) {
           {/* TOP HEADER (PURE WHITE #FFFFFF) */}
           <header className="border-b border-[#E5E5E1] bg-white px-4 sm:px-6 lg:px-8 py-3 lg:py-3.5 relative lg:sticky lg:top-0 z-20">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 sm:gap-3.5 lg:gap-4 w-full">
-              {/* GLOBAL SEARCH BAR */}
-              <form onSubmit={handleGlobalSearchSubmit} className="relative w-full lg:flex-1 lg:min-w-[280px] lg:max-w-[620px]">
-                <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-[#959590] pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Search member name, phone, chit..."
-                  value={globalSearchQuery}
-                  onChange={(e) => setGlobalSearchQuery(e.target.value)}
-                  className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] pl-10 pr-4 py-2 text-xs font-semibold text-[#1C1C1A] placeholder-[#959590] focus:border-[#2F5D50] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#2F5D50] transition-all"
-                />
-              </form>
+              {/* GLOBAL SEARCH BAR WITH DROPDOWN */}
+              <div ref={searchContainerRef} className="relative w-full lg:flex-1 lg:min-w-[280px] lg:max-w-[620px]">
+                <form onSubmit={handleGlobalSearchSubmit} className="relative w-full">
+                  <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-[#959590] pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Search member name, phone, chit..."
+                    value={globalSearchQuery}
+                    onFocus={() => {
+                      setIsSearchFocused(true);
+                      loadAllMembers();
+                    }}
+                    onChange={(e) => {
+                      setGlobalSearchQuery(e.target.value);
+                      setIsSearchFocused(true);
+                    }}
+                    className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] pl-10 pr-9 py-2 text-xs font-semibold text-[#1C1C1A] placeholder-[#959590] focus:border-[#2F5D50] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#2F5D50] transition-all"
+                  />
+                  {globalSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGlobalSearchQuery('');
+                        setIsSearchFocused(false);
+                      }}
+                      className="absolute right-3 top-2.5 text-[#959590] hover:text-[#1C1C1A] cursor-pointer"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </form>
+
+                {/* SEARCH RESULTS DROPDOWN */}
+                {isSearchFocused && globalSearchQuery.trim() && (
+                  <div className="absolute left-0 top-full mt-2 z-50 rounded-2xl bg-white border border-[#E5E5E1] shadow-2xl overflow-hidden font-sans text-xs w-full sm:w-[540px] md:w-[600px] max-w-[calc(100vw-2rem)]">
+                    {searchResults.length > 0 ? (
+                      <div className="max-h-[380px] overflow-y-auto divide-y divide-[#F0F0EC]">
+                        <div className="px-4 py-2.5 bg-[#F7F7F5] border-b border-[#E5E5E1] flex items-center justify-between text-[11px] font-extrabold">
+                          <span className="uppercase tracking-wider font-black text-[#1C1C1A]">Matching Members ({searchResults.length})</span>
+                          <span className="text-[10px] font-semibold text-[#80807B]">Click to open profile</span>
+                        </div>
+                        {searchResults.map((m) => {
+                          const activeChits = (m.chits || []).filter((c) => !c.status || c.status === 'ACTIVE');
+                          const isMulti = m.classification === 'MULTIPLE' || activeChits.length > 1;
+
+                          return (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => handleSelectSearchResult(m)}
+                              className="w-full px-4 py-3.5 text-left hover:bg-[#F7F7F5] active:bg-[#EDF7F0] transition-colors flex items-start justify-between gap-3 cursor-pointer group"
+                            >
+                              <div className="flex items-start gap-3.5 min-w-0 flex-1">
+                                <div className="w-9 h-9 rounded-xl bg-[#2F5D50]/10 text-[#2F5D50] font-black text-sm flex items-center justify-center shrink-0 border border-[#2F5D50]/20 group-hover:bg-[#2F5D50] group-hover:text-white transition-colors mt-0.5">
+                                  {m.name ? m.name.charAt(0).toUpperCase() : 'M'}
+                                </div>
+                                <div className="min-w-0 flex-1 space-y-1">
+                                  {/* PRIMARY MEMBER NAME - Fully visible */}
+                                  <p className="text-sm font-black text-[#1C1C1A] group-hover:text-[#2F5D50] transition-colors leading-snug break-words">
+                                    {m.name}
+                                  </p>
+
+                                  {/* PHONE NUMBER */}
+                                  {m.phone && (
+                                    <p className="text-xs font-bold font-mono text-[#6B6B67] leading-tight">
+                                      {m.phone}
+                                    </p>
+                                  )}
+
+                                  {/* BADGES ROW - Below name & phone so name is never truncated */}
+                                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                                    {isMulti ? (
+                                      <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-black bg-purple-50 text-purple-700 border border-purple-200">
+                                        Multiple Chits • {activeChits.length} Active Chits
+                                      </span>
+                                    ) : activeChits.length === 1 ? (
+                                      (() => {
+                                        const c = activeChits[0];
+                                        const valLakh = (c.totalChitValue || 100000) / 100000;
+                                        return (
+                                          <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-black bg-[#EDF7F0] text-[#2F5D50] border border-[#2F5D50]/20">
+                                            ₹{valLakh} Lakh Group {c.groupId || 'I'}
+                                          </span>
+                                        );
+                                      })()
+                                    ) : (
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-gray-100 text-gray-500 border border-gray-200">
+                                        No Active Chits
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="pt-1.5 shrink-0 text-[#959590] group-hover:text-[#2F5D50] transition-colors">
+                                <ChevronRight className="h-5 w-5" />
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="p-6 text-center text-xs font-bold text-[#6B6B67] bg-white">
+                        No members found
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* RIGHT CONTROLS WRAPPER */}
               <div className="flex flex-wrap items-center justify-between sm:justify-start lg:justify-end gap-2.5 sm:gap-3 shrink-0">

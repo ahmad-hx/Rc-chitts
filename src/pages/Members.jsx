@@ -239,11 +239,13 @@ export default function Members() {
     ];
   }, [availableGroups, chits, members]);
 
-  // Handle URL Search Params (e.g. ?action=add, ?group=Z, ?category=100000)
+  // Handle URL Search Params (e.g. ?memberId=XYZ, ?search=Ravi, ?action=add, ?group=Z, ?category=100000)
   useEffect(() => {
     const urlGroup = searchParams.get('group');
     const urlCategory = searchParams.get('category') || searchParams.get('value');
     const urlAction = searchParams.get('action');
+    const urlSearch = searchParams.get('search');
+    const urlMemberId = searchParams.get('memberId') || searchParams.get('id');
 
     if (urlGroup) {
       setSelectedGroupId(urlGroup);
@@ -259,7 +261,19 @@ export default function Members() {
     if (searchParams.get('filter') === 'due') {
       setFilterPayment('due');
     }
-  }, [searchParams]);
+    if (urlSearch) {
+      setSearchQuery(urlSearch);
+    }
+    if (urlMemberId && members.length > 0) {
+      const targetMember = members.find(
+        (m) => String(m.id) === String(urlMemberId) || String(m.memberKey) === String(urlMemberId)
+      );
+      if (targetMember) {
+        setSelectedMember(targetMember);
+        setIsDetailModalOpen(true);
+      }
+    }
+  }, [searchParams, members]);
 
   // Click outside listener for three-dot menu
   useEffect(() => {
@@ -437,6 +451,18 @@ export default function Members() {
     setSelectedMember(member);
     setIsDetailModalOpen(true);
     setActiveActionMenuMemberId(null);
+  };
+
+  const handleCloseDetailModal = () => {
+    setIsDetailModalOpen(false);
+    setSelectedMember(null);
+    if (searchParams.get('memberId') || searchParams.get('id')) {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('memberId');
+      nextParams.delete('id');
+      const searchStr = nextParams.toString();
+      navigate(searchStr ? `/members?${searchStr}` : '/members', { replace: true });
+    }
   };
 
   const handleOpenEditMember = (member) => {
@@ -1491,7 +1517,7 @@ export default function Members() {
       {isDetailModalOpen && selectedMember && (
         <Modal
           isOpen={isDetailModalOpen}
-          onClose={() => setIsDetailModalOpen(false)}
+          onClose={handleCloseDetailModal}
           title={`Member Profile: ${selectedMember.name}`}
           subtitle={`Phone: ${selectedMember.phone} • Status: ${selectedMember.status || 'Active'}`}
           maxWidth="max-w-3xl"
@@ -1654,7 +1680,7 @@ export default function Members() {
                 Delete Member
               </Button>
 
-              <Button variant="secondary" size="sm" className="rounded-xl" onClick={() => setIsDetailModalOpen(false)}>
+              <Button variant="secondary" size="sm" className="rounded-xl" onClick={handleCloseDetailModal}>
                 Close Details
               </Button>
             </div>
