@@ -742,18 +742,18 @@ export default function WhatsAppPlaceholder() {
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       {/* ─── LINKED DEVICE QR CODE GATEWAY CARD ────────────────────────────────────── */}
-      <div className="bg-white border border-[#E5E5E1] rounded-2xl p-5 md:p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-5">
+      <div className="bg-white border border-[#E5E7EB] rounded-2xl p-5 md:p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-5 font-sans">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className={`w-2.5 h-2.5 rounded-full ${qrGatewayState.connected ? 'bg-[#2F6B4F]' : 'bg-[#959590]'}`}></span>
-            <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#1C1C1A]">
+            <span className={`w-2.5 h-2.5 rounded-full ${qrGatewayState.connected ? 'bg-[#285F52]' : 'bg-[#98A2B3]'}`}></span>
+            <span className="text-[11px] font-black uppercase tracking-[0.16em] text-[#111111]">
               {qrGatewayState.connected ? '● CONNECTED' : '○ NOT CONNECTED'}
             </span>
           </div>
-          <h1 className="text-xl md:text-2xl font-black text-[#1C1C1A] tracking-tight">
+          <h1 className="text-xl md:text-2xl font-black text-[#111111] tracking-tight">
             WhatsApp Messaging Gateway
           </h1>
-          <p className="text-xs text-[#6B6B67]">
+          <p className="text-xs text-[#667085]">
             {qrGatewayState.connected
               ? `WhatsApp account (+${qrGatewayState.userPhone}) is ready to send messages.`
               : 'Connect your WhatsApp account to start sending messages.'}
@@ -766,7 +766,7 @@ export default function WhatsAppPlaceholder() {
             <Button
               variant="primary"
               size="md"
-              className="rounded-xl text-xs gap-2 bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold cursor-pointer shadow-xs"
+              className="rounded-xl text-xs gap-2 bg-[#285F52] hover:bg-[#214D43] text-white font-bold cursor-pointer shadow-xs"
               onClick={handleOpenQrModal}
             >
               <QrCode className="w-4 h-4" />
@@ -777,7 +777,7 @@ export default function WhatsAppPlaceholder() {
               <Button
                 variant="outline"
                 size="sm"
-                className="rounded-xl text-xs gap-1.5 border-[#E5E5E1] bg-[#F7F7F5] text-[#1C1C1A] hover:bg-[#E5E5E1] font-bold cursor-pointer"
+                className="rounded-xl text-xs gap-1.5 border-[#E5E7EB] bg-[#F7F8F7] text-[#111111] hover:bg-[#E5E7EB] font-bold cursor-pointer"
                 onClick={handleOpenQrModal}
                 title="View Connected Status or Refresh Pairing"
               >
@@ -787,7 +787,7 @@ export default function WhatsAppPlaceholder() {
               <Button
                 variant="danger"
                 size="sm"
-                className="rounded-xl text-xs gap-1.5 bg-[#A33A3A] hover:bg-[#852E2E] text-white font-bold cursor-pointer"
+                className="rounded-xl text-xs gap-1.5 bg-[#B42318] hover:bg-[#911E15] text-white font-bold cursor-pointer"
                 onClick={handleDisconnectDevice}
               >
                 <Unlink className="w-3.5 h-3.5" />
@@ -799,21 +799,21 @@ export default function WhatsAppPlaceholder() {
       </div>
 
       {/* ─── 2. RECIPIENT SELECTION SYSTEM (Under Gateway) ────────────────────────── */}
-      <Card className="p-5 border border-[#E5E5E1] bg-white rounded-2xl shadow-xs space-y-4 font-sans">
+      <Card className="p-5 border border-[#E5E7EB] bg-white rounded-2xl shadow-xs space-y-4 font-sans">
         
         {/* ROSTER HEADER & ACTION BUTTON */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#E5E5E1]">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#E5E7EB]">
           <div>
-            <h3 className="text-sm font-extrabold text-[#1C1C1A] uppercase tracking-wider">Recipient Selection System</h3>
-            <p className="text-xs text-[#6B6B67] mt-0.5">
-              {filteredRecipients.length} members loaded • <span className="font-bold text-[#2F5D50]">{selectedCount} selected</span>
+            <h3 className="text-sm font-extrabold text-[#111111] uppercase tracking-wider">Recipient Selection System</h3>
+            <p className="text-xs text-[#667085] mt-0.5">
+              {filteredRecipients.length} members loaded • <span className="font-bold text-[#285F52]">{selectedCount} selected</span>
             </p>
           </div>
 
           <Button
             variant="primary"
             size="sm"
-            className="rounded-xl text-xs font-bold gap-1.5 bg-[#2F5D50] hover:bg-[#24493F] text-white cursor-pointer shadow-xs disabled:opacity-50"
+            className="rounded-xl text-xs font-bold gap-1.5 bg-[#285F52] hover:bg-[#214D43] text-white cursor-pointer shadow-xs disabled:opacity-50"
             onClick={() => setIsConfirmModalOpen(true)}
             disabled={selectedCount === 0 || bulkProgress.isSending}
           >
@@ -825,13 +825,13 @@ export default function WhatsAppPlaceholder() {
         {/* SEARCH & FILTERS TOOLBAR */}
         <div className="space-y-2.5 text-xs">
           <div className="relative">
-            <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[#959590]" />
+            <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[#98A2B3]" />
             <input
               type="text"
               placeholder="Search member name, phone, whatsapp..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] pl-9 pr-3 py-2 font-medium text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+              className="w-full rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] pl-9 pr-3 py-2 font-medium text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
             />
           </div>
 
@@ -840,7 +840,7 @@ export default function WhatsAppPlaceholder() {
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
-              className="rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-1.5 font-bold text-[#1C1C1A] focus:outline-none cursor-pointer"
+              className="rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-1.5 font-bold text-[#111111] focus:outline-none cursor-pointer"
             >
               <option value="all">All Chit Categories</option>
               <option value="100000">₹1 Lakh Category</option>
@@ -854,7 +854,7 @@ export default function WhatsAppPlaceholder() {
             <select
               value={groupFilter}
               onChange={(e) => handleGroupFilterChange(e.target.value)}
-              className="rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-1.5 font-bold text-[#1C1C1A] focus:outline-none cursor-pointer"
+              className="rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-1.5 font-bold text-[#111111] focus:outline-none cursor-pointer"
             >
               <option value="all">All Groups</option>
               {groupedAvailableGroups.map((cat) => (
@@ -872,7 +872,7 @@ export default function WhatsAppPlaceholder() {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-1.5 font-bold text-[#1C1C1A] focus:outline-none cursor-pointer"
+              className="rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-1.5 font-bold text-[#111111] focus:outline-none cursor-pointer"
             >
               <option value="all">All Statuses</option>
               <option value="due">Pending Due</option>
@@ -884,14 +884,14 @@ export default function WhatsAppPlaceholder() {
               <button
                 type="button"
                 onClick={handleSelectAll}
-                className="px-2.5 py-1.5 rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] font-bold text-[#1C1C1A] hover:bg-[#E5E5E1] cursor-pointer"
+                className="px-2.5 py-1.5 rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] font-bold text-[#111111] hover:bg-[#E5E7EB] cursor-pointer"
               >
                 Select All
               </button>
               <button
                 type="button"
                 onClick={handleClearSelection}
-                className="px-2.5 py-1.5 rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] font-bold text-[#1C1C1A] hover:bg-[#E5E5E1] cursor-pointer"
+                className="px-2.5 py-1.5 rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] font-bold text-[#111111] hover:bg-[#E5E7EB] cursor-pointer"
               >
                 Clear
               </button>
@@ -901,14 +901,14 @@ export default function WhatsAppPlaceholder() {
 
         {/* BATCH SENDING PROGRESS BAR */}
         {bulkProgress.isSending && (
-          <div className="p-3 bg-[#EDF7F0] border border-[#2F5D50]/20 rounded-xl space-y-1.5">
-            <div className="flex justify-between text-xs font-bold text-[#1C1C1A] font-mono">
+          <div className="p-3 bg-[#EEF6F3] border border-[#BFD8D0] rounded-xl space-y-1.5">
+            <div className="flex justify-between text-xs font-bold text-[#111111] font-mono">
               <span>Sending Messages ({bulkProgress.current} / {bulkProgress.total})</span>
               <span>Sent: {bulkProgress.sentCount} | Failed/Queued: {bulkProgress.failedCount}</span>
             </div>
-            <div className="w-full bg-[#E5E5E1] h-2 rounded-full overflow-hidden">
+            <div className="w-full bg-[#E5E7EB] h-2 rounded-full overflow-hidden">
               <div
-                className="bg-[#2F5D50] h-full transition-all duration-300"
+                className="bg-[#285F52] h-full transition-all duration-300"
                 style={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }}
               ></div>
             </div>
@@ -916,9 +916,9 @@ export default function WhatsAppPlaceholder() {
         )}
 
         {/* MEMBER ROSTER TABLE */}
-        <div className="overflow-x-auto border border-[#E5E5E1] rounded-xl">
+        <div className="overflow-x-auto border border-[#E5E7EB] rounded-xl">
           <table className="w-full text-left text-xs font-sans">
-            <thead className="bg-[#F7F7F5] border-b border-[#E5E5E1] text-[10px] font-black uppercase tracking-wider text-[#6B6B67]">
+            <thead className="bg-[#F7F8F7] border-b border-[#E5E7EB] text-[10px] font-black uppercase tracking-wider text-[#667085]">
               <tr>
                 <th className="p-3 w-10 text-center">Select</th>
                 <th className="p-3">Member Name</th>
@@ -928,7 +928,7 @@ export default function WhatsAppPlaceholder() {
                 <th className="p-3 text-right">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#E5E5E1]">
+            <tbody className="divide-y divide-[#E5E7EB]">
               {filteredRecipients.length > 0 ? (
                 filteredRecipients.map((member) => {
                   const isChecked = selectedMemberIds.includes(member.id);
@@ -953,8 +953,8 @@ export default function WhatsAppPlaceholder() {
                   return (
                     <tr
                       key={member.id}
-                      className={`hover:bg-[#F7F7F5] transition-colors ${
-                        selectedPreviewMember?.id === member.id ? 'bg-[#EDF7F0]' : ''
+                      className={`hover:bg-[#F7F8F7] transition-colors ${
+                        selectedPreviewMember?.id === member.id ? 'bg-[#EEF6F3]' : ''
                       }`}
                     >
                       <td className="p-3 text-center">
@@ -962,11 +962,11 @@ export default function WhatsAppPlaceholder() {
                           type="checkbox"
                           checked={isChecked}
                           onChange={() => handleToggleMember(member.id)}
-                          className="w-4 h-4 rounded border-[#E5E5E1] text-[#2F5D50] focus:ring-[#2F5D50] cursor-pointer"
+                          className="w-4 h-4 rounded border-[#E5E7EB] text-[#285F52] focus:ring-[#285F52] cursor-pointer"
                         />
                       </td>
 
-                      <td className="p-3 font-bold text-[#1C1C1A]">
+                      <td className="p-3 font-bold text-[#111111]">
                         <button
                           type="button"
                           onClick={() => setSelectedPreviewMember(member)}
@@ -976,14 +976,14 @@ export default function WhatsAppPlaceholder() {
                         </button>
                       </td>
 
-                      <td className="p-3 font-mono text-[#6B6B67] font-medium">
-                        {norm ? `+${norm}` : <span className="text-[#C53030]">No Phone</span>}
+                      <td className="p-3 font-mono text-[#667085] font-medium">
+                        {norm ? `+${norm}` : <span className="text-[#B42318]">No Phone</span>}
                       </td>
 
-                      <td className="p-3 text-[#6B6B67] font-medium">{groupText}</td>
+                      <td className="p-3 text-[#667085] font-medium">{groupText}</td>
 
                       <td className="p-3">
-                        <Badge variant={isMulti ? 'purple' : 'info'} className="text-[10px] font-bold">
+                        <Badge variant={isMulti ? 'multiple' : 'single'} className="text-[10px] font-bold">
                           {isMulti ? 'MULTIPLE' : 'SINGLE'}
                         </Badge>
                       </td>
@@ -992,7 +992,7 @@ export default function WhatsAppPlaceholder() {
                         <button
                           type="button"
                           onClick={() => handleSendSingleMessage(member)}
-                          className="px-3 py-1 bg-[#2F5D50] hover:bg-[#24493F] text-white rounded-lg text-[11px] font-bold cursor-pointer inline-flex items-center gap-1 shadow-xs"
+                          className="px-3 py-1 bg-[#285F52] hover:bg-[#214D43] text-white rounded-lg text-[11px] font-bold cursor-pointer inline-flex items-center gap-1 shadow-xs"
                         >
                           <Send className="w-3 h-3" />
                           <span>Send Message</span>
@@ -1003,7 +1003,7 @@ export default function WhatsAppPlaceholder() {
                 })
               ) : (
                 <tr>
-                  <td colSpan={6} className="p-6 text-center text-[#6B6B67]">
+                  <td colSpan={6} className="p-6 text-center text-[#667085]">
                     No members match the selected filters.
                   </td>
                 </tr>
@@ -1017,18 +1017,18 @@ export default function WhatsAppPlaceholder() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 font-sans">
 
         {/* LEFT COLUMN: 1. REMINDER PARAMETERS & AMOUNT CALCULATION BOXES */}
-        <Card className="p-5 border border-[#E5E5E1] bg-white rounded-2xl shadow-xs space-y-5">
-          <h2 className="text-xs font-extrabold text-[#1C1C1A] uppercase tracking-wider border-b border-[#E5E5E1] pb-2">
+        <Card className="p-5 border border-[#E5E7EB] bg-white rounded-2xl shadow-xs space-y-5">
+          <h2 className="text-xs font-extrabold text-[#111111] uppercase tracking-wider border-b border-[#E5E7EB] pb-2">
             1. Reminder Parameters & Amount Breakdown
           </h2>
 
           <div className="grid grid-cols-2 gap-3 text-xs font-sans">
             <div>
-              <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block mb-1">Chit Group</label>
+              <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block mb-1">Chit Group</label>
               <select
                 value={selectedGroupId}
                 onChange={(e) => handleGroupFilterChange(e.target.value)}
-                className="w-full px-3 py-2 bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] font-bold focus:outline-none focus:ring-1 focus:ring-[#2F5D50] cursor-pointer"
+                className="w-full px-3 py-2 bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] font-bold focus:outline-none focus:ring-1 focus:ring-[#285F52] cursor-pointer"
               >
                 <option value="all">All Groups</option>
                 {chits.length > 0
@@ -1054,11 +1054,11 @@ export default function WhatsAppPlaceholder() {
             </div>
 
             <div>
-              <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block mb-1">Billing Month</label>
+              <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block mb-1">Billing Month</label>
               <select
                 value={billingMonth}
                 onChange={(e) => setBillingMonth(e.target.value)}
-                className="w-full px-3 py-2 bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] font-bold focus:outline-none focus:ring-1 focus:ring-[#2F5D50] cursor-pointer"
+                className="w-full px-3 py-2 bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] font-bold focus:outline-none focus:ring-1 focus:ring-[#285F52] cursor-pointer"
               >
                 {['August 2026', 'September 2026', 'October 2026', 'November 2026', 'December 2026'].map((m) => (
                   <option key={m} value={m}>
@@ -1069,23 +1069,23 @@ export default function WhatsAppPlaceholder() {
             </div>
 
             <div className="col-span-2">
-              <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block mb-1">Due Date</label>
+              <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block mb-1">Due Date</label>
               <input
                 type="text"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
-                className="w-full px-3 py-2 bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] font-bold focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+                className="w-full px-3 py-2 bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] font-bold focus:outline-none focus:ring-1 focus:ring-[#285F52]"
               />
             </div>
           </div>
 
           {/* AMOUNT CALCULATION BOXES SECTION */}
-          <div className="space-y-3 pt-3 border-t border-[#E5E5E1]">
+          <div className="space-y-3 pt-3 border-t border-[#E5E7EB]">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-extrabold text-[#1C1C1A] uppercase tracking-wider">
+              <span className="text-[11px] font-extrabold text-[#111111] uppercase tracking-wider">
                 Amount Calculation Boxes
               </span>
-              <span className="text-[10px] font-mono text-[#2F5D50] bg-[#EDF7F0] px-2 py-0.5 rounded-full border border-[#2F5D50]/20 font-bold">
+              <span className="text-[10px] font-mono text-[#285F52] bg-[#EEF6F3] px-2 py-0.5 rounded-full border border-[#BFD8D0] font-bold">
                 Final = (Chit + Pending) - Balance
               </span>
             </div>
@@ -1094,7 +1094,7 @@ export default function WhatsAppPlaceholder() {
               <div className="grid grid-cols-2 gap-3">
                 {/* 1. Chit Amount Box */}
                 <div>
-                  <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block mb-1">
+                  <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block mb-1">
                     Chit Amount (₹)
                   </label>
                   <input
@@ -1104,13 +1104,13 @@ export default function WhatsAppPlaceholder() {
                     placeholder="e.g. 25000"
                     value={chitAmount}
                     onChange={(e) => setChitAmount(e.target.value)}
-                    className="w-full px-3 py-2 bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] font-bold font-mono focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+                    className="w-full px-3 py-2 bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] font-bold font-mono focus:outline-none focus:ring-1 focus:ring-[#285F52]"
                   />
                 </div>
 
                 {/* 2. Pending Amount Box */}
                 <div>
-                  <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block mb-1">
+                  <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block mb-1">
                     Pending Amount (₹)
                   </label>
                   <input
@@ -1120,29 +1120,29 @@ export default function WhatsAppPlaceholder() {
                     placeholder="e.g. 0"
                     value={groupPendingAmount}
                     onChange={(e) => setGroupPendingAmount(e.target.value)}
-                    className="w-full px-3 py-2 bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] font-bold font-mono focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+                    className="w-full px-3 py-2 bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] font-bold font-mono focus:outline-none focus:ring-1 focus:ring-[#285F52]"
                   />
                 </div>
               </div>
 
               {/* 3. Total Amount Box (Calculated: Chit + Pending) */}
-              <div className="p-3 bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl flex items-center justify-between">
+              <div className="p-3 bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] font-black text-[#6B6B67] uppercase tracking-wider block">
+                  <span className="text-[10px] font-black text-[#667085] uppercase tracking-wider block">
                     Total Amount (Chit + Pending)
                   </span>
-                  <span className="text-[11px] text-[#6B6B67] font-mono">
+                  <span className="text-[11px] text-[#667085] font-mono">
                     ₹{Number(chitAmount || 0).toLocaleString('en-IN')} + ₹{Number(groupPendingAmount || 0).toLocaleString('en-IN')}
                   </span>
                 </div>
-                <span className="text-base font-black font-mono text-[#1C1C1A]">
+                <span className="text-base font-black font-mono text-[#111111]">
                   ₹{totalAmount.toLocaleString('en-IN')}
                 </span>
               </div>
 
               {/* 4. Balance Amount Box (To Subtract) */}
               <div>
-                <label className="text-[10px] font-bold text-[#C53030] uppercase tracking-wider block mb-1">
+                <label className="text-[10px] font-bold text-[#B42318] uppercase tracking-wider block mb-1">
                   Balance Amount (₹) — To be Subtracted
                 </label>
                 <input
@@ -1152,21 +1152,21 @@ export default function WhatsAppPlaceholder() {
                   placeholder="e.g. 0"
                   value={balanceAmount}
                   onChange={(e) => setBalanceAmount(e.target.value)}
-                  className="w-full px-3 py-2 bg-[#FFF5F5] border border-[#F8B4B4] rounded-xl text-[#C53030] font-bold font-mono focus:outline-none focus:ring-1 focus:ring-[#C53030]"
+                  className="w-full px-3 py-2 bg-[#FEF3F2] border border-[#FECACA] rounded-xl text-[#B42318] font-bold font-mono focus:outline-none focus:ring-1 focus:ring-[#B42318]"
                 />
               </div>
 
               {/* 5. Final Amount Box (Calculated: Total - Balance) */}
-              <div className="p-3.5 bg-[#EDF7F0] border border-[#2F5D50]/30 rounded-xl flex items-center justify-between shadow-xs">
+              <div className="p-3.5 bg-[#EEF6F3] border border-[#BFD8D0] rounded-xl flex items-center justify-between shadow-xs">
                 <div>
-                  <span className="text-[10px] font-black text-[#2F5D50] uppercase tracking-wider block">
+                  <span className="text-[10px] font-black text-[#285F52] uppercase tracking-wider block">
                     Final Payable Amount
                   </span>
-                  <span className="text-[11px] text-[#2F5D50] font-mono">
+                  <span className="text-[11px] text-[#285F52] font-mono">
                     ₹{totalAmount.toLocaleString('en-IN')} - ₹{Number(balanceAmount || 0).toLocaleString('en-IN')}
                   </span>
                 </div>
-                <span className="text-xl font-black font-mono text-[#2F5D50]">
+                <span className="text-xl font-black font-mono text-[#285F52]">
                   ₹{finalAmount.toLocaleString('en-IN')}
                 </span>
               </div>
@@ -1176,22 +1176,22 @@ export default function WhatsAppPlaceholder() {
 
         {/* RIGHT COLUMN: 2. MESSAGE COMPOSER & LIVE RECIPIENT PREVIEW */}
         <div className="space-y-6">
-          <Card className="p-5 border border-[#E5E5E1] bg-white rounded-2xl shadow-xs space-y-4">
-            <div className="flex items-center justify-between border-b border-[#E5E5E1] pb-2">
-              <h2 className="text-xs font-extrabold text-[#1C1C1A] uppercase tracking-wider">
+          <Card className="p-5 border border-[#E5E7EB] bg-white rounded-2xl shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-[#E5E7EB] pb-2">
+              <h2 className="text-xs font-extrabold text-[#111111] uppercase tracking-wider">
                 2. Message Composer
               </h2>
 
-              <div className="flex items-center gap-1 bg-[#F7F7F5] p-1 rounded-xl text-[11px] font-bold">
+              <div className="flex items-center gap-1 bg-[#F7F8F7] p-1 rounded-xl text-[11px] font-bold">
                 <button
                   onClick={() => setLanguage('english')}
-                  className={`px-2 py-0.5 rounded-lg cursor-pointer ${language === 'english' ? 'bg-white text-[#2F5D50] shadow-xs' : 'text-[#6B6B67]'}`}
+                  className={`px-2 py-0.5 rounded-lg cursor-pointer ${language === 'english' ? 'bg-white text-[#285F52] shadow-xs' : 'text-[#667085]'}`}
                 >
                   EN
                 </button>
                 <button
                   onClick={() => setLanguage('telugu')}
-                  className={`px-2 py-0.5 rounded-lg cursor-pointer ${language === 'telugu' ? 'bg-white text-[#2F5D50] shadow-xs' : 'text-[#6B6B67]'}`}
+                  className={`px-2 py-0.5 rounded-lg cursor-pointer ${language === 'telugu' ? 'bg-white text-[#285F52] shadow-xs' : 'text-[#667085]'}`}
                 >
                   తెలుగు
                 </button>
@@ -1200,11 +1200,11 @@ export default function WhatsAppPlaceholder() {
 
             {/* TEMPLATE SELECTOR */}
             <div className="space-y-1.5 text-xs">
-              <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block">Message Template</label>
+              <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">Message Template</label>
               <select
                 value={selectedTemplateId}
                 onChange={(e) => setSelectedTemplateId(e.target.value)}
-                className="w-full px-3 py-2 bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] font-bold focus:outline-none focus:ring-1 focus:ring-[#2F5D50] cursor-pointer"
+                className="w-full px-3 py-2 bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] font-bold focus:outline-none focus:ring-1 focus:ring-[#285F52] cursor-pointer"
               >
                 {Object.values(MESSAGE_TEMPLATES).map((t) => (
                   <option key={t.id} value={t.id}>
@@ -1216,7 +1216,7 @@ export default function WhatsAppPlaceholder() {
 
             {/* TEXTAREA WITH CHAR COUNTER */}
             <div className="space-y-1">
-              <div className="flex justify-between items-center text-[10px] font-bold text-[#6B6B67]">
+              <div className="flex justify-between items-center text-[10px] font-bold text-[#667085]">
                 <span>EDITABLE MESSAGE CONTENT</span>
                 <span className="font-mono">{charCount} characters</span>
               </div>
@@ -1224,23 +1224,23 @@ export default function WhatsAppPlaceholder() {
                 rows={7}
                 value={customTemplateText}
                 onChange={(e) => setCustomTemplateText(e.target.value)}
-                className="w-full p-3 text-xs font-mono bg-[#1C1C1A] text-[#EDF7F0] border border-[#E5E5E1] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#2F5D50] leading-relaxed"
+                className="w-full p-3 text-xs font-mono bg-[#111111] text-[#EEF6F3] border border-[#E5E7EB] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#285F52] leading-relaxed"
               ></textarea>
             </div>
           </Card>
 
           {/* RECIPIENT PREVIEW & SEND BUTTON */}
-          <Card className="p-5 border border-[#E5E5E1] bg-white rounded-2xl shadow-xs space-y-4">
-            <div className="flex items-center justify-between border-b border-[#E5E5E1] pb-2">
-              <h2 className="text-xs font-extrabold text-[#1C1C1A] uppercase tracking-wider">
+          <Card className="p-5 border border-[#E5E7EB] bg-white rounded-2xl shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-[#E5E7EB] pb-2">
+              <h2 className="text-xs font-extrabold text-[#111111] uppercase tracking-wider">
                 3. Live Message Preview
               </h2>
               {selectedPreviewMember && (
-                <Badge variant="info">{selectedPreviewMember.name}</Badge>
+                <Badge variant="neutral">{selectedPreviewMember.name}</Badge>
               )}
             </div>
 
-            <div className="bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl p-4 font-sans text-xs leading-relaxed text-[#1C1C1A] whitespace-pre-wrap max-h-48 overflow-y-auto">
+            <div className="bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl p-4 font-sans text-xs leading-relaxed text-[#111111] whitespace-pre-wrap max-h-48 overflow-y-auto">
               {selectedPreviewMember
                 ? getCompiledMessageForMember(selectedPreviewMember)
                 : 'Select a member from the roster to preview message.'}
@@ -1250,7 +1250,7 @@ export default function WhatsAppPlaceholder() {
             <Button
               variant="primary"
               size="lg"
-              className="w-full justify-center py-3.5 text-sm font-black bg-[#2F5D50] hover:bg-[#24493F] text-white rounded-xl shadow-xs gap-2 cursor-pointer"
+              className="w-full justify-center py-3.5 text-sm font-black bg-[#285F52] hover:bg-[#214D43] text-white rounded-xl shadow-xs gap-2 cursor-pointer"
               onClick={() => handleSendSingleMessage(selectedPreviewMember)}
               disabled={!selectedPreviewMember || isSendingSingle}
             >
@@ -1263,15 +1263,15 @@ export default function WhatsAppPlaceholder() {
       </div>
 
       {/* ─── MESSAGE HISTORY SECTION (DEDICATED 'messageHistory' COLLECTION) ────── */}
-      <Card className="p-5 border border-[#E5E5E1] bg-white rounded-2xl shadow-xs space-y-4 font-sans">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#E5E5E1]">
+      <Card className="p-5 border border-[#E5E7EB] bg-white rounded-2xl shadow-xs space-y-4 font-sans">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#E5E7EB]">
           <div>
-            <h2 className="text-sm font-extrabold text-[#1C1C1A] uppercase tracking-wider flex items-center gap-2">
-              <History className="w-4 h-4 text-[#2F5D50]" />
+            <h2 className="text-sm font-extrabold text-[#111111] uppercase tracking-wider flex items-center gap-2">
+              <History className="w-4 h-4 text-[#285F52]" />
               Firestore Message History & Audit Logs
             </h2>
-            <p className="text-xs text-[#6B6B67] mt-0.5">
-              Independent delivery records stored in <code className="bg-[#F7F7F5] px-1 py-0.5 rounded font-mono text-[#1C1C1A]">messageHistory</code> collection.
+            <p className="text-xs text-[#667085] mt-0.5">
+              Independent delivery records stored in <code className="bg-[#F7F8F7] px-1 py-0.5 rounded font-mono text-[#111111]">messageHistory</code> collection.
             </p>
           </div>
 
@@ -1279,7 +1279,7 @@ export default function WhatsAppPlaceholder() {
             <select
               value={historyStatusFilter}
               onChange={(e) => setHistoryStatusFilter(e.target.value)}
-              className="rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-1.5 text-xs font-bold text-[#1C1C1A] focus:outline-none cursor-pointer"
+              className="rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-1.5 text-xs font-bold text-[#111111] focus:outline-none cursor-pointer"
             >
               <option value="all">All History Statuses</option>
               <option value="SENT">SENT</option>
@@ -1291,19 +1291,19 @@ export default function WhatsAppPlaceholder() {
             <Button
               variant="outline"
               size="sm"
-              className="rounded-xl text-xs gap-1.5 border-[#E5E5E1] text-[#1C1C1A] hover:bg-[#F7F7F5] cursor-pointer font-bold"
+              className="rounded-xl text-xs gap-1.5 border-[#E5E7EB] text-[#111111] hover:bg-[#F7F8F7] cursor-pointer font-bold"
               onClick={refreshHistoryLogs}
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${historyLoading ? 'animate-spin text-[#2F5D50]' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${historyLoading ? 'animate-spin text-[#285F52]' : ''}`} />
               Refresh
             </Button>
           </div>
         </div>
 
         {/* AUDIT LOG TABLE */}
-        <div className="overflow-x-auto border border-[#E5E5E1] rounded-xl">
+        <div className="overflow-x-auto border border-[#E5E7EB] rounded-xl">
           <table className="w-full text-left text-xs font-sans">
-            <thead className="bg-[#F7F7F5] border-b border-[#E5E5E1] text-[10px] font-black uppercase tracking-wider text-[#6B6B67]">
+            <thead className="bg-[#F7F8F7] border-b border-[#E5E7EB] text-[10px] font-black uppercase tracking-wider text-[#667085]">
               <tr>
                 <th className="p-3">Recipient</th>
                 <th className="p-3">Phone</th>
@@ -1314,31 +1314,31 @@ export default function WhatsAppPlaceholder() {
                 <th className="p-3 text-right">Details</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#E5E5E1]">
+            <tbody className="divide-y divide-[#E5E7EB]">
               {historyLogs.length > 0 ? (
                 historyLogs.map((log) => (
-                  <tr key={log.id} className="hover:bg-[#F7F7F5]">
-                    <td className="p-3 font-bold text-[#1C1C1A]">{log.recipientName || log.memberName || 'Member'}</td>
-                    <td className="p-3 font-mono text-[#6B6B67]">+{log.phone}</td>
-                    <td className="p-3 font-mono text-[10px] text-[#2F5D50] font-bold">{log.channel || 'WHATSAPP'}</td>
-                    <td className="p-3 font-medium text-[#6B6B67]">Group {log.groupId || log.chitGroupId || 'I'}</td>
+                  <tr key={log.id} className="hover:bg-[#F7F8F7]">
+                    <td className="p-3 font-bold text-[#111111]">{log.recipientName || log.memberName || 'Member'}</td>
+                    <td className="p-3 font-mono text-[#667085]">+{log.phone}</td>
+                    <td className="p-3 font-mono text-[10px] text-[#285F52] font-bold">{log.channel || 'WHATSAPP'}</td>
+                    <td className="p-3 font-medium text-[#667085]">Group {log.groupId || log.chitGroupId || 'I'}</td>
                     <td className="p-3">
                       {log.status === 'SENT' || log.status === 'Sent' ? (
                         <Badge variant="success">SENT ✓</Badge>
                       ) : log.status === 'NOT_CONFIGURED' ? (
                         <Badge variant="warning">NOT CONFIGURED</Badge>
                       ) : (
-                        <Badge variant="error">{log.status || 'FAILED'}</Badge>
+                        <Badge variant="danger">{log.status || 'FAILED'}</Badge>
                       )}
                     </td>
-                    <td className="p-3 text-[#6B6B67] font-mono text-[11px]">
+                    <td className="p-3 text-[#667085] font-mono text-[11px]">
                       {log.createdAt ? new Date(log.createdAt).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : 'Recent'}
                     </td>
                     <td className="p-3 text-right">
                       <button
                         type="button"
                         onClick={() => setDetailsLogModal(log)}
-                        className="px-2.5 py-1 bg-[#F7F7F5] hover:bg-[#E5E5E1] text-[#1C1C1A] rounded-lg text-[11px] font-bold cursor-pointer border border-[#E5E5E1]"
+                        className="px-2.5 py-1 bg-[#F7F8F7] hover:bg-[#E5E7EB] text-[#111111] rounded-lg text-[11px] font-bold cursor-pointer border border-[#E5E7EB]"
                       >
                         View
                       </button>
@@ -1347,7 +1347,7 @@ export default function WhatsAppPlaceholder() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7} className="p-6 text-center text-[#6B6B67]">
+                  <td colSpan={7} className="p-6 text-center text-[#667085]">
                     No message history records found in `messageHistory` collection.
                   </td>
                 </tr>
@@ -1365,29 +1365,29 @@ export default function WhatsAppPlaceholder() {
           title="Link WhatsApp Account (Scan QR Code)"
         >
           <div className="space-y-4 font-sans text-xs text-center">
-            <div className="p-4 bg-[#F7F7F5] border border-[#E5E5E1] rounded-2xl space-y-3">
-              <h3 className="font-extrabold text-[#1C1C1A] text-sm">Scan QR Code with WhatsApp</h3>
-              <p className="text-[#6B6B67] text-xs">
+            <div className="p-4 bg-[#F7F8F7] border border-[#E5E7EB] rounded-2xl space-y-3">
+              <h3 className="font-extrabold text-[#111111] text-sm">Scan QR Code with WhatsApp</h3>
+              <p className="text-[#667085] text-xs">
                 Open WhatsApp on your phone ➔ <strong>Settings</strong> ➔ <strong>Linked Devices</strong> ➔ <strong>Link a Device</strong>.
               </p>
 
               {/* QR CODE DISPLAY CONTAINER */}
-              <div className="p-4 bg-white border border-[#E5E5E1] rounded-xl w-64 h-64 mx-auto flex items-center justify-center shadow-xs relative">
+              <div className="p-4 bg-white border border-[#E5E7EB] rounded-xl w-64 h-64 mx-auto flex items-center justify-center shadow-xs relative">
                 {qrGatewayState.status === 'DISCONNECTING' ? (
-                  <div className="space-y-2 text-center text-[#6B6B67] p-2">
-                    <RefreshCw className="w-8 h-8 animate-spin mx-auto text-red-500" />
-                    <p className="font-bold text-xs text-[#1C1C1A]">Unlinking WhatsApp session...</p>
-                    <p className="text-[10px] text-[#6B6B67]">Clearing device authentication cache</p>
+                  <div className="space-y-2 text-center text-[#667085] p-2">
+                    <RefreshCw className="w-8 h-8 animate-spin mx-auto text-[#B42318]" />
+                    <p className="font-bold text-xs text-[#111111]">Unlinking WhatsApp session...</p>
+                    <p className="text-[10px] text-[#667085]">Clearing device authentication cache</p>
                   </div>
                 ) : qrFetchError ? (
                   <div className="space-y-3 text-center p-2">
-                    <AlertCircle className="w-8 h-8 text-amber-500 mx-auto" />
-                    <p className="font-bold text-xs text-[#1C1C1A]">{qrFetchError}</p>
-                    <p className="text-[10px] text-[#6B6B67]">Connection needs to be restarted.</p>
+                    <AlertCircle className="w-8 h-8 text-[#B7791F] mx-auto" />
+                    <p className="font-bold text-xs text-[#111111]">{qrFetchError}</p>
+                    <p className="text-[10px] text-[#667085]">Connection needs to be restarted.</p>
                     <Button
                       variant="primary"
                       size="sm"
-                      className="mx-auto cursor-pointer bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold text-xs"
+                      className="mx-auto cursor-pointer bg-[#285F52] hover:bg-[#214D43] text-white font-bold text-xs"
                       onClick={handleGenerateNewQr}
                       disabled={isQrLoading}
                     >
@@ -1396,10 +1396,10 @@ export default function WhatsAppPlaceholder() {
                   </div>
                 ) : qrGatewayState.connected || qrGatewayState.status === 'CONNECTED' ? (
                   <div className="space-y-2 text-center p-2">
-                    <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto animate-bounce" />
-                    <h4 className="font-black text-emerald-900 text-sm">WhatsApp Connected</h4>
-                    <p className="text-xs text-emerald-700 font-bold">+{qrGatewayState.userPhone}</p>
-                    <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600 text-white">
+                    <CheckCircle2 className="w-12 h-12 text-[#285F52] mx-auto animate-bounce" />
+                    <h4 className="font-black text-[#285F52] text-sm">WhatsApp Connected</h4>
+                    <p className="text-xs text-[#285F52] font-bold">+{qrGatewayState.userPhone}</p>
+                    <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[10px] font-bold bg-[#285F52] text-white">
                       Device Active & Ready
                     </span>
                   </div>
@@ -1408,24 +1408,24 @@ export default function WhatsAppPlaceholder() {
                     <img
                       src={qrGatewayState.qrCodeDataUrl}
                       alt="WhatsApp Pairing QR Code"
-                      className="w-52 h-52 object-contain rounded-lg border border-slate-100"
+                      className="w-52 h-52 object-contain rounded-lg border border-[#E5E7EB]"
                     />
                   </div>
                 ) : qrGatewayState.status === 'INITIALIZING' || qrGatewayState.status === 'RECONNECTING' || isQrLoading ? (
-                  <div className="space-y-2 text-center text-[#6B6B67] p-2">
-                    <RefreshCw className="w-8 h-8 animate-spin mx-auto text-[#2F5D50]" />
-                    <p className="font-bold text-xs text-[#1C1C1A]">Generating fresh QR code...</p>
-                    <p className="text-[10px] text-[#6B6B67]">Starting clean Baileys session</p>
+                  <div className="space-y-2 text-center text-[#667085] p-2">
+                    <RefreshCw className="w-8 h-8 animate-spin mx-auto text-[#285F52]" />
+                    <p className="font-bold text-xs text-[#111111]">Generating fresh QR code...</p>
+                    <p className="text-[10px] text-[#667085]">Starting clean Baileys session</p>
                   </div>
                 ) : (
-                  <div className="space-y-2 text-center text-[#6B6B67] p-2">
-                    <Smartphone className="w-8 h-8 mx-auto text-[#2F5D50]" />
-                    <p className="font-bold text-xs text-[#1C1C1A]">Ready to connect</p>
-                    <p className="text-[10px] text-[#6B6B67]">Click below to generate a new QR code</p>
+                  <div className="space-y-2 text-center text-[#667085] p-2">
+                    <Smartphone className="w-8 h-8 mx-auto text-[#285F52]" />
+                    <p className="font-bold text-xs text-[#111111]">Ready to connect</p>
+                    <p className="text-[10px] text-[#667085]">Click below to generate a new QR code</p>
                     <Button
                       variant="primary"
                       size="sm"
-                      className="mx-auto cursor-pointer bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold text-xs"
+                      className="mx-auto cursor-pointer bg-[#285F52] hover:bg-[#214D43] text-white font-bold text-xs"
                       onClick={handleGenerateNewQr}
                       disabled={isQrLoading}
                     >
@@ -1437,13 +1437,13 @@ export default function WhatsAppPlaceholder() {
 
               {!qrGatewayState.connected && qrGatewayState.status !== 'CONNECTED' && qrGatewayState.status !== 'DISCONNECTING' && !qrFetchError && qrGatewayState.qrCodeDataUrl && (
                 <div className="space-y-2">
-                  <div className="flex items-center justify-center gap-2 text-[11px] font-bold text-[#2F5D50]">
+                  <div className="flex items-center justify-center gap-2 text-[11px] font-bold text-[#285F52]">
                     <Smartphone className="w-4 h-4" />
                     <span>Waiting for phone scan... (Auto-connects)</span>
                   </div>
                   <button
                     onClick={handleGenerateNewQr}
-                    className="text-[11px] text-[#2F5D50] hover:underline font-bold cursor-pointer inline-flex items-center gap-1"
+                    className="text-[11px] text-[#285F52] hover:underline font-bold cursor-pointer inline-flex items-center gap-1"
                     disabled={isQrLoading}
                   >
                     <RefreshCw className={`w-3 h-3 ${isQrLoading ? 'animate-spin' : ''}`} />
@@ -1459,7 +1459,7 @@ export default function WhatsAppPlaceholder() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="border-red-200 text-red-600 hover:bg-red-50 text-xs font-bold"
+                    className="border-[#FECACA] text-[#B42318] hover:bg-[#FEF3F2] text-xs font-bold"
                     onClick={handleDisconnectDevice}
                     disabled={isQrLoading}
                   >
@@ -1483,26 +1483,26 @@ export default function WhatsAppPlaceholder() {
           title="Confirm Message Dispatch"
         >
           <div className="space-y-4 font-sans text-xs">
-            <div className="p-4 bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl space-y-2">
+            <div className="p-4 bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl space-y-2">
               <div className="flex justify-between items-center">
-                <span className="text-[#6B6B67] font-bold">Total Recipients:</span>
-                <span className="font-extrabold text-[#1C1C1A] text-sm">{selectedCount} Members</span>
+                <span className="text-[#667085] font-bold">Total Recipients:</span>
+                <span className="font-extrabold text-[#111111] text-sm">{selectedCount} Members</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#6B6B67] font-bold">Selected Chit Group:</span>
-                <span className="font-bold text-[#1C1C1A]">Group {selectedGroupId}</span>
+                <span className="text-[#667085] font-bold">Selected Chit Group:</span>
+                <span className="font-bold text-[#111111]">Group {selectedGroupId}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#6B6B67] font-bold">Billing Month:</span>
-                <span className="font-bold text-[#1C1C1A]">{billingMonth}</span>
+                <span className="text-[#667085] font-bold">Billing Month:</span>
+                <span className="font-bold text-[#111111]">{billingMonth}</span>
               </div>
             </div>
 
-            <p className="text-[#6B6B67]">
-              You are about to send <strong className="text-[#1C1C1A]">{selectedCount}</strong> personalized messages via your linked WhatsApp device.
+            <p className="text-[#667085]">
+              You are about to send <strong className="text-[#111111]">{selectedCount}</strong> personalized messages via your linked WhatsApp device.
             </p>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#E5E5E1]">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#E5E7EB]">
               <Button variant="outline" size="sm" onClick={() => setIsConfirmModalOpen(false)}>
                 Cancel
               </Button>
@@ -1510,7 +1510,7 @@ export default function WhatsAppPlaceholder() {
               <Button
                 variant="primary"
                 size="sm"
-                className="bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold"
+                className="bg-[#285F52] hover:bg-[#214D43] text-white font-bold"
                 onClick={handleExecuteBulkSend}
               >
                 Confirm Send ({selectedCount} Messages)
@@ -1528,22 +1528,22 @@ export default function WhatsAppPlaceholder() {
           title="Messaging Complete"
         >
           <div className="space-y-4 font-sans text-xs">
-            <div className="p-4 bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl space-y-2 text-center">
-              <h3 className="text-base font-black text-[#1C1C1A]">Dispatch Summary</h3>
+            <div className="p-4 bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl space-y-2 text-center">
+              <h3 className="text-base font-black text-[#111111]">Dispatch Summary</h3>
               <div className="grid grid-cols-2 gap-3 pt-2 font-mono">
-                <div className="p-3 bg-[#EDF7F0] border border-[#2F5D50]/20 rounded-xl">
-                  <span className="text-[10px] font-bold text-[#2F6B4F] uppercase block">Sent</span>
-                  <span className="text-lg font-black text-[#2F6B4F]">{bulkSummaryModal.sentCount}</span>
+                <div className="p-3 bg-[#EEF6F3] border border-[#BFD8D0] rounded-xl">
+                  <span className="text-[10px] font-bold text-[#285F52] uppercase block">Sent</span>
+                  <span className="text-lg font-black text-[#285F52]">{bulkSummaryModal.sentCount}</span>
                 </div>
-                <div className="p-3 bg-[#FFF7E6] border border-[#B86B14]/20 rounded-xl">
-                  <span className="text-[10px] font-bold text-[#B86B14] uppercase block">Failed / Queued</span>
-                  <span className="text-lg font-black text-[#B86B14]">{bulkSummaryModal.failedCount}</span>
+                <div className="p-3 bg-[#FFF8E7] border border-[#FDE68A] rounded-xl">
+                  <span className="text-[10px] font-bold text-[#B7791F] uppercase block">Failed / Queued</span>
+                  <span className="text-lg font-black text-[#B7791F]">{bulkSummaryModal.failedCount}</span>
                 </div>
               </div>
             </div>
 
-            <p className="text-[#6B6B67] text-center">
-              All {bulkSummaryModal.total} message jobs have been logged to the <code className="bg-[#F7F7F5] px-1 py-0.5 rounded font-mono text-[#1C1C1A]">messageHistory</code> collection.
+            <p className="text-[#667085] text-center">
+              All {bulkSummaryModal.total} message jobs have been logged to the <code className="bg-[#F7F8F7] px-1 py-0.5 rounded font-mono text-[#111111]">messageHistory</code> collection.
             </p>
 
             <div className="flex justify-end pt-2">
@@ -1563,34 +1563,34 @@ export default function WhatsAppPlaceholder() {
           title="Message Audit Record Details"
         >
           <div className="space-y-4 font-sans text-xs">
-            <div className="p-4 bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl space-y-2">
+            <div className="p-4 bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl space-y-2">
               <div className="flex justify-between">
-                <span className="text-[#6B6B67] font-semibold">Recipient:</span>
-                <span className="font-bold text-[#1C1C1A]">{detailsLogModal.recipientName || detailsLogModal.memberName}</span>
+                <span className="text-[#667085] font-semibold">Recipient:</span>
+                <span className="font-bold text-[#111111]">{detailsLogModal.recipientName || detailsLogModal.memberName}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#6B6B67] font-semibold">Phone:</span>
-                <span className="font-bold font-mono text-[#1C1C1A]">+{detailsLogModal.phone}</span>
+                <span className="text-[#667085] font-semibold">Phone:</span>
+                <span className="font-bold font-mono text-[#111111]">+{detailsLogModal.phone}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#6B6B67] font-semibold">Channel:</span>
-                <span className="font-bold font-mono text-[#2F5D50]">{detailsLogModal.channel || 'WHATSAPP'}</span>
+                <span className="text-[#667085] font-semibold">Channel:</span>
+                <span className="font-bold font-mono text-[#285F52]">{detailsLogModal.channel || 'WHATSAPP'}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#6B6B67] font-semibold">Status:</span>
-                <span className="font-bold text-[#1C1C1A]">{detailsLogModal.status || 'SENT'}</span>
+                <span className="text-[#667085] font-semibold">Status:</span>
+                <span className="font-bold text-[#111111]">{detailsLogModal.status || 'SENT'}</span>
               </div>
               {detailsLogModal.errorMessage && (
-                <div className="pt-2 border-t border-[#E5E5E1] text-[#C53030]">
+                <div className="pt-2 border-t border-[#E5E7EB] text-[#B42318]">
                   <span className="font-bold block mb-0.5">Error Message:</span>
-                  <p className="bg-[#FCEEEE] p-2 rounded-lg font-mono text-[11px]">{detailsLogModal.errorMessage}</p>
+                  <p className="bg-[#FEF3F2] p-2 rounded-lg font-mono text-[11px]">{detailsLogModal.errorMessage}</p>
                 </div>
               )}
             </div>
 
             <div>
-              <span className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block mb-1">Message Content</span>
-              <div className="p-3 bg-[#1C1C1A] text-[#EDF7F0] rounded-xl font-mono text-[11px] whitespace-pre-wrap max-h-40 overflow-y-auto">
+              <span className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block mb-1">Message Content</span>
+              <div className="p-3 bg-[#111111] text-[#EEF6F3] rounded-xl font-mono text-[11px] whitespace-pre-wrap max-h-40 overflow-y-auto">
                 {detailsLogModal.message || 'No message content stored.'}
               </div>
             </div>

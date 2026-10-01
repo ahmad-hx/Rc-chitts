@@ -4,37 +4,37 @@ export default function Badge({ children, variant = 'info', className = '', dot 
   const baseStyles = 'inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider border';
 
   const variants = {
-    success: 'bg-[#EDF7F0] text-[#2F6B4F] border-[#D7EBDD]',
-    paid: 'bg-[#EDF7F0] text-[#2F6B4F] border-[#D7EBDD]',
-    warning: 'bg-[#FFF7E6] text-[#8A5A12] border-[#F3E1B7]',
-    pending: 'bg-[#FFF7E6] text-[#8A5A12] border-[#F3E1B7]',
-    partial: 'bg-[#FFF7E6] text-[#B86B14] border-[#FCD34D]',
-    danger: 'bg-[#FCEEEE] text-[#A33A3A] border-[#F2D4D4]',
-    error: 'bg-[#FCEEEE] text-[#A33A3A] border-[#F2D4D4]',
-    overdue: 'bg-[#FCEEEE] text-[#A33A3A] border-[#F2D4D4]',
-    purple: 'bg-[#F5F0FF] text-[#6B3FA0] border-[#E9DBFF]',
-    multiple: 'bg-[#F5F0FF] text-[#6B3FA0] border-[#E9DBFF]',
-    single: 'bg-[#F2F2EF] text-[#1C1C1A] border-[#E5E5E1]',
-    info: 'bg-[#F2F2EF] text-[#1C1C1A] border-[#E5E5E1]',
-    neutral: 'bg-[#F2F2EF] text-[#6B6B67] border-[#E5E5E1]',
-    active: 'bg-[#EDF7F0] text-[#2F6B4F] border-[#D7EBDD]',
+    success: 'bg-[#EEF6F3] text-[#285F52] border-[#BFD8D0]',
+    paid: 'bg-[#EEF6F3] text-[#285F52] border-[#BFD8D0]',
+    active: 'bg-[#EEF6F3] text-[#285F52] border-[#BFD8D0]',
+    warning: 'bg-[#FFF8E7] text-[#B7791F] border-[#FDE68A]',
+    pending: 'bg-[#FFF8E7] text-[#B7791F] border-[#FDE68A]',
+    partial: 'bg-[#FFF8E7] text-[#B7791F] border-[#FDE68A]',
+    danger: 'bg-[#FEF3F2] text-[#B42318] border-[#FECACA]',
+    error: 'bg-[#FEF3F2] text-[#B42318] border-[#FECACA]',
+    overdue: 'bg-[#FEF3F2] text-[#B42318] border-[#FECACA]',
+    purple: 'bg-[#EEF6F3] text-[#285F52] border-[#BFD8D0]',
+    multiple: 'bg-[#EEF6F3] text-[#285F52] border-[#BFD8D0]',
+    single: 'bg-[#F7F8F7] text-[#111111] border-[#E5E7EB]',
+    info: 'bg-[#F7F8F7] text-[#111111] border-[#E5E7EB]',
+    neutral: 'bg-[#F7F8F7] text-[#111111] border-[#E5E7EB]',
   };
 
   const dotColors = {
-    success: 'bg-[#2F6B4F]',
-    paid: 'bg-[#2F6B4F]',
-    warning: 'bg-[#8A5A12]',
-    pending: 'bg-[#8A5A12]',
-    partial: 'bg-[#B86B14]',
-    danger: 'bg-[#A33A3A]',
-    error: 'bg-[#A33A3A]',
-    overdue: 'bg-[#A33A3A]',
-    purple: 'bg-[#6B3FA0]',
-    multiple: 'bg-[#6B3FA0]',
-    single: 'bg-[#6B6B67]',
-    info: 'bg-[#6B6B67]',
-    neutral: 'bg-[#959590]',
-    active: 'bg-[#2F6B4F]',
+    success: 'bg-[#285F52]',
+    paid: 'bg-[#285F52]',
+    warning: 'bg-[#B7791F]',
+    pending: 'bg-[#B7791F]',
+    partial: 'bg-[#B7791F]',
+    danger: 'bg-[#B42318]',
+    error: 'bg-[#B42318]',
+    overdue: 'bg-[#B42318]',
+    purple: 'bg-[#285F52]',
+    multiple: 'bg-[#285F52]',
+    single: 'bg-[#667085]',
+    info: 'bg-[#667085]',
+    neutral: 'bg-[#98A2B3]',
+    active: 'bg-[#285F52]',
   };
 
   const selectedVariant = variants[variant] || variants.info;
@@ -47,4 +47,5 @@ export default function Badge({ children, variant = 'info', className = '', dot 
     </span>
   );
 }
+
 

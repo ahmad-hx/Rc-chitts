@@ -170,6 +170,28 @@ export default function ChitsPlaceholder() {
     );
   };
 
+  const handleViewMembers = (group) => {
+    const targetGroupId = group?.groupId || group?.id || group?.group;
+    if (!targetGroupId) {
+      console.error("[View Members Error] Group ID is missing for group:", group);
+      showToast("Unable to open this group's members. Group ID is missing.", "error");
+      return;
+    }
+    const category = group?.totalChitValue || 100000;
+    navigate(`/members?group=${encodeURIComponent(targetGroupId)}&category=${encodeURIComponent(category)}`);
+  };
+
+  const handleAddMemberForGroup = (group) => {
+    const targetGroupId = group?.groupId || group?.id || group?.group;
+    if (!targetGroupId) {
+      console.error("[Add Member Error] Group ID is missing for group:", group);
+      showToast("Unable to open add member. Group ID is missing.", "error");
+      return;
+    }
+    const category = group?.totalChitValue || 100000;
+    navigate(`/members?group=${encodeURIComponent(targetGroupId)}&category=${encodeURIComponent(category)}&action=add`);
+  };
+
   const handleOpenEditMonthly = (group) => {
     const val = Number(group?.totalChitValue || 100000);
     const grp = String(group?.groupId || 'I').trim().toUpperCase();
@@ -336,22 +358,26 @@ export default function ChitsPlaceholder() {
       )}
 
       {/* HEADER */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E5E5E1] pb-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E5E7EB] pb-5">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#2F5D50]">Portfolio</p>
-          <h1 className="text-2xl md:text-3xl font-black text-[#1C1C1A]">Chit Fund Groups</h1>
-          <p className="text-xs text-[#6B6B67] mt-1">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#285F52]">Portfolio</p>
+          <h1 className="text-2xl md:text-3xl font-black text-[#111111]">Chit Fund Groups</h1>
+          <p className="text-xs text-[#667085] mt-1">
             Ordered group navigation, dynamic Chit Month calculation ({selectedMonth}), capacity tracking, and audit ledgers.
           </p>
         </div>
-        <Button variant="primary" className="gap-2 rounded-xl cursor-pointer bg-[#2F5D50] hover:bg-[#24493F] text-white" onClick={() => setIsCreateModalOpen(true)}>
-          <Plus className="w-4 h-4" />
-          Create Chit Group
+        <Button
+          variant="primary"
+          className="gap-2 rounded-xl cursor-pointer bg-[#285F52] hover:bg-[#214D43] text-white whitespace-nowrap shrink-0 px-4 py-2.5 text-xs font-bold"
+          onClick={() => setIsCreateModalOpen(true)}
+        >
+          <Plus className="w-4 h-4 shrink-0" />
+          <span className="whitespace-nowrap">+ Create Chit Group</span>
         </Button>
       </div>
 
       {/* CATEGORY TABS */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar min-w-0">
         {[
           { value: 'all', label: 'All Chit Groups' },
           { value: '100000', label: '₹1 Lakh Chits' },
@@ -361,10 +387,10 @@ export default function ChitsPlaceholder() {
           <button
             key={tab.value}
             onClick={() => setSelectedChitCategory(tab.value)}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap border ${
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 border ${
               selectedChitCategory === tab.value
-                ? 'bg-[#2F5D50] text-white border-[#2F5D50] shadow-xs'
-                : 'bg-white text-[#1C1C1A] border-[#E5E5E1] hover:bg-[#F7F7F5]'
+                ? 'bg-[#285F52] text-white border-[#285F52] shadow-xs'
+                : 'bg-white text-[#111111] border-[#E5E7EB] hover:bg-[#F7F8F7]'
             }`}
           >
             {tab.label}
@@ -374,15 +400,15 @@ export default function ChitsPlaceholder() {
 
       {/* CHIT GROUP CARDS GRID */}
       {loading ? (
-        <Card className="p-12 text-center text-[#6B6B67] font-bold text-sm bg-white border border-[#E5E5E1] rounded-2xl">
+        <Card className="p-12 text-center text-[#667085] font-bold text-sm bg-white border border-[#E5E7EB] rounded-2xl">
           Loading chit fund groups...
         </Card>
       ) : filteredChits.length === 0 ? (
-        <Card className="p-12 text-center text-[#6B6B67] font-bold text-sm bg-white border border-[#E5E5E1] rounded-2xl">
+        <Card className="p-12 text-center text-[#667085] font-bold text-sm bg-white border border-[#E5E7EB] rounded-2xl">
           No chit groups found for the selected category.
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full min-w-0">
           {filteredChits.map((group) => {
             const enrolled = getEnrolledMembers(group.groupId, group.totalChitValue);
             const enrolledCount = enrolled.length;
@@ -391,35 +417,34 @@ export default function ChitsPlaceholder() {
             const chitMonthInfo = getChitMonthForGroup(group, selectedMonth);
 
             return (
-              <Card key={group.id} className="border border-[#E5E5E1] bg-white rounded-2xl p-6 shadow-xs space-y-4 relative">
+              <Card key={group.id} className="border border-[#E5E7EB] bg-white rounded-2xl p-5 sm:p-6 shadow-xs space-y-4 relative min-w-0">
                 {/* TOP ROW: Group Name, Roman Numeral, Capacity Badge, Chit Month Badge & Status */}
-                <div className="flex justify-between items-start gap-2">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-extrabold font-mono text-[#2F5D50] bg-[#DDE8E2] px-2 py-0.5 rounded-lg border border-[#2F5D50]/20">
-                        Group {group.groupId || 'I'}
-                      </span>
-                      <h3 className="text-base font-black text-[#1C1C1A]">
-                        {group.name || `₹${((group.totalChitValue || 100000) / 100000).toFixed(0)} Lakh Chit (Group ${group.groupId || 'I'})`}
-                      </h3>
-                    </div>
-                    <p className="text-xs text-[#6B6B67] mt-1 font-medium">
-                      Value: ₹{(group.totalChitValue || 100000).toLocaleString('en-IN')} • Starts: {formatMonthYearDisplay(group.startingMonth || 'March 2026')}
-                    </p>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 min-w-0">
+                    <span className="text-xs font-extrabold font-mono text-[#285F52] bg-[#EEF6F3] px-2.5 py-1 rounded-lg border border-[#BFD8D0] shrink-0">
+                      Group {group.groupId || 'I'}
+                    </span>
+                    <h3 className="text-base font-black text-[#111111] truncate min-w-0">
+                      {group.name || `₹${((group.totalChitValue || 100000) / 100000).toFixed(0)} Lakh Chit (Group ${group.groupId || 'I'})`}
+                    </h3>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
+                  <div className="shrink-0 self-start sm:self-auto">
                     <Badge variant="active" dot>ACTIVE</Badge>
                   </div>
                 </div>
 
+                <p className="text-xs text-[#667085] font-medium leading-relaxed">
+                  Value: <span className="font-bold text-[#111111]">₹{(group.totalChitValue || 100000).toLocaleString('en-IN')}</span> • Starts: <span className="font-bold text-[#111111]">{formatMonthYearDisplay(group.startingMonth || 'March 2026')}</span>
+                </p>
+
                 {/* 3-COLUMN METRICS: CHIT MONTH, MEMBERS, MONTHLY AMOUNT */}
-                <div className="grid grid-cols-3 gap-2 py-3 border-y border-[#E5E5E1] text-xs bg-[#F7F7F5] rounded-xl px-3 text-center">
-                  <div className="space-y-0.5">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#6B6B67] block">
-                      Chit Month
+                <div className="grid grid-cols-3 gap-2 sm:gap-4 py-3 border-y border-[#E5E7EB] text-xs bg-[#F7F8F7] rounded-xl px-3 sm:px-4 text-center min-w-0">
+                  <div className="space-y-1 min-w-0">
+                    <span className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider text-[#667085] block truncate">
+                      CHIT MONTH
                     </span>
-                    <div className="flex items-center justify-center pt-0.5">
+                    <div className="flex items-center justify-center min-w-0 pt-0.5">
                       <ChitMonthEditor
                         currentMonth={chitMonthInfo.currentMonth}
                         totalMonths={group.capacity || 20}
@@ -448,96 +473,96 @@ export default function ChitsPlaceholder() {
                     </div>
                   </div>
 
-                  <div className="space-y-0.5">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#6B6B67] block">
-                      Members
+                  <div className="space-y-1 border-x border-[#E5E7EB] px-1 sm:px-2 min-w-0">
+                    <span className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider text-[#667085] block truncate">
+                      MEMBERS
                     </span>
-                    <span className="text-sm font-black text-[#1C1C1A] block">
+                    <span className="text-xs sm:text-sm font-black text-[#111111] block whitespace-nowrap pt-0.5">
                       {enrolledCount} / {group.capacity || 20}
                     </span>
                   </div>
 
-                  <div className="space-y-0.5">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#6B6B67] block">
-                      Monthly Amount
+                  <div className="space-y-1 min-w-0">
+                    <span className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider text-[#667085] block truncate">
+                      MONTHLY AMOUNT
                     </span>
-                    <span className="text-sm font-black text-[#2F5D50] block">
+                    <span className="text-xs sm:text-sm font-black text-[#285F52] block whitespace-nowrap pt-0.5">
                       ₹{monthlyPremium.toLocaleString('en-IN')}
                     </span>
                   </div>
                 </div>
 
-                {/* BOTTOM ROW ACTION BAR: [ Edit Monthly ] [ + Add Member ] [ ⋮ ] [ View Members → ] */}
-                <div className="flex flex-wrap items-center justify-between gap-2.5 text-xs pt-1">
-                  <div className="flex items-center gap-2">
+                {/* BOTTOM ROW ACTION BAR */}
+                <div className="flex flex-wrap items-center justify-between gap-3 text-xs pt-2 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      className="gap-1.5 rounded-xl border-[#E5E5E1] text-[#1C1C1A] hover:bg-[#F7F7F5] font-bold"
+                      className="gap-1.5 rounded-xl border-[#E5E7EB] text-[#111111] hover:bg-[#F7F8F7] font-bold whitespace-nowrap shrink-0"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleOpenEditMonthly(group);
                       }}
                     >
-                      <Edit className="w-3.5 h-3.5 text-[#6B6B67]" />
-                      Edit Monthly
+                      <Edit className="w-3.5 h-3.5 text-[#667085] shrink-0" />
+                      <span>Edit Monthly</span>
                     </Button>
 
                     <Button
                       variant="outline"
                       size="sm"
-                      className="gap-1.5 rounded-xl border-[#2F5D50]/30 bg-[#EDF7F0] text-[#2F5D50] hover:bg-[#2F5D50] hover:text-white font-bold cursor-pointer transition-colors"
+                      className="gap-1.5 rounded-xl border-[#BFD8D0] bg-[#EEF6F3] text-[#285F52] hover:bg-[#285F52] hover:text-white font-bold cursor-pointer transition-colors whitespace-nowrap shrink-0"
                       onClick={(e) => {
                         e.stopPropagation();
-                        navigate(`/members?group=${group.groupId}&category=${group.totalChitValue}&action=add`);
+                        handleAddMemberForGroup(group);
                       }}
                     >
-                      <UserPlus className="w-3.5 h-3.5" />
+                      <UserPlus className="w-3.5 h-3.5 shrink-0" />
                       <span>+ Add Member</span>
                     </Button>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
                     {/* THREE-DOT OVERFLOW MENU */}
                     <div className="relative" onClick={(e) => e.stopPropagation()}>
                       <button
                         type="button"
                         onClick={() => setActiveMenuId(isMenuOpen ? null : group.id)}
-                        className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] text-[#1C1C1A] hover:bg-[#E5E5E1] cursor-pointer transition-colors"
+                        className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] text-[#111111] hover:bg-[#E5E7EB] cursor-pointer transition-colors shrink-0"
                         title="More Actions"
                       >
-                        <MoreVertical className="w-4 h-4 text-[#6B6B67]" />
+                        <MoreVertical className="w-4 h-4 text-[#667085] shrink-0" />
                       </button>
 
                       {isMenuOpen && (
-                        <div className="absolute right-0 bottom-11 z-30 w-52 rounded-xl border border-[#E5E5E1] bg-white p-1.5 shadow-xl text-xs space-y-1 font-sans">
+                        <div className="absolute right-0 bottom-11 z-30 w-52 rounded-xl border border-[#E5E7EB] bg-white p-1.5 shadow-xl text-xs space-y-1 font-sans">
                           <button
                             type="button"
                             onClick={() => {
                               setSelectedChitLedger(group);
                               setActiveMenuId(null);
                             }}
-                            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[#1C1C1A] hover:bg-[#F2F2EF] font-bold cursor-pointer"
+                            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[#111111] hover:bg-[#F7F8F7] font-bold cursor-pointer"
                           >
-                            <Layers className="w-3.5 h-3.5 text-[#2F5D50]" />
+                            <Layers className="w-3.5 h-3.5 text-[#285F52]" />
                             View Group Ledger
                           </button>
 
                           <button
                             type="button"
                             onClick={() => handleOpenEditStartingMonth(group)}
-                            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[#1C1C1A] hover:bg-[#F2F2EF] font-bold cursor-pointer"
+                            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[#111111] hover:bg-[#F7F8F7] font-bold cursor-pointer"
                           >
-                            <Calendar className="w-3.5 h-3.5 text-[#2F5D50]" />
+                            <Calendar className="w-3.5 h-3.5 text-[#285F52]" />
                             Edit Starting Month
                           </button>
 
                           <button
                             type="button"
                             onClick={() => handleOpenDeleteModal(group)}
-                            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[#A33A3A] hover:bg-[#FCEEEE] font-bold cursor-pointer transition-colors"
+                            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[#B42318] hover:bg-[#FEF3F2] font-bold cursor-pointer transition-colors"
                           >
-                            <Trash2 className="w-3.5 h-3.5 text-[#A33A3A]" />
+                            <Trash2 className="w-3.5 h-3.5 text-[#B42318]" />
                             Delete Group
                           </button>
                         </div>
@@ -548,11 +573,11 @@ export default function ChitsPlaceholder() {
                     <Button
                       variant="primary"
                       size="sm"
-                      className="gap-1.5 rounded-xl bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold cursor-pointer"
-                      onClick={() => navigate(`/members?group=${group.groupId}&category=${group.totalChitValue}`)}
+                      className="gap-1.5 rounded-xl bg-[#285F52] hover:bg-[#214D43] text-white font-bold cursor-pointer whitespace-nowrap shrink-0"
+                      onClick={() => handleViewMembers(group)}
                     >
                       <span>View Members</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
+                      <ArrowRight className="w-3.5 h-3.5 shrink-0" />
                     </Button>
                   </div>
                 </div>
@@ -622,13 +647,13 @@ export default function ChitsPlaceholder() {
             <form onSubmit={handleSaveStartingMonth} className="space-y-4 text-xs font-sans">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block">
+                  <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">
                     Starting Month *
                   </label>
                   <select
                     value={inputStartingMonth}
                     onChange={(e) => setInputStartingMonth(e.target.value)}
-                    className="w-full px-3 py-2 text-xs font-bold bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50] cursor-pointer"
+                    className="w-full px-3 py-2 text-xs font-bold bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52] cursor-pointer"
                   >
                     {FORMATTED_MONTH_NAMES.map((m) => (
                       <option key={m} value={m}>
@@ -639,7 +664,7 @@ export default function ChitsPlaceholder() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block">
+                  <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">
                     Starting Year *
                   </label>
                   <input
@@ -651,44 +676,44 @@ export default function ChitsPlaceholder() {
                     placeholder="e.g. 2026"
                     value={inputStartingYear}
                     onChange={(e) => setInputStartingYear(e.target.value)}
-                    className="w-full px-3 py-2 text-xs font-bold bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+                    className="w-full px-3 py-2 text-xs font-bold bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
                   />
                 </div>
               </div>
 
               {/* LIVE PREVIEW SECTION */}
-              <div className="p-3.5 bg-[#EDF7F0] border border-[#2F5D50]/20 rounded-xl space-y-2">
-                <p className="text-[10px] font-extrabold uppercase tracking-wider text-[#2F5D50]">
+              <div className="p-3.5 bg-[#EEF6F3] border border-[#BFD8D0] rounded-xl space-y-2">
+                <p className="text-[10px] font-extrabold uppercase tracking-wider text-[#285F52]">
                   Preview
                 </p>
-                <div className="flex items-center justify-between text-xs pt-1 border-t border-[#2F5D50]/15">
-                  <span className="text-[#6B6B67] font-semibold">Selected Starting Date:</span>
-                  <span className="font-bold text-[#1C1C1A]">{inputStartingMonth} {inputStartingYear}</span>
+                <div className="flex items-center justify-between text-xs pt-1 border-t border-[#BFD8D0]">
+                  <span className="text-[#667085] font-semibold">Selected Starting Date:</span>
+                  <span className="font-bold text-[#111111]">{inputStartingMonth} {inputStartingYear}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-[#6B6B67] font-semibold">Current Selected Month:</span>
-                  <span className="font-bold text-[#1C1C1A]">{selectedMonth}</span>
+                  <span className="text-[#667085] font-semibold">Current Selected Month:</span>
+                  <span className="font-bold text-[#111111]">{selectedMonth}</span>
                 </div>
-                <div className="flex items-center justify-between text-xs pt-1 border-t border-[#2F5D50]/15">
-                  <span className="text-[#2F5D50] font-extrabold uppercase tracking-wider">Chit Month:</span>
-                  <span className="font-black text-[#2F5D50] bg-white px-2.5 py-0.5 rounded-lg border border-[#2F5D50]/25 text-sm">
+                <div className="flex items-center justify-between text-xs pt-1 border-t border-[#BFD8D0]">
+                  <span className="text-[#285F52] font-extrabold uppercase tracking-wider">Chit Month:</span>
+                  <span className="font-black text-[#285F52] bg-white px-2.5 py-0.5 rounded-lg border border-[#BFD8D0] text-sm">
                     {calculatedPreview.display}
                   </span>
                 </div>
               </div>
 
-              <p className="text-[11px] text-[#6B6B67] leading-relaxed">
+              <p className="text-[11px] text-[#667085] leading-relaxed">
                 ℹ The selected starting month is Chit Month 1. The Chit Month automatically recalculates across all group cards, member tables, and WhatsApp payment reminders.
               </p>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#E5E5E1]">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#E5E7EB]">
                 <Button
                   type="button"
                   variant="secondary"
                   size="sm"
                   onClick={() => setIsEditStartingMonthModalOpen(false)}
                   disabled={isSavingStartingMonth}
-                  className="rounded-xl border-[#E5E5E1]"
+                  className="rounded-xl border-[#E5E7EB]"
                 >
                   Cancel
                 </Button>
@@ -696,7 +721,7 @@ export default function ChitsPlaceholder() {
                   type="submit"
                   variant="primary"
                   size="sm"
-                  className="bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold rounded-xl cursor-pointer"
+                  className="bg-[#285F52] hover:bg-[#214D43] text-white font-bold rounded-xl cursor-pointer"
                   disabled={isSavingStartingMonth}
                 >
                   {isSavingStartingMonth ? 'Saving...' : 'Save Starting Month'}
@@ -726,45 +751,45 @@ export default function ChitsPlaceholder() {
           >
             {hasMembers ? (
               <div className="space-y-4 font-sans text-xs">
-                <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 text-amber-900">
-                  <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="p-3.5 bg-[#FFF8E7] border border-[#FDE68A] rounded-xl flex items-start gap-3 text-[#B7791F]">
+                  <AlertTriangle className="w-5 h-5 text-[#B7791F] shrink-0 mt-0.5" />
                   <div className="space-y-1">
                     <p className="font-bold">
                       This group cannot be deleted because members are currently assigned to it.
                     </p>
-                    <p className="text-[11px] text-amber-800">
+                    <p className="text-[11px] text-[#B7791F]">
                       You must remove or reassign all <strong>{assignedMembers.length} member(s)</strong> from this group before it can be deleted.
                     </p>
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <p className="text-[11px] font-bold text-[#6B6B67] uppercase tracking-wider">
+                  <p className="text-[11px] font-bold text-[#667085] uppercase tracking-wider">
                     Assigned Members ({assignedMembers.length})
                   </p>
-                  <div className="max-h-40 overflow-y-auto space-y-1.5 border border-[#E5E5E1] rounded-xl p-2 bg-[#F7F7F5]">
+                  <div className="max-h-40 overflow-y-auto space-y-1.5 border border-[#E5E7EB] rounded-xl p-2 bg-[#F7F8F7]">
                     {assignedMembers.slice(0, 8).map((m) => (
-                      <div key={m.id} className="flex items-center justify-between text-xs p-1.5 bg-white rounded-lg border border-[#E5E5E1]">
-                        <span className="font-bold text-[#1C1C1A] truncate">{m.name}</span>
+                      <div key={m.id} className="flex items-center justify-between text-xs p-1.5 bg-white rounded-lg border border-[#E5E7EB]">
+                        <span className="font-bold text-[#111111] truncate">{m.name}</span>
                         <Badge variant={m.classification === 'MULTIPLE' ? 'purple' : 'info'} className="text-[9px]">
                           {m.classification === 'MULTIPLE' ? 'Multi-Chit' : 'Single Chit'}
                         </Badge>
                       </div>
                     ))}
                     {assignedMembers.length > 8 && (
-                      <p className="text-[10px] text-center text-[#6B6B67] pt-1">
+                      <p className="text-[10px] text-center text-[#667085] pt-1">
                         + {assignedMembers.length - 8} more members
                       </p>
                     )}
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E5E1]">
+                <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E7EB]">
                   <Button
                     variant="secondary"
                     size="sm"
                     onClick={() => setDeletingGroup(null)}
-                    className="rounded-xl border-[#E5E5E1]"
+                    className="rounded-xl border-[#E5E7EB]"
                   >
                     Close
                   </Button>
@@ -774,9 +799,9 @@ export default function ChitsPlaceholder() {
                     onClick={() => {
                       const grp = deletingGroup;
                       setDeletingGroup(null);
-                      navigate(`/members?group=${grp.groupId}&category=${grp.totalChitValue}`);
+                      handleViewMembers(grp);
                     }}
-                    className="rounded-xl bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold"
+                    className="rounded-xl bg-[#285F52] hover:bg-[#214D43] text-white font-bold"
                   >
                     View Members
                   </Button>
@@ -784,32 +809,32 @@ export default function ChitsPlaceholder() {
               </div>
             ) : (
               <div className="space-y-4 font-sans text-xs">
-                <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3 text-red-900">
-                  <Trash2 className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                <div className="p-3.5 bg-[#FEF3F2] border border-[#FECACA] rounded-xl flex items-start gap-3 text-[#B42318]">
+                  <Trash2 className="w-5 h-5 text-[#B42318] shrink-0 mt-0.5" />
                   <div className="space-y-1">
                     <p className="font-bold">
                       Are you sure you want to permanently delete Group {deletingGroup.groupId}?
                     </p>
-                    <p className="text-[11px] text-red-800">
+                    <p className="text-[11px] text-[#B42318]">
                       This action cannot be undone. Historical financial records and past ledger history will remain preserved in History.
                     </p>
                   </div>
                 </div>
 
-                <div className="p-3 bg-[#F7F7F5] rounded-xl border border-[#E5E5E1] space-y-1">
-                  <p className="font-bold text-[#1C1C1A]">{deletingGroup.name}</p>
-                  <p className="text-[11px] text-[#6B6B67]">
+                <div className="p-3 bg-[#F7F8F7] rounded-xl border border-[#E5E7EB] space-y-1">
+                  <p className="font-bold text-[#111111]">{deletingGroup.name}</p>
+                  <p className="text-[11px] text-[#667085]">
                     Total Chit Value: ₹{(deletingGroup.totalChitValue || 100000).toLocaleString('en-IN')} • Starting Month: {deletingGroup.startingMonth || 'March 2026'}
                   </p>
                 </div>
 
-                <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E5E1]">
+                <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E7EB]">
                   <Button
                     variant="secondary"
                     size="sm"
                     disabled={isDeletingGroup}
                     onClick={() => setDeletingGroup(null)}
-                    className="rounded-xl border-[#E5E5E1]"
+                    className="rounded-xl border-[#E5E7EB]"
                   >
                     Cancel
                   </Button>

@@ -251,33 +251,33 @@ export default function PendingHistory() {
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       {/* HEADER */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E5E5E1] pb-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E5E7EB] pb-5">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#2F5D50]">Historical Archive</span>
-            <span className="text-[#959590]">•</span>
-            <span className="text-xs font-bold text-[#1C1C1A]">Month-by-Month Audit</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#285F52]">Historical Archive</span>
+            <span className="text-[#98A2B3]">•</span>
+            <span className="text-xs font-bold text-[#111111]">Month-by-Month Audit</span>
           </div>
-          <h1 className="text-2xl md:text-3xl font-black text-[#1C1C1A] tracking-tight">Pending Payment History</h1>
-          <p className="text-xs text-[#6B6B67] mt-1">
+          <h1 className="text-2xl md:text-3xl font-black text-[#111111] tracking-tight">Pending Payment History</h1>
+          <p className="text-xs text-[#667085] mt-1">
             Preserves historical monthly pending payment snapshots without deleting or overwriting past billing cycles.
           </p>
         </div>
 
-        <Button variant="outline" className="gap-2 rounded-xl text-xs font-bold cursor-pointer" onClick={handleExportHistoryExcel}>
-          <Download className="w-4 h-4 text-[#2F5D50]" />
+        <Button variant="outline" className="gap-2 rounded-xl text-xs font-bold cursor-pointer border-[#E5E7EB] bg-white text-[#111111]" onClick={handleExportHistoryExcel}>
+          <Download className="w-4 h-4 text-[#285F52]" />
           Export History Excel
         </Button>
       </div>
 
       {/* FEATURE 1 — FILTERS TOOLBAR */}
-      <Card className="p-5 border border-[#E5E5E1] bg-white rounded-2xl shadow-xs space-y-4 font-sans">
-        <div className="flex items-center justify-between border-b border-[#E5E5E1] pb-3">
+      <Card className="p-5 border border-[#E5E7EB] bg-white rounded-2xl shadow-xs space-y-4 font-sans">
+        <div className="flex items-center justify-between border-b border-[#E5E7EB] pb-3">
           <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-[#2F5D50]" />
-            <span className="text-xs font-black uppercase text-[#1C1C1A]">Pending History Multi-Filters</span>
+            <Filter className="w-4 h-4 text-[#285F52]" />
+            <span className="text-xs font-black uppercase text-[#111111]">Pending History Multi-Filters</span>
           </div>
-          <button onClick={handleResetFilters} className="text-xs text-[#2F5D50] hover:text-[#24493F] font-bold flex items-center gap-1 cursor-pointer">
+          <button onClick={handleResetFilters} className="text-xs text-[#285F52] hover:text-[#214D43] font-bold flex items-center gap-1 cursor-pointer">
             <RotateCcw className="w-3.5 h-3.5" />
             Reset Filters
           </button>
@@ -286,13 +286,13 @@ export default function PendingHistory() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           {/* SEARCH */}
           <div className="relative">
-            <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[#959590]" />
+            <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[#98A2B3]" />
             <input
               type="text"
               placeholder="Search member, group..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] pl-9 pr-3 py-2 text-xs font-semibold text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+              className="w-full rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] pl-9 pr-3 py-2 text-xs font-semibold text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
             />
           </div>
 
@@ -301,7 +301,7 @@ export default function PendingHistory() {
             <select
               value={monthFilter}
               onChange={(e) => setMonthFilter(e.target.value)}
-              className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none"
+              className="w-full rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-2 text-xs font-bold text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
             >
               <option value="all">All Billing Months</option>
               {availableMonths.map((m) => (
@@ -317,7 +317,7 @@ export default function PendingHistory() {
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
-              className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none"
+              className="w-full rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-2 text-xs font-bold text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
             >
               <option value="all">All Chit Categories</option>
               <option value="100000">1 Lakh Chits</option>
@@ -331,7 +331,7 @@ export default function PendingHistory() {
             <select
               value={groupFilter}
               onChange={(e) => setGroupFilter(e.target.value)}
-              className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none"
+              className="w-full rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-2 text-xs font-bold text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
             >
               <option value="all">All Groups</option>
               {availableGroups.map((g) => (
@@ -347,7 +347,7 @@ export default function PendingHistory() {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none"
+              className="w-full rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-2 text-xs font-bold text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
             >
               <option value="all">All Statuses</option>
               <option value="PENDING">Pending</option>
@@ -360,15 +360,15 @@ export default function PendingHistory() {
       </Card>
 
       {/* FEATURE 1 — PENDING HISTORY TABLE */}
-      <Card className="border border-[#E5E5E1] bg-white rounded-2xl shadow-xs overflow-hidden">
+      <Card className="border border-[#E5E7EB] bg-white rounded-2xl shadow-xs overflow-hidden">
         {loading ? (
-          <div className="p-12 text-center text-slate-500 font-bold text-sm">Loading historical pending records...</div>
+          <div className="p-12 text-center text-[#667085] font-bold text-sm">Loading historical pending records...</div>
         ) : filteredHistoryRows.length === 0 ? (
-          <div className="p-12 text-center text-slate-500 font-bold text-sm">No historical records found matching your selected filters.</div>
+          <div className="p-12 text-center text-[#667085] font-bold text-sm">No historical records found matching your selected filters.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs font-sans">
-              <thead className="bg-[#F7F7F5] border-b border-[#E5E5E1] text-[10px] font-black uppercase tracking-wider text-[#6B6B67]">
+              <thead className="bg-[#F7F8F7] border-b border-[#E5E7EB] text-[10px] font-black uppercase tracking-wider text-[#667085]">
                 <tr>
                   <th className="p-3.5">Member Name</th>
                   <th className="p-3.5">Chit Group</th>
@@ -381,18 +381,18 @@ export default function PendingHistory() {
                   <th className="p-3.5 text-right">Updated Date</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#E5E5E1]">
+              <tbody className="divide-y divide-[#E5E7EB]">
                 {filteredHistoryRows.map((row) => (
-                  <tr key={row.id} className="hover:bg-[#F7F7F5] transition-colors">
-                    <td className="p-3.5 font-bold text-[#1C1C1A]">{row.memberName}</td>
-                    <td className="p-3.5 font-semibold text-[#6B6B67]">{row.groupName}</td>
-                    <td className="p-3.5 text-center font-bold text-[#2F5D50] bg-[#EDF7F0]/50 rounded-lg">{row.billingMonth}</td>
-                    <td className="p-3.5 text-right font-bold text-[#1C1C1A]">₹{row.chitAmount.toLocaleString('en-IN')}</td>
-                    <td className="p-3.5 text-right font-bold text-emerald-700">₹{row.paidAmount.toLocaleString('en-IN')}</td>
-                    <td className="p-3.5 text-right font-black text-amber-700">₹{row.pendingAmount.toLocaleString('en-IN')}</td>
-                    <td className="p-3.5 text-right font-semibold text-[#6B6B67]">₹{row.balanceAmount.toLocaleString('en-IN')}</td>
+                  <tr key={row.id} className="hover:bg-[#F7F8F7] transition-colors">
+                    <td className="p-3.5 font-bold text-[#111111]">{row.memberName}</td>
+                    <td className="p-3.5 font-semibold text-[#667085]">{row.groupName}</td>
+                    <td className="p-3.5 text-center font-bold text-[#285F52] bg-[#EEF6F3] rounded-lg">{row.billingMonth}</td>
+                    <td className="p-3.5 text-right font-bold text-[#111111]">₹{row.chitAmount.toLocaleString('en-IN')}</td>
+                    <td className="p-3.5 text-right font-bold text-[#285F52]">₹{row.paidAmount.toLocaleString('en-IN')}</td>
+                    <td className="p-3.5 text-right font-black text-[#B7791F]">₹{row.pendingAmount.toLocaleString('en-IN')}</td>
+                    <td className="p-3.5 text-right font-semibold text-[#667085]">₹{row.balanceAmount.toLocaleString('en-IN')}</td>
                     <td className="p-3.5 text-center">{getStatusBadge(row.status)}</td>
-                    <td className="p-3.5 text-right font-mono text-[11px] text-[#959590]">{row.updatedAt}</td>
+                    <td className="p-3.5 text-right font-mono text-[11px] text-[#98A2B3]">{row.updatedAt}</td>
                   </tr>
                 ))}
               </tbody>

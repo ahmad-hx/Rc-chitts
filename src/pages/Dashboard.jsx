@@ -37,6 +37,7 @@ import { whatsappDbService } from '../services/whatsappDbService';
 import { dashboardImageService } from '../services/dashboardImageService';
 import { useBillingMonth } from '../context/BillingMonthContext';
 import { getChitMonth } from '../utils/chitMonthUtils';
+import { getEffectiveMonthlyAmount } from '../utils/amountUtils';
 
 // Helper to check if auction conducted date is within 1 calendar month
 function isAuctionWithinLastMonth(auctionDateInput, referenceDate = new Date()) {
@@ -169,14 +170,100 @@ export default function Dashboard() {
 
   const activeGroupsCount = chits.length || 26;
 
-  const dueMembersList = activeMembers.filter((member) =>
-    (member.chits || []).some((chit) => (chit.monthlyAmount || chit.amountToPay || 0) > 0 || (chit.pending || 0) > 0)
-  );
-  const dueMembersCount = dueMembersList.length;
+  // Derive Remaining Dues for Selected Month based on actual Firestore payments sum
+  const { totalPendingAmount, dueMembersCount, dueMembersList } = useMemo(() => {
+    let pendingSum = 0;
+    let dueCount = 0;
+    const dueList = [];
 
-  const totalPendingAmount = activeMembers.reduce((sum, m) => {
-    return sum + (m.chits || []).reduce((cSum, c) => cSum + (c.pending || 0), 0);
-  }, 0);
+    activeMembers.forEach((m) => {
+      const activeChits = (m.chits || []).filter((c) => !c.status || c.status === 'ACTIVE');
+      const chitSubscriptions = activeChits.length > 0 ? activeChits : [
+        {
+          id: `chit_${m.id}_${m.groupId || 'I'}`,
+          groupId: m.groupId || m.group || 'I',
+          totalChitValue: m.calculatedTotalChitValue || 100000,
+          amountToPay: m.amountToPay || 5000,
+        },
+      ];
+
+      const isMulti = chitSubscriptions.length > 1;
+      let hasPendingForMember = false;
+      const memberChitsWithPending = [];
+
+      chitSubscriptions.forEach((c) => {
+        const reqAmount = getEffectiveMonthlyAmount(m, c, {});
+
+        let paidForChit = 0;
+        const mPhoneClean = (m.phone || m.whatsapp || '').replace(/\D/g, '');
+        const mNameClean = (m.name || '').trim().toLowerCase();
+        const gIdClean = String(c.groupId || m.groupId || m.group || 'I').trim().toUpperCase().replace(/^GROUP\s+/, '');
+
+        (payments || []).forEach((p) => {
+          const pStatus = String(p.status || 'cleared').toLowerCase();
+          if (pStatus === 'failed' || pStatus === 'cancelled') return;
+
+          let pMonth = p.billingMonth;
+          if (!pMonth && p.date) {
+            try {
+              const d = new Date(p.date);
+              if (!isNaN(d.getTime())) pMonth = d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+            } catch (_) {}
+          }
+          if (pMonth && String(pMonth).trim().toLowerCase() !== String(selectedMonth).trim().toLowerCase()) {
+            return;
+          }
+
+          const isMemMatch =
+            (p.memberId && p.memberId === m.id) ||
+            (mPhoneClean && p.phone && p.phone.replace(/\D/g, '').endsWith(mPhoneClean)) ||
+            (mNameClean && (p.member || p.memberName) && (p.member || p.memberName).trim().toLowerCase() === mNameClean);
+
+          if (!isMemMatch) return;
+
+          const pGrp = String(p.group || p.groupId || p.chitGroup || '').trim().toUpperCase().replace(/^GROUP\s+/, '');
+          let isGrpMatch = false;
+          if (!isMulti) {
+            isGrpMatch = true;
+          } else {
+            if (p.chitId && (p.chitId === c.id || p.chitId === c.groupId)) {
+              isGrpMatch = true;
+            } else if (pGrp && pGrp !== 'ALL') {
+              isGrpMatch = (gIdClean === pGrp || gIdClean.includes(pGrp) || pGrp.includes(gIdClean));
+            } else {
+              isGrpMatch = (gIdClean === String(m.groupId || m.group || 'I').replace(/^GROUP\s+/i, '').toUpperCase());
+            }
+          }
+
+          if (isGrpMatch) {
+            paidForChit += Number(p.amount || 0);
+          }
+        });
+
+        const remaining = Math.max(reqAmount - paidForChit, 0);
+        if (remaining > 0) {
+          pendingSum += remaining;
+          hasPendingForMember = true;
+          memberChitsWithPending.push({
+            ...c,
+            pending: remaining,
+            paid: paidForChit,
+            reqAmount,
+          });
+        }
+      });
+
+      if (hasPendingForMember) {
+        dueCount++;
+        dueList.push({
+          ...m,
+          chits: memberChitsWithPending.length > 0 ? memberChitsWithPending : m.chits,
+        });
+      }
+    });
+
+    return { totalPendingAmount: pendingSum, dueMembersCount: dueCount, dueMembersList: dueList };
+  }, [activeMembers, payments, selectedMonth]);
 
   // Derive Today Collection
   const todayStr = new Date().toISOString().split('T')[0];
@@ -427,49 +514,49 @@ export default function Dashboard() {
       )}
 
       {/* DASHBOARD HERO HEADER WITH ACTION BUTTONS */}
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between border-b border-[#E5E5E1] pb-6">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between border-b border-[#E5E7EB] pb-6">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="flex h-2 w-2 rounded-full bg-[#2F6B4F]"></span>
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#2F5D50]">DASHBOARD</p>
+            <span className="flex h-2 w-2 rounded-full bg-[#285F52]"></span>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#285F52]">DASHBOARD</p>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-[#1C1C1A]">
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-[#111111]">
             Welcome back, Admin
           </h1>
-          <p className="text-xs font-medium text-[#6B6B67]">
-            Quick overview of your chit business • <strong className="text-[#1C1C1A]">{activeGroupsCount} Active Groups</strong> • <strong className="text-[#1C1C1A]">{totalMembersCount} Registered Members</strong>
+          <p className="text-xs font-medium text-[#667085]">
+            Quick overview of your chit business • <strong className="text-[#111111]">{activeGroupsCount} Active Groups</strong> • <strong className="text-[#111111]">{totalMembersCount} Registered Members</strong>
           </p>
         </div>
 
-        {/* QUICK ACTION BUTTONS (Section 3: Record Payment Primary, Others Outlined) */}
+        {/* QUICK ACTION BUTTONS */}
         <div className="flex flex-wrap items-center gap-3">
           <Button
             variant="outline"
             size="md"
-            className="gap-2 rounded-xl border-[#E5E5E1] bg-white text-[#1C1C1A] hover:bg-[#F7F7F5] font-bold shadow-xs cursor-pointer"
+            className="gap-2 rounded-xl border-[#E5E7EB] bg-white text-[#111111] hover:bg-[#F7F8F7] font-bold shadow-xs cursor-pointer"
             onClick={() => navigate('/members?action=add')}
           >
-            <UserPlus className="h-4 w-4 text-[#6B6B67]" />
+            <UserPlus className="h-4 w-4 text-[#667085]" />
             <span>Add Member</span>
           </Button>
 
           <Button
             variant="outline"
             size="md"
-            className="gap-2 rounded-xl border-[#E5E5E1] bg-white text-[#1C1C1A] hover:bg-[#F7F7F5] font-bold shadow-xs cursor-pointer"
+            className="gap-2 rounded-xl border-[#E5E7EB] bg-white text-[#111111] hover:bg-[#F7F8F7] font-bold shadow-xs cursor-pointer"
             onClick={() => setIsCreateChitOpen(true)}
           >
-            <Plus className="h-4 w-4 text-[#6B6B67]" />
+            <Plus className="h-4 w-4 text-[#667085]" />
             <span>Create Chit</span>
           </Button>
 
           <Button
             variant="outline"
             size="md"
-            className="gap-2 rounded-xl border-[#E5E5E1] bg-white text-[#1C1C1A] hover:bg-[#F7F7F5] font-bold shadow-xs cursor-pointer"
+            className="gap-2 rounded-xl border-[#E5E7EB] bg-white text-[#111111] hover:bg-[#F7F8F7] font-bold shadow-xs cursor-pointer"
             onClick={() => setIsStartAuctionOpen(true)}
           >
-            <Gavel className="h-4 w-4 text-[#6B6B67]" />
+            <Gavel className="h-4 w-4 text-[#667085]" />
             <span>Conduct Auction</span>
           </Button>
 
@@ -477,7 +564,7 @@ export default function Dashboard() {
           <Button
             variant="outline"
             size="md"
-            className="gap-2 rounded-xl border-[#2F5D50]/30 bg-[#EDF7F0] text-[#2F5D50] hover:bg-[#2F5D50] hover:text-white font-bold shadow-xs cursor-pointer transition-colors"
+            className="gap-2 rounded-xl border-[#BFD8D0] bg-[#EEF6F3] text-[#285F52] hover:bg-[#285F52] hover:text-white font-bold shadow-xs cursor-pointer transition-colors"
             onClick={() => setIsSaveImageOpen(true)}
           >
             <ImagePlus className="h-4 w-4" />
@@ -488,7 +575,7 @@ export default function Dashboard() {
           <Button
             variant="primary"
             size="md"
-            className="gap-2 rounded-xl bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold shadow-sm cursor-pointer"
+            className="gap-2 rounded-xl bg-[#285F52] hover:bg-[#214D43] text-white font-bold shadow-sm cursor-pointer"
             onClick={() => setIsRecordPaymentOpen(true)}
           >
             <Plus className="h-4 w-4" />
@@ -503,7 +590,7 @@ export default function Dashboard() {
           <div
             key={stat.title}
             onClick={stat.onClick}
-            className="group cursor-pointer rounded-2xl border border-[#E5E5E1] bg-white p-5 shadow-xs transition-all duration-200 hover:border-[#2F5D50]/40 active:scale-[0.99]"
+            className="group cursor-pointer rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-xs transition-all duration-200 hover:border-[#285F52]/40 active:scale-[0.99]"
           >
             <StatCard
               title={stat.title}
@@ -512,9 +599,9 @@ export default function Dashboard() {
               icon={stat.icon}
               badgeText={stat.badgeText}
               badgeColor={stat.badgeColor}
-              className="border-none bg-transparent p-0 shadow-none text-[#1C1C1A]"
+              className="border-none bg-transparent p-0 shadow-none text-[#111111]"
             />
-            <div className="mt-3 flex items-center justify-end text-[11px] font-bold text-[#2F5D50] opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="mt-3 flex items-center justify-end text-[11px] font-bold text-[#285F52] opacity-0 group-hover:opacity-100 transition-opacity">
               <span>Explore Section</span>
               <ArrowRight className="w-3.5 h-3.5 ml-1" />
             </div>
@@ -525,16 +612,16 @@ export default function Dashboard() {
       {/* DASHBOARD LOWER SECTIONS: PAYMENTS & PENDING */}
       <section className="grid gap-6 lg:grid-cols-2">
         {/* PANEL 1: RECENT PAYMENTS */}
-        <div className="rounded-2xl border border-[#E5E5E1] bg-white p-6 shadow-xs space-y-5 flex flex-col justify-between">
+        <div className="rounded-2xl border border-[#E5E7EB] bg-white p-6 shadow-xs space-y-5 flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between gap-3 pb-4 border-b border-[#E5E5E1]">
+            <div className="flex items-center justify-between gap-3 pb-4 border-b border-[#E5E7EB]">
               <div>
-                <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#2F5D50]">Collections Ledger</p>
-                <h2 className="mt-0.5 text-lg font-black text-[#1C1C1A]">Recent Payments</h2>
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#285F52]">Collections Ledger</p>
+                <h2 className="mt-0.5 text-lg font-black text-[#111111]">Recent Payments</h2>
               </div>
               <Button
                 variant="outline"
-                className="text-[11px] font-bold px-3 py-1.5 rounded-xl border-[#E5E5E1] bg-[#F7F7F5] text-[#1C1C1A] hover:bg-[#E5E5E1] cursor-pointer"
+                className="text-[11px] font-bold px-3 py-1.5 rounded-xl border-[#E5E7EB] bg-[#F7F8F7] text-[#111111] hover:bg-[#E5E7EB] cursor-pointer"
                 onClick={() => navigate('/payments')}
               >
                 View All
@@ -545,21 +632,21 @@ export default function Dashboard() {
               {recentPaymentsList.map((p) => (
                 <div
                   key={p.id}
-                  className="flex items-center justify-between p-3.5 rounded-xl bg-[#F7F7F5] border border-[#E5E5E1] transition-colors"
+                  className="flex items-center justify-between p-3.5 rounded-xl bg-[#F7F8F7] border border-[#E5E7EB] transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-[#2F5D50]/10 border border-[#2F5D50]/20 text-[#2F5D50] text-xs font-black flex items-center justify-center shrink-0">
+                    <div className="w-9 h-9 rounded-xl bg-[#EEF6F3] border border-[#BFD8D0] text-[#285F52] text-xs font-black flex items-center justify-center shrink-0">
                       {p.member ? p.member.slice(0, 2).toUpperCase() : 'RM'}
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-[#1C1C1A]">{p.member}</p>
-                      <p className="text-[10px] font-semibold text-[#6B6B67]">{p.group}</p>
+                      <p className="text-xs font-bold text-[#111111]">{p.member}</p>
+                      <p className="text-[10px] font-semibold text-[#667085]">{p.group}</p>
                     </div>
                   </div>
 
                   <div className="text-right">
-                    <p className="text-xs font-black text-[#2F6B4F]">+₹{(p.amount || 5000).toLocaleString('en-IN')}</p>
-                    <p className="text-[9px] font-medium text-[#959590]">{p.date || 'Today'}</p>
+                    <p className="text-xs font-black text-[#285F52]">+₹{(p.amount || 5000).toLocaleString('en-IN')}</p>
+                    <p className="text-[9px] font-medium text-[#98A2B3]">{p.date || 'Today'}</p>
                   </div>
                 </div>
               ))}
@@ -568,23 +655,23 @@ export default function Dashboard() {
 
           <button
             onClick={() => setIsRecordPaymentOpen(true)}
-            className="mt-4 w-full py-2.5 rounded-xl border border-[#2F5D50]/30 bg-[#2F5D50]/10 text-xs font-bold text-[#2F5D50] hover:bg-[#2F5D50]/20 transition-colors cursor-pointer"
+            className="mt-4 w-full py-2.5 rounded-xl border border-[#BFD8D0] bg-[#EEF6F3] text-xs font-bold text-[#285F52] hover:bg-[#285F52] hover:text-white transition-colors cursor-pointer"
           >
             + Record New Collection
           </button>
         </div>
 
         {/* PANEL 2: UPCOMING / PENDING PAYMENTS */}
-        <div className="rounded-2xl border border-[#E5E5E1] bg-white p-6 shadow-xs space-y-5 flex flex-col justify-between">
+        <div className="rounded-2xl border border-[#E5E7EB] bg-white p-6 shadow-xs space-y-5 flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between gap-3 pb-4 border-b border-[#E5E5E1]">
+            <div className="flex items-center justify-between gap-3 pb-4 border-b border-[#E5E7EB]">
               <div>
-                <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#B86B14]">Action Required</p>
-                <h2 className="mt-0.5 text-lg font-black text-[#1C1C1A]">Upcoming / Pending Payments</h2>
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#B7791F]">Action Required</p>
+                <h2 className="mt-0.5 text-lg font-black text-[#111111]">Upcoming / Pending Payments</h2>
               </div>
               <Button
                 variant="outline"
-                className="text-[11px] font-bold px-3 py-1.5 rounded-xl border-[#E5E5E1] bg-[#F7F7F5] text-[#1C1C1A] hover:bg-[#E5E5E1] cursor-pointer"
+                className="text-[11px] font-bold px-3 py-1.5 rounded-xl border-[#E5E7EB] bg-[#F7F8F7] text-[#111111] hover:bg-[#E5E7EB] cursor-pointer"
                 onClick={() => navigate('/pending-payments')}
               >
                 View Pending
@@ -599,28 +686,28 @@ export default function Dashboard() {
                 return (
                   <div
                     key={d.id}
-                    className="flex items-center justify-between p-3.5 rounded-xl bg-[#F7F7F5] border border-[#E5E5E1] transition-colors"
+                    className="flex items-center justify-between p-3.5 rounded-xl bg-[#F7F8F7] border border-[#E5E7EB] transition-colors"
                   >
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <p className="text-xs font-bold text-[#1C1C1A]">{d.member}</p>
+                        <p className="text-xs font-bold text-[#111111]">{d.member}</p>
                         {isAuctioned && (
-                          <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-[#FFF8E7] text-[#B7791F] border border-[#FDE68A] flex items-center gap-1">
                             🔨 Auctioned — {selectedMonth}
                           </span>
                         )}
                       </div>
-                      <p className="text-[10px] font-semibold text-[#6B6B67]">{d.group}</p>
+                      <p className="text-[10px] font-semibold text-[#667085]">{d.group}</p>
                     </div>
 
                     <div className="text-right flex items-center gap-2">
                       <div>
-                        <p className="text-xs font-black text-[#B86B14]">₹{(d.pending || 5000).toLocaleString('en-IN')}</p>
+                        <p className="text-xs font-black text-[#B7791F]">₹{(d.pending || 5000).toLocaleString('en-IN')}</p>
                         <span
                           className={`inline-block text-[9px] font-bold px-2 py-0.5 rounded-full mt-0.5 ${
                             d.dueColor === 'red'
-                              ? 'bg-[#FCEEEE] text-[#C53030] border border-[#F8B4B4]'
-                              : 'bg-[#FFF7E6] text-[#B86B14] border border-[#FCD34D]'
+                              ? 'bg-[#FEF3F2] text-[#B42318] border border-[#FECACA]'
+                              : 'bg-[#FFF8E7] text-[#B7791F] border border-[#FDE68A]'
                           }`}
                         >
                           {d.dueStatus}
@@ -631,8 +718,8 @@ export default function Dashboard() {
                         onClick={() => setAuctionConfirmTarget({ member: d, isAuctioned })}
                         className={`text-[10px] font-extrabold px-2 py-1 rounded-lg border transition-colors cursor-pointer ${
                           isAuctioned
-                            ? 'bg-[#EDF7F0] text-[#2F5D50] border-[#2F5D50]/30 hover:bg-[#2F5D50] hover:text-white'
-                            : 'bg-white text-[#6B6B67] border-[#E5E5E1] hover:bg-[#F7F7F5] hover:text-[#1C1C1A]'
+                            ? 'bg-[#EEF6F3] text-[#285F52] border-[#BFD8D0] hover:bg-[#285F52] hover:text-white'
+                            : 'bg-white text-[#667085] border-[#E5E7EB] hover:bg-[#F7F8F7] hover:text-[#111111]'
                         }`}
                         title="Toggle Auction Winner Status"
                       >
@@ -647,7 +734,7 @@ export default function Dashboard() {
 
           <button
             onClick={() => navigate('/whatsapp')}
-            className="mt-4 w-full py-2.5 rounded-xl border border-[#B86B14]/30 bg-[#FFF7E6] text-xs font-bold text-[#B86B14] hover:bg-[#FEEBC8] transition-colors cursor-pointer"
+            className="mt-4 w-full py-2.5 rounded-xl border border-[#B7791F]/30 bg-[#FFF8E7] text-xs font-bold text-[#B7791F] hover:bg-[#FEF3C7] transition-colors cursor-pointer"
           >
             Send Payment Reminders via WhatsApp
           </button>
@@ -656,14 +743,14 @@ export default function Dashboard() {
 
       {/* SECTION: RECENT COMPLETED AUCTIONS (Chit Lifecycle-based) */}
       <section className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#E5E5E1] pb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#E5E7EB] pb-3">
           <div>
             <div className="flex items-center gap-2">
-              <span className="flex h-2 w-2 rounded-full bg-[#2F5D50]"></span>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#2F5D50]">Auction History</p>
+              <span className="flex h-2 w-2 rounded-full bg-[#285F52]"></span>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#285F52]">Auction History</p>
             </div>
-            <h2 className="text-xl font-black text-[#1C1C1A]">Recent Completed Auctions</h2>
-            <p className="text-xs text-[#6B6B67] mt-0.5">
+            <h2 className="text-xl font-black text-[#111111]">Recent Completed Auctions</h2>
+            <p className="text-xs text-[#667085] mt-0.5">
               Auctions conducted and active across current chit group lifecycles.
             </p>
           </div>
@@ -671,21 +758,21 @@ export default function Dashboard() {
           <Button
             variant="outline"
             size="sm"
-            className="rounded-xl border-[#E5E5E1] bg-white text-[#1C1C1A] hover:bg-[#F7F7F5] font-bold text-xs gap-1.5 self-start sm:self-auto cursor-pointer"
+            className="rounded-xl border-[#E5E7EB] bg-white text-[#111111] hover:bg-[#F7F8F7] font-bold text-xs gap-1.5 self-start sm:self-auto cursor-pointer"
             onClick={() => setIsStartAuctionOpen(true)}
           >
-            <Gavel className="w-3.5 h-3.5 text-[#2F5D50]" />
+            <Gavel className="w-3.5 h-3.5 text-[#285F52]" />
             <span>Conduct Auction</span>
           </Button>
         </div>
 
         {recentCompletedAuctions.length === 0 ? (
-          <div className="p-8 text-center bg-white border border-[#E5E5E1] rounded-2xl space-y-1">
-            <div className="w-10 h-10 mx-auto rounded-full bg-[#EDF7F0] border border-[#2F5D50]/20 flex items-center justify-center text-[#2F5D50] mb-2">
+          <div className="p-8 text-center bg-white border border-[#E5E7EB] rounded-2xl space-y-1">
+            <div className="w-10 h-10 mx-auto rounded-full bg-[#EEF6F3] border border-[#BFD8D0] flex items-center justify-center text-[#285F52] mb-2">
               <CheckCircle2 className="w-5 h-5" />
             </div>
-            <p className="text-sm font-bold text-[#1C1C1A]">No active completed auctions</p>
-            <p className="text-xs text-[#6B6B67]">Completed auctions for active chit groups will appear here.</p>
+            <p className="text-sm font-bold text-[#111111]">No active completed auctions</p>
+            <p className="text-xs text-[#667085]">Completed auctions for active chit groups will appear here.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4.5">
@@ -705,13 +792,13 @@ export default function Dashboard() {
               return (
                 <div
                   key={auction.id}
-                  className="rounded-2xl border border-[#E5E5E1] bg-white p-5 shadow-xs space-y-4 hover:border-[#2F5D50]/40 transition-all flex flex-col justify-between"
+                  className="rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-xs space-y-4 hover:border-[#285F52]/40 transition-all flex flex-col justify-between"
                 >
                   <div className="space-y-3">
                     {/* STATUS BADGE & DELETE BUTTON */}
-                    <div className="flex items-center justify-between gap-2 border-b border-[#E5E5E1] pb-3">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#EDF7F0] border border-[#2F5D50]/30 text-[#2F5D50] text-[11px] font-black tracking-wide">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-[#2F5D50]" />
+                    <div className="flex items-center justify-between gap-2 border-b border-[#E5E7EB] pb-3">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#EEF6F3] border border-[#BFD8D0] text-[#285F52] text-[11px] font-black tracking-wide">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-[#285F52]" />
                         AUCTION COMPLETED
                       </span>
                       <button
@@ -724,7 +811,7 @@ export default function Dashboard() {
                           })
                         }
                         title="Delete Auction"
-                        className="flex h-7 w-7 items-center justify-center rounded-lg border border-transparent text-[#6B6B67] hover:border-red-200 hover:bg-red-50 hover:text-red-600 transition-colors cursor-pointer"
+                        className="flex h-7 w-7 items-center justify-center rounded-lg border border-transparent text-[#667085] hover:border-[#FECACA] hover:bg-[#FEF3F2] hover:text-[#B42318] transition-colors cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -733,29 +820,29 @@ export default function Dashboard() {
                     {/* WINNER & CHIT GROUP & CHIT MONTH */}
                     <div className="space-y-2">
                       <div>
-                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#6B6B67] block">
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#667085] block">
                           👤 Winner
                         </span>
-                        <p className="text-base font-black text-[#1C1C1A] truncate mt-0.5">
+                        <p className="text-base font-black text-[#111111] truncate mt-0.5">
                           {auction.memberName || auction.winnerName || 'Member'}
                         </p>
                       </div>
 
-                      <div className="flex items-center justify-between gap-2 pt-1 border-t border-[#E5E5E1]/60">
+                      <div className="flex items-center justify-between gap-2 pt-1 border-t border-[#E5E7EB]">
                         <div>
-                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#6B6B67] block">
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#667085] block">
                             🏷️ Chit Group
                           </span>
-                          <p className="text-xs font-black text-[#2F5D50] mt-0.5">
+                          <p className="text-xs font-black text-[#285F52] mt-0.5">
                             {fullGroupTitle}
                           </p>
                         </div>
 
                         <div className="text-right">
-                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#6B6B67] block">
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#667085] block">
                             Chit Month
                           </span>
-                          <span className="inline-block text-xs font-black text-[#1C1C1A] bg-[#F7F7F5] px-2 py-0.5 rounded-md border border-[#E5E5E1] mt-0.5">
+                          <span className="inline-block text-xs font-black text-[#111111] bg-[#F7F8F7] px-2 py-0.5 rounded-md border border-[#E5E7EB] mt-0.5">
                             {chitMonthInfo.display}
                           </span>
                         </div>
@@ -763,13 +850,13 @@ export default function Dashboard() {
                     </div>
 
                     {/* FINANCIAL METRICS GRID */}
-                    <div className="grid grid-cols-2 gap-2 p-3 bg-[#F7F7F5] rounded-xl border border-[#E5E5E1] text-xs">
+                    <div className="grid grid-cols-2 gap-2 p-3 bg-[#F7F8F7] rounded-xl border border-[#E5E7EB] text-xs">
                       {auction.bidAmount > 0 && (
                         <div>
-                          <span className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block">
+                          <span className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">
                             💰 Auction Amount
                           </span>
-                          <span className="font-black text-[#1C1C1A] text-xs">
+                          <span className="font-black text-[#111111] text-xs">
                             ₹{auction.bidAmount.toLocaleString('en-IN')}
                           </span>
                         </div>
@@ -777,21 +864,21 @@ export default function Dashboard() {
 
                       {auction.dividend > 0 && (
                         <div>
-                          <span className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block">
+                          <span className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">
                             Discount / Dividend
                           </span>
-                          <span className="font-black text-[#2F5D50] text-xs">
+                          <span className="font-black text-[#285F52] text-xs">
                             ₹{auction.dividend.toLocaleString('en-IN')}
                           </span>
                         </div>
                       )}
 
                       {auction.netPayout > 0 && (
-                        <div className="col-span-2 pt-1 border-t border-[#E5E5E1] flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider">
+                        <div className="col-span-2 pt-1 border-t border-[#E5E7EB] flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-[#667085] uppercase tracking-wider">
                             Net Prize Payout:
                           </span>
-                          <span className="font-black text-[#2F5D50] text-xs">
+                          <span className="font-black text-[#285F52] text-xs">
                             ₹{auction.netPayout.toLocaleString('en-IN')}
                           </span>
                         </div>
@@ -800,9 +887,9 @@ export default function Dashboard() {
                   </div>
 
                   {/* CONDUCTED DATE & ACTION */}
-                  <div className="flex items-center justify-between gap-2 pt-3 border-t border-[#E5E5E1] text-xs">
-                    <div className="flex items-center gap-1.5 text-[#6B6B67]">
-                      <Calendar className="w-3.5 h-3.5 text-[#6B6B67]" />
+                  <div className="flex items-center justify-between gap-2 pt-3 border-t border-[#E5E7EB] text-xs">
+                    <div className="flex items-center gap-1.5 text-[#667085]">
+                      <Calendar className="w-3.5 h-3.5 text-[#667085]" />
                       <span className="text-[11px] font-medium">
                         Conducted: {formatAuctionDateDisplay(auction.auctionDate || auction.completedAt || auction.updatedAt)}
                       </span>
@@ -818,7 +905,7 @@ export default function Dashboard() {
                           chitMonthDisplay: chitMonthInfo.display,
                         })
                       }
-                      className="inline-flex items-center gap-1 text-[11px] font-bold text-[#2F5D50] hover:text-[#24493F] transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-[#285F52] hover:text-[#214D43] transition-colors cursor-pointer"
                     >
                       <span>View Details</span>
                       <ArrowRight className="w-3 h-3" />
@@ -832,32 +919,32 @@ export default function Dashboard() {
       </section>
 
       {/* SECTION: RECENT WHATSAPP BROADCAST ENGINE */}
-      <section className="rounded-2xl border border-[#E5E5E1] bg-white p-6 shadow-xs space-y-5">
-        <div className="flex items-center justify-between gap-3 pb-4 border-b border-[#E5E5E1]">
+      <section className="rounded-2xl border border-[#E5E7EB] bg-white p-6 shadow-xs space-y-5">
+        <div className="flex items-center justify-between gap-3 pb-4 border-b border-[#E5E7EB]">
           <div>
-            <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#2F5D50]">Broadcast Engine</p>
-            <h2 className="mt-0.5 text-lg font-black text-[#1C1C1A]">WhatsApp Messages This Month</h2>
+            <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#285F52]">Broadcast Engine</p>
+            <h2 className="mt-0.5 text-lg font-black text-[#111111]">WhatsApp Messages This Month</h2>
           </div>
-          <MessageSquare className="h-5 w-5 text-[#2F5D50]" />
+          <MessageSquare className="h-5 w-5 text-[#285F52]" />
         </div>
 
         {/* REALTIME METRICS BADGES */}
         <div className="grid grid-cols-3 gap-2 text-center pt-1 font-sans">
-          <div className="p-2.5 bg-[#EDF7F0] border border-[#2F6B4F]/20 rounded-xl">
-            <span className="text-[9px] font-bold text-[#2F6B4F] uppercase block">Sent</span>
-            <span className="text-base font-black text-[#2F6B4F]">
+          <div className="p-2.5 bg-[#EEF6F3] border border-[#BFD8D0] rounded-xl">
+            <span className="text-[9px] font-bold text-[#285F52] uppercase block">Sent</span>
+            <span className="text-base font-black text-[#285F52]">
               {waLogs.filter((l) => l.status === 'Sent' || l.status === 'SENT').length}
             </span>
           </div>
-          <div className="p-2.5 bg-[#FFF7E6] border border-[#B86B14]/20 rounded-xl">
-            <span className="text-[9px] font-bold text-[#B86B14] uppercase block">Pending</span>
-            <span className="text-base font-black text-[#B86B14]">
+          <div className="p-2.5 bg-[#FFF8E7] border border-[#FDE68A] rounded-xl">
+            <span className="text-[9px] font-bold text-[#B7791F] uppercase block">Pending</span>
+            <span className="text-base font-black text-[#B7791F]">
               {dueMembersList.length}
             </span>
           </div>
-          <div className="p-2.5 bg-[#FCEEEE] border border-[#C53030]/20 rounded-xl">
-            <span className="text-[9px] font-bold text-[#C53030] uppercase block">Failed</span>
-            <span className="text-base font-black text-[#C53030]">
+          <div className="p-2.5 bg-[#FEF3F2] border border-[#FECACA] rounded-xl">
+            <span className="text-[9px] font-bold text-[#B42318] uppercase block">Failed</span>
+            <span className="text-base font-black text-[#B42318]">
               {waLogs.filter((l) => l.status === 'Failed' || l.status === 'FAILED').length}
             </span>
           </div>
@@ -868,18 +955,18 @@ export default function Dashboard() {
             waLogs.slice(0, 3).map((wa) => (
               <div
                 key={wa.id}
-                className="p-3.5 rounded-xl bg-[#F7F7F5] border border-[#E5E5E1] space-y-1.5"
+                className="p-3.5 rounded-xl bg-[#F7F8F7] border border-[#E5E7EB] space-y-1.5"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className={`flex h-2 w-2 rounded-full ${wa.status === 'Sent' || wa.status === 'SENT' ? 'bg-[#2F6B4F]' : 'bg-[#C53030]'}`}></span>
-                    <p className="text-xs font-bold text-[#1C1C1A] truncate max-w-[150px]">{wa.memberName}</p>
+                    <span className={`flex h-2 w-2 rounded-full ${wa.status === 'Sent' || wa.status === 'SENT' ? 'bg-[#285F52]' : 'bg-[#B42318]'}`}></span>
+                    <p className="text-xs font-bold text-[#111111] truncate max-w-[150px]">{wa.memberName}</p>
                   </div>
-                  <span className="text-[10px] font-semibold text-[#6B6B67]">Group {wa.chitGroupId}</span>
+                  <span className="text-[10px] font-semibold text-[#667085]">Group {wa.chitGroupId}</span>
                 </div>
 
-                <div className="flex items-center justify-between text-[10px] text-[#6B6B67] pt-1 border-t border-[#E5E5E1]">
-                  <span className="font-semibold text-[#2F5D50]">+{wa.phoneNumber}</span>
+                <div className="flex items-center justify-between text-[10px] text-[#667085] pt-1 border-t border-[#E5E7EB]">
+                  <span className="font-semibold text-[#285F52]">+{wa.phoneNumber}</span>
                   <span>{wa.sentAt ? new Date(wa.sentAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'Recent'}</span>
                 </div>
               </div>
@@ -888,18 +975,18 @@ export default function Dashboard() {
             recentWhatsAppActivity.map((wa) => (
               <div
                 key={wa.id}
-                className="p-3.5 rounded-xl bg-[#F7F7F5] border border-[#E5E5E1] space-y-1.5"
+                className="p-3.5 rounded-xl bg-[#F7F8F7] border border-[#E5E7EB] space-y-1.5"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="flex h-2 w-2 rounded-full bg-[#2F6B4F]"></span>
-                    <p className="text-xs font-bold text-[#1C1C1A]">{wa.type}</p>
+                    <span className="flex h-2 w-2 rounded-full bg-[#285F52]"></span>
+                    <p className="text-xs font-bold text-[#111111]">{wa.type}</p>
                   </div>
-                  <span className="text-[10px] font-semibold text-[#6B6B67]">{wa.group}</span>
+                  <span className="text-[10px] font-semibold text-[#667085]">{wa.group}</span>
                 </div>
 
-                <div className="flex items-center justify-between text-[10px] text-[#6B6B67] pt-1 border-t border-[#E5E5E1]">
-                  <span className="font-semibold text-[#2F5D50]">{wa.count} Members Broadcast</span>
+                <div className="flex items-center justify-between text-[10px] text-[#667085] pt-1 border-t border-[#E5E7EB]">
+                  <span className="font-semibold text-[#285F52]">{wa.count} Members Broadcast</span>
                   <span>{wa.date}</span>
                 </div>
               </div>
@@ -909,7 +996,7 @@ export default function Dashboard() {
 
         <Button
           variant="primary"
-          className="mt-4 w-full justify-center gap-2 rounded-xl py-3 text-xs font-bold bg-[#2F5D50] hover:bg-[#24493F] text-white cursor-pointer shadow-xs"
+          className="mt-4 w-full justify-center gap-2 rounded-xl py-3 text-xs font-bold bg-[#285F52] hover:bg-[#214D43] text-white cursor-pointer shadow-xs"
           onClick={() => navigate('/whatsapp')}
         >
           <Send className="h-4 w-4" />
@@ -928,11 +1015,11 @@ export default function Dashboard() {
       />
 
       {/* QUICK ADMINISTRATIVE SHORTCUTS */}
-      <section className="rounded-2xl border border-[#E5E5E1] bg-white p-6 shadow-xs">
-        <div className="mb-5 flex items-center justify-between gap-4 border-b border-[#E5E5E1] pb-4">
+      <section className="rounded-2xl border border-[#E5E7EB] bg-white p-6 shadow-xs">
+        <div className="mb-5 flex items-center justify-between gap-4 border-b border-[#E5E7EB] pb-4">
           <div>
-            <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#6B6B67]">Quick Tools</p>
-            <h2 className="mt-0.5 text-xl font-bold text-[#1C1C1A]">Administrative Shortcuts</h2>
+            <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-[#667085]">Quick Tools</p>
+            <h2 className="mt-0.5 text-xl font-bold text-[#111111]">Administrative Shortcuts</h2>
           </div>
         </div>
 
@@ -940,54 +1027,54 @@ export default function Dashboard() {
           <button
             type="button"
             onClick={() => setIsSaveImageOpen(true)}
-            className="group flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2.5 text-xs font-bold text-[#1C1C1A] transition-all duration-150 hover:border-[#2F5D50]/40 hover:bg-white cursor-pointer shadow-2xs"
+            className="group flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-2.5 text-xs font-bold text-[#111111] transition-all duration-150 hover:border-[#285F52]/40 hover:bg-white cursor-pointer shadow-2xs"
           >
-            <ImagePlus className="h-4 w-4 text-[#2F5D50] transition-transform group-hover:scale-110" />
+            <ImagePlus className="h-4 w-4 text-[#285F52] transition-transform group-hover:scale-110" />
             <span>Save Image</span>
           </button>
 
           <button
             type="button"
             onClick={() => setIsCreateChitOpen(true)}
-            className="group flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2.5 text-xs font-bold text-[#1C1C1A] transition-all duration-150 hover:border-[#2F5D50]/40 hover:bg-white cursor-pointer shadow-2xs"
+            className="group flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-2.5 text-xs font-bold text-[#111111] transition-all duration-150 hover:border-[#285F52]/40 hover:bg-white cursor-pointer shadow-2xs"
           >
-            <Layers className="h-4 w-4 text-sky-600 transition-transform group-hover:scale-110" />
+            <Layers className="h-4 w-4 text-[#285F52] transition-transform group-hover:scale-110" />
             <span>Create Chit</span>
           </button>
 
           <button
             type="button"
             onClick={() => setIsRecordPaymentOpen(true)}
-            className="group flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2.5 text-xs font-bold text-[#1C1C1A] transition-all duration-150 hover:border-[#2F5D50]/40 hover:bg-white cursor-pointer shadow-2xs"
+            className="group flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-2.5 text-xs font-bold text-[#111111] transition-all duration-150 hover:border-[#285F52]/40 hover:bg-white cursor-pointer shadow-2xs"
           >
-            <IndianRupee className="h-4 w-4 text-[#2F5D50] transition-transform group-hover:scale-110" />
+            <IndianRupee className="h-4 w-4 text-[#285F52] transition-transform group-hover:scale-110" />
             <span>Record Payment</span>
           </button>
 
           <button
             type="button"
             onClick={() => navigate('/whatsapp')}
-            className="group flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2.5 text-xs font-bold text-[#1C1C1A] transition-all duration-150 hover:border-[#2F5D50]/40 hover:bg-white cursor-pointer shadow-2xs"
+            className="group flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-2.5 text-xs font-bold text-[#111111] transition-all duration-150 hover:border-[#285F52]/40 hover:bg-white cursor-pointer shadow-2xs"
           >
-            <Send className="h-4 w-4 text-emerald-600 transition-transform group-hover:scale-110" />
+            <Send className="h-4 w-4 text-[#285F52] transition-transform group-hover:scale-110" />
             <span>WhatsApp</span>
           </button>
 
           <button
             type="button"
             onClick={() => navigate('/history')}
-            className="group flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2.5 text-xs font-bold text-[#1C1C1A] transition-all duration-150 hover:border-[#2F5D50]/40 hover:bg-white cursor-pointer shadow-2xs"
+            className="group flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-2.5 text-xs font-bold text-[#111111] transition-all duration-150 hover:border-[#285F52]/40 hover:bg-white cursor-pointer shadow-2xs"
           >
-            <History className="h-4 w-4 text-purple-600 transition-transform group-hover:scale-110" />
+            <History className="h-4 w-4 text-[#667085] transition-transform group-hover:scale-110" />
             <span>View History</span>
           </button>
 
           <button
             type="button"
             onClick={() => navigate('/settings')}
-            className="group flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2.5 text-xs font-bold text-[#1C1C1A] transition-all duration-150 hover:border-[#2F5D50]/40 hover:bg-white cursor-pointer shadow-2xs"
+            className="group flex min-h-[52px] items-center justify-center gap-2 rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-2.5 text-xs font-bold text-[#111111] transition-all duration-150 hover:border-[#285F52]/40 hover:bg-white cursor-pointer shadow-2xs"
           >
-            <FileSpreadsheet className="h-4 w-4 text-amber-600 transition-transform group-hover:scale-110" />
+            <FileSpreadsheet className="h-4 w-4 text-[#667085] transition-transform group-hover:scale-110" />
             <span>Import Excel</span>
           </button>
         </div>
@@ -1042,32 +1129,32 @@ export default function Dashboard() {
       >
         <div className="space-y-4 font-sans text-xs">
           {deletingImageDoc && (
-            <div className="p-3 bg-[#F7F7F5] rounded-xl border border-[#E5E5E1] flex items-center gap-3">
+            <div className="p-3 bg-[#F7F8F7] rounded-xl border border-[#E5E7EB] flex items-center gap-3">
               <img
                 src={deletingImageDoc.imageUrl}
                 alt="Thumbnail"
-                className="w-12 h-12 rounded-lg object-cover bg-slate-900 shrink-0 border border-[#E5E5E1]"
+                className="w-12 h-12 rounded-lg object-cover bg-black shrink-0 border border-[#E5E7EB]"
               />
               <div className="min-w-0 flex-1">
-                <p className="font-bold text-[#1C1C1A] truncate">
+                <p className="font-bold text-[#111111] truncate">
                   {deletingImageDoc.title || deletingImageDoc.fileName || 'Untitled Image'}
                 </p>
-                <p className="text-[10px] text-[#6B6B67] truncate">{deletingImageDoc.fileName}</p>
+                <p className="text-[10px] text-[#667085] truncate">{deletingImageDoc.fileName}</p>
               </div>
             </div>
           )}
 
-          <p className="text-[#1C1C1A] leading-relaxed">
+          <p className="text-[#111111] leading-relaxed">
             Are you sure you want to permanently delete this image? This action cannot be undone.
           </p>
 
-          <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E5E1]">
+          <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E7EB]">
             <Button
               variant="secondary"
               size="sm"
               disabled={isDeletingImage}
               onClick={() => setDeletingImageDoc(null)}
-              className="rounded-xl border-[#E5E5E1] bg-[#F7F7F5] text-[#1C1C1A] hover:bg-[#E5E5E1]"
+              className="rounded-xl border-[#E5E7EB] bg-[#F7F8F7] text-[#111111] hover:bg-[#E5E7EB]"
             >
               Cancel
             </Button>
@@ -1076,7 +1163,7 @@ export default function Dashboard() {
               size="sm"
               disabled={isDeletingImage}
               onClick={handleConfirmDeleteImage}
-              className="gap-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold cursor-pointer"
+              className="gap-1.5 rounded-xl bg-[#B42318] hover:bg-[#911c13] text-white font-bold cursor-pointer"
             >
               {isDeletingImage ? 'Deleting image...' : 'Delete Permanently'}
             </Button>
@@ -1093,7 +1180,7 @@ export default function Dashboard() {
         maxWidth="max-w-md"
       >
         <div className="space-y-4">
-          <p className="text-xs text-[#1C1C1A] leading-relaxed">
+          <p className="text-xs text-[#111111] leading-relaxed">
             {auctionConfirmTarget?.isAuctioned ? (
               <>Remove auction status for <strong>{auctionConfirmTarget?.member?.member}</strong> for <strong>{selectedMonth}</strong>?</>
             ) : (
@@ -1101,11 +1188,11 @@ export default function Dashboard() {
             )}
           </p>
 
-          <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E5E1]">
+          <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E7EB]">
             <Button variant="secondary" size="sm" onClick={() => setAuctionConfirmTarget(null)}>
               Cancel
             </Button>
-            <Button variant="primary" size="sm" className="bg-[#2F5D50] text-white" onClick={handleConfirmToggleAuction}>
+            <Button variant="primary" size="sm" className="bg-[#285F52] hover:bg-[#214D43] text-white" onClick={handleConfirmToggleAuction}>
               Confirm
             </Button>
           </div>
@@ -1122,67 +1209,67 @@ export default function Dashboard() {
           maxWidth="max-w-md"
         >
           <div className="space-y-4 text-xs font-sans">
-            <div className="p-4 bg-[#EDF7F0] border border-[#2F5D50]/20 rounded-2xl space-y-2">
+            <div className="p-4 bg-[#EEF6F3] border border-[#BFD8D0] rounded-2xl space-y-2">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 text-[#2F5D50]" />
-                <span className="text-xs font-black text-[#2F5D50] uppercase tracking-wider">
+                <CheckCircle2 className="w-5 h-5 text-[#285F52]" />
+                <span className="text-xs font-black text-[#285F52] uppercase tracking-wider">
                   Verified Completed Auction
                 </span>
               </div>
-              <p className="text-base font-black text-[#1C1C1A]">
+              <p className="text-base font-black text-[#111111]">
                 {selectedAuctionDetails.memberName || selectedAuctionDetails.winnerName || 'Member'}
               </p>
-              <p className="text-xs font-bold text-[#2F5D50]">
+              <p className="text-xs font-bold text-[#285F52]">
                 {selectedAuctionDetails.groupTitle} • Round {selectedAuctionDetails.roundNumber || 1}
               </p>
             </div>
 
-            <div className="space-y-2.5 bg-[#F7F7F5] border border-[#E5E5E1] p-4 rounded-xl">
+            <div className="space-y-2.5 bg-[#F7F8F7] border border-[#E5E7EB] p-4 rounded-xl">
               <div className="flex justify-between">
-                <span className="text-[#6B6B67] font-semibold">Total Chit Value:</span>
-                <span className="font-bold text-[#1C1C1A]">₹{selectedAuctionDetails.totalChitValue?.toLocaleString('en-IN')}</span>
+                <span className="text-[#667085] font-semibold">Total Chit Value:</span>
+                <span className="font-bold text-[#111111]">₹{selectedAuctionDetails.totalChitValue?.toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#6B6B67] font-semibold">Chit Month:</span>
-                <span className="font-bold text-[#1C1C1A]">{selectedAuctionDetails.chitMonthDisplay || 'Active'}</span>
+                <span className="text-[#667085] font-semibold">Chit Month:</span>
+                <span className="font-bold text-[#111111]">{selectedAuctionDetails.chitMonthDisplay || 'Active'}</span>
               </div>
               {selectedAuctionDetails.bidAmount > 0 && (
                 <div className="flex justify-between">
-                  <span className="text-[#6B6B67] font-semibold">Bid Discount Amount:</span>
-                  <span className="font-bold text-[#1C1C1A]">₹{selectedAuctionDetails.bidAmount?.toLocaleString('en-IN')}</span>
+                  <span className="text-[#667085] font-semibold">Bid Discount Amount:</span>
+                  <span className="font-bold text-[#111111]">₹{selectedAuctionDetails.bidAmount?.toLocaleString('en-IN')}</span>
                 </div>
               )}
               {selectedAuctionDetails.dividend > 0 && (
                 <div className="flex justify-between">
-                  <span className="text-[#6B6B67] font-semibold">Dividend / Member:</span>
-                  <span className="font-bold text-[#2F5D50]">₹{selectedAuctionDetails.dividend?.toLocaleString('en-IN')}</span>
+                  <span className="text-[#667085] font-semibold">Dividend / Member:</span>
+                  <span className="font-bold text-[#285F52]">₹{selectedAuctionDetails.dividend?.toLocaleString('en-IN')}</span>
                 </div>
               )}
               {selectedAuctionDetails.netPayout > 0 && (
-                <div className="flex justify-between pt-2 border-t border-[#E5E5E1]">
-                  <span className="text-[#1C1C1A] font-bold">Net Prize Payout:</span>
-                  <span className="font-black text-[#2F5D50] text-sm">
+                <div className="flex justify-between pt-2 border-t border-[#E5E7EB]">
+                  <span className="text-[#111111] font-bold">Net Prize Payout:</span>
+                  <span className="font-black text-[#285F52] text-sm">
                     ₹{selectedAuctionDetails.netPayout?.toLocaleString('en-IN')}
                   </span>
                 </div>
               )}
-              <div className="flex justify-between pt-1 border-t border-[#E5E5E1] text-[11px]">
-                <span className="text-[#6B6B67]">Conducted On:</span>
-                <span className="font-medium text-[#1C1C1A]">
+              <div className="flex justify-between pt-1 border-t border-[#E5E7EB] text-[11px]">
+                <span className="text-[#667085]">Conducted On:</span>
+                <span className="font-medium text-[#111111]">
                   {formatAuctionDateDisplay(selectedAuctionDetails.auctionDate || selectedAuctionDetails.completedAt || selectedAuctionDetails.updatedAt)}
                 </span>
               </div>
               <div className="flex justify-between text-[11px]">
-                <span className="text-[#6B6B67]">Billing Cycle:</span>
-                <span className="font-medium text-[#1C1C1A]">{selectedAuctionDetails.billingMonth}</span>
+                <span className="text-[#667085]">Billing Cycle:</span>
+                <span className="font-medium text-[#111111]">{selectedAuctionDetails.billingMonth}</span>
               </div>
             </div>
 
-            <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#E5E5E1]">
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#E5E7EB]">
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-1 rounded-xl text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300 font-bold"
+                className="gap-1 rounded-xl text-[#B42318] border-[#FECACA] hover:bg-[#FEF3F2] font-bold"
                 onClick={() => {
                   setDeletingAuctionTarget(selectedAuctionDetails);
                 }}
@@ -1202,7 +1289,7 @@ export default function Dashboard() {
                 <Button
                   variant="primary"
                   size="sm"
-                  className="bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold"
+                  className="bg-[#285F52] hover:bg-[#214D43] text-white font-bold"
                   onClick={() => {
                     setSelectedAuctionDetails(null);
                     navigate('/chits');
@@ -1226,26 +1313,26 @@ export default function Dashboard() {
           maxWidth="max-w-md"
         >
           <div className="space-y-4 font-sans text-xs">
-            <div className="p-3 bg-[#FFF7E6] border border-[#B86B14]/30 rounded-xl space-y-1">
-              <p className="font-bold text-[#1C1C1A]">
+            <div className="p-3 bg-[#FFF8E7] border border-[#FDE68A] rounded-xl space-y-1">
+              <p className="font-bold text-[#111111]">
                 Winner: {deletingAuctionTarget.memberName || 'Member'}
               </p>
-              <p className="text-[11px] text-[#6B6B67]">
+              <p className="text-[11px] text-[#667085]">
                 Group: {deletingAuctionTarget.groupTitle || `Group ${deletingAuctionTarget.groupId}`} • Round {deletingAuctionTarget.roundNumber || 1}
               </p>
             </div>
 
-            <p className="text-[#1C1C1A] leading-relaxed">
+            <p className="text-[#111111] leading-relaxed">
               The auction will be removed from the active auction view, but its complete record will remain in Auction History.
             </p>
 
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#E5E5E1]">
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#E5E7EB]">
               <Button
                 variant="secondary"
                 size="sm"
                 disabled={isDeletingAuction}
                 onClick={() => setDeletingAuctionTarget(null)}
-                className="rounded-xl border-[#E5E5E1]"
+                className="rounded-xl border-[#E5E7EB]"
               >
                 Cancel
               </Button>

@@ -361,16 +361,32 @@ export default function Members() {
     const activeMembers = members.filter((m) => m.status !== 'archived');
     const groupMap = new Map();
 
+    // 1. First pass: Seed groupMap from chits collection for targetVal
+    (chits || []).forEach((c) => {
+      const val = Number(c.totalChitValue || c.totalValue || c.chitValue || 100000);
+      if (val !== targetVal) return;
+      const grpId = String(c.groupId || c.group || 'I').trim().toUpperCase();
+      if (!groupMap.has(grpId)) {
+        groupMap.set(grpId, {
+          groupId: grpId,
+          chitValue: val,
+          monthlyBase: getGroupMonthlyBaseAmount(val, grpId),
+          memberCount: 0,
+          activeHoldings: 0,
+          membersList: [],
+          totalDueAmount: 0,
+        });
+      }
+    });
+
+    // 2. Second pass: Count active subscriptions across all members belonging to each group
     activeMembers.forEach((m) => {
       const activeChits = getActiveChits(m);
-      const isMulti = m.classification === 'MULTIPLE' || activeChits.length > 1;
-      if (isMulti) return; // Multi-Chit members stay separate
-
       activeChits.forEach((c) => {
-        const val = Number(c.totalChitValue || 100000);
+        const val = Number(c.totalChitValue || c.totalValue || c.chitValue || 100000);
         if (val !== targetVal) return;
 
-        const grpId = String(c.groupId || 'I');
+        const grpId = String(c.groupId || c.group || 'I').trim().toUpperCase();
         const qty = Number(c.quantity || 1);
         const baseMonthly = getGroupMonthlyBaseAmount(val, grpId);
 
@@ -395,7 +411,7 @@ export default function Members() {
     });
 
     return Array.from(groupMap.values()).sort((a, b) => compareGroupIds(a.groupId, b.groupId));
-  }, [members, activeCategory, groupPaymentSettings]);
+  }, [members, chits, activeCategory, groupPaymentSettings]);
 
   // Filtered members list for search & filters
   const filteredMembersList = useMemo(() => {
@@ -404,25 +420,38 @@ export default function Members() {
       if (filterStatus === 'active' && m.status === 'archived') return false;
       if (filterStatus === 'archived' && m.status !== 'archived') return false;
 
-      // Classification filter
+      // Classification filter (explicitly set via filter dropdown)
       const activeChits = getActiveChits(m);
       const isMulti = m.classification === 'MULTIPLE' || activeChits.length > 1;
       if (filterClassification === 'single' && isMulti) return false;
       if (filterClassification === 'multiple' && !isMulti) return false;
 
-      // Category tab filtering
-      if (activeCategory === 'multiple') {
-        if (!isMulti) return false;
-      } else {
-        if (isMulti) return false;
-        const targetVal = Number(activeCategory);
-        const hasMatchingCategory = activeChits.some((c) => Number(c.totalChitValue || 100000) === targetVal);
-        if (!hasMatchingCategory) return false;
+      // SPECIFIC GROUP FILTERING (When selectedGroupId is set from View Members or Group Card)
+      if (selectedGroupId) {
+        const targetGrp = String(selectedGroupId).trim().toUpperCase();
+        const targetCat = activeCategory && activeCategory !== 'multiple' ? Number(activeCategory) : null;
 
-        // Group filtering inside single chit
-        if (selectedGroupId) {
-          const hasGroup = activeChits.some((c) => String(c.groupId) === String(selectedGroupId));
-          if (!hasGroup) return false;
+        const belongsToSelectedGroup = activeChits.some((c) => {
+          const cGrp = String(c.groupId || c.group || '').trim().toUpperCase();
+          const matchGrp = cGrp === targetGrp || String(c.id || '').trim().toUpperCase() === targetGrp;
+          if (!matchGrp) return false;
+
+          if (targetCat) {
+            const cVal = Number(c.totalChitValue || c.totalValue || c.chitValue || 100000);
+            return cVal === targetCat;
+          }
+          return true;
+        });
+
+        if (!belongsToSelectedGroup) return false;
+      } else {
+        // CATEGORY TAB FILTERING (When no specific group is selected)
+        if (activeCategory === 'multiple') {
+          if (!isMulti) return false;
+        } else if (activeCategory) {
+          const targetVal = Number(activeCategory);
+          const hasMatchingCategory = activeChits.some((c) => Number(c.totalChitValue || c.totalValue || c.chitValue || 100000) === targetVal);
+          if (!hasMatchingCategory) return false;
         }
       }
 
@@ -949,13 +978,13 @@ export default function Members() {
       {/* ─────────────────────────────────────────────────────────────────────── */}
       {/* 1. HEADER & QUICK TOOLBAR */}
       {/* ─────────────────────────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center justify-between border-b border-[#E5E5E1] pb-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center justify-between border-b border-[#E5E7EB] pb-5">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="flex h-2 w-2 rounded-full bg-[#2F5D50] animate-pulse"></span>
-            <h1 className="text-2xl md:text-3xl font-black text-[#1C1C1A] tracking-tight">Members Directory</h1>
+            <span className="flex h-2 w-2 rounded-full bg-[#285F52] animate-pulse"></span>
+            <h1 className="text-2xl md:text-3xl font-black text-[#111111] tracking-tight">Members Directory</h1>
           </div>
-          <p className="text-xs font-medium text-[#6B6B67]">
+          <p className="text-xs font-medium text-[#667085]">
             Manage members, chit subscriptions, payments and account balances.
           </p>
         </div>
@@ -964,15 +993,15 @@ export default function Members() {
           <button
             onClick={loadData}
             title="Refresh Firestore Data"
-            className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#E5E5E1] bg-white text-[#1C1C1A] hover:bg-[#F7F7F5] cursor-pointer shadow-xs transition-colors"
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#E5E7EB] bg-white text-[#111111] hover:bg-[#F7F8F7] cursor-pointer shadow-xs transition-colors"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-[#2F5D50]' : 'text-[#6B6B67]'}`} />
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-[#285F52]' : 'text-[#667085]'}`} />
           </button>
 
           <Button
             variant="primary"
             size="md"
-            className="gap-2 rounded-xl bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold shadow-xs cursor-pointer"
+            className="gap-2 rounded-xl bg-[#285F52] hover:bg-[#214D43] text-white font-bold shadow-xs cursor-pointer"
             onClick={() => setIsAddModalOpen(true)}
           >
             <Plus className="w-4 h-4" />
@@ -983,12 +1012,12 @@ export default function Members() {
 
       {/* ERROR CARD */}
       {error && (
-        <div className="p-4 bg-[#FCEEEE] border border-[#F8B4B4] rounded-xl flex items-center justify-between text-xs text-[#C53030] font-bold shadow-xs">
+        <div className="p-4 bg-[#FEF3F2] border border-[#FECACA] rounded-xl flex items-center justify-between text-xs text-[#B42318] font-bold shadow-xs">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-[#C53030] shrink-0" />
+            <AlertTriangle className="w-4 h-4 text-[#B42318] shrink-0" />
             <span>{error}</span>
           </div>
-          <Button variant="outline" size="sm" onClick={loadData} className="rounded-xl text-xs bg-white text-[#1C1C1A] border-[#E5E5E1]">
+          <Button variant="outline" size="sm" onClick={loadData} className="rounded-xl text-xs bg-white text-[#111111] border-[#E5E7EB]">
             Retry
           </Button>
         </div>
@@ -1006,21 +1035,21 @@ export default function Members() {
           }}
           className={`group cursor-pointer rounded-2xl border p-4.5 transition-all duration-200 shadow-xs ${
             activeCategory === '100000'
-              ? 'bg-[#EDF7F0] text-[#1C1C1A] border-[#2F5D50] ring-1 ring-[#2F5D50]'
-              : 'bg-white text-[#1C1C1A] border-[#E5E5E1] hover:border-[#2F5D50]/40 hover:bg-[#F7F7F5]'
+              ? 'bg-[#EEF6F3] text-[#111111] border-[#BFD8D0] ring-1 ring-[#285F52]'
+              : 'bg-white text-[#111111] border-[#E5E7EB] hover:border-[#285F52]/40 hover:bg-[#F7F8F7]'
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className={`text-[10px] font-black uppercase tracking-wider ${activeCategory === '100000' ? 'text-[#2F5D50]' : 'text-[#6B6B67]'}`}>
+            <span className={`text-[10px] font-black uppercase tracking-wider ${activeCategory === '100000' ? 'text-[#285F52]' : 'text-[#667085]'}`}>
               Single Chit Category
             </span>
-            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeCategory === '100000' ? 'bg-[#2F5D50]/15 text-[#2F5D50]' : 'bg-[#F7F7F5] text-[#6B6B67]'}`}>
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeCategory === '100000' ? 'bg-[#EEF6F3] text-[#285F52]' : 'bg-[#F7F8F7] text-[#667085]'}`}>
               <IndianRupee className="w-4 h-4" />
             </div>
           </div>
-          <h3 className="text-lg md:text-xl font-black mt-2 text-[#1C1C1A]">1 Lakh Chits</h3>
-          <div className="flex items-center justify-between text-xs mt-2.5 pt-2.5 border-t border-[#E5E5E1]">
-            <span className="font-bold text-[#6B6B67]">
+          <h3 className="text-lg md:text-xl font-black mt-2 text-[#111111]">1 Lakh Chits</h3>
+          <div className="flex items-center justify-between text-xs mt-2.5 pt-2.5 border-t border-[#E5E7EB]">
+            <span className="font-bold text-[#667085]">
               13 Groups
             </span>
             <Badge variant={activeCategory === '100000' ? 'success' : 'neutral'} className="text-[10px] font-bold">
@@ -1037,21 +1066,21 @@ export default function Members() {
           }}
           className={`group cursor-pointer rounded-2xl border p-4.5 transition-all duration-200 shadow-xs ${
             activeCategory === '200000'
-              ? 'bg-[#EDF7F0] text-[#1C1C1A] border-[#2F5D50] ring-1 ring-[#2F5D50]'
-              : 'bg-white text-[#1C1C1A] border-[#E5E5E1] hover:border-[#2F5D50]/40 hover:bg-[#F7F7F5]'
+              ? 'bg-[#EEF6F3] text-[#111111] border-[#BFD8D0] ring-1 ring-[#285F52]'
+              : 'bg-white text-[#111111] border-[#E5E7EB] hover:border-[#285F52]/40 hover:bg-[#F7F8F7]'
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className={`text-[10px] font-black uppercase tracking-wider ${activeCategory === '200000' ? 'text-[#2F5D50]' : 'text-[#6B6B67]'}`}>
+            <span className={`text-[10px] font-black uppercase tracking-wider ${activeCategory === '200000' ? 'text-[#285F52]' : 'text-[#667085]'}`}>
               Single Chit Category
             </span>
-            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeCategory === '200000' ? 'bg-[#2F5D50]/15 text-[#2F5D50]' : 'bg-[#F7F7F5] text-[#6B6B67]'}`}>
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeCategory === '200000' ? 'bg-[#EEF6F3] text-[#285F52]' : 'bg-[#F7F8F7] text-[#667085]'}`}>
               <IndianRupee className="w-4 h-4" />
             </div>
           </div>
-          <h3 className="text-lg md:text-xl font-black mt-2 text-[#1C1C1A]">2 Lakh Chits</h3>
-          <div className="flex items-center justify-between text-xs mt-2.5 pt-2.5 border-t border-[#E5E5E1]">
-            <span className="font-bold text-[#6B6B67]">
+          <h3 className="text-lg md:text-xl font-black mt-2 text-[#111111]">2 Lakh Chits</h3>
+          <div className="flex items-center justify-between text-xs mt-2.5 pt-2.5 border-t border-[#E5E7EB]">
+            <span className="font-bold text-[#667085]">
               6 Groups
             </span>
             <Badge variant={activeCategory === '200000' ? 'success' : 'neutral'} className="text-[10px] font-bold">
@@ -1068,21 +1097,21 @@ export default function Members() {
           }}
           className={`group cursor-pointer rounded-2xl border p-4.5 transition-all duration-200 shadow-xs ${
             activeCategory === '500000'
-              ? 'bg-[#EDF7F0] text-[#1C1C1A] border-[#2F5D50] ring-1 ring-[#2F5D50]'
-              : 'bg-white text-[#1C1C1A] border-[#E5E5E1] hover:border-[#2F5D50]/40 hover:bg-[#F7F7F5]'
+              ? 'bg-[#EEF6F3] text-[#111111] border-[#BFD8D0] ring-1 ring-[#285F52]'
+              : 'bg-white text-[#111111] border-[#E5E7EB] hover:border-[#285F52]/40 hover:bg-[#F7F8F7]'
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className={`text-[10px] font-black uppercase tracking-wider ${activeCategory === '500000' ? 'text-[#2F5D50]' : 'text-[#6B6B67]'}`}>
+            <span className={`text-[10px] font-black uppercase tracking-wider ${activeCategory === '500000' ? 'text-[#285F52]' : 'text-[#667085]'}`}>
               Single Chit Category
             </span>
-            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeCategory === '500000' ? 'bg-[#2F5D50]/15 text-[#2F5D50]' : 'bg-[#F7F7F5] text-[#6B6B67]'}`}>
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeCategory === '500000' ? 'bg-[#EEF6F3] text-[#285F52]' : 'bg-[#F7F8F7] text-[#667085]'}`}>
               <IndianRupee className="w-4 h-4" />
             </div>
           </div>
-          <h3 className="text-lg md:text-xl font-black mt-2 text-[#1C1C1A]">5 Lakh Chits</h3>
-          <div className="flex items-center justify-between text-xs mt-2.5 pt-2.5 border-t border-[#E5E5E1]">
-            <span className="font-bold text-[#6B6B67]">
+          <h3 className="text-lg md:text-xl font-black mt-2 text-[#111111]">5 Lakh Chits</h3>
+          <div className="flex items-center justify-between text-xs mt-2.5 pt-2.5 border-t border-[#E5E7EB]">
+            <span className="font-bold text-[#667085]">
               4 Groups
             </span>
             <Badge variant={activeCategory === '500000' ? 'success' : 'neutral'} className="text-[10px] font-bold">
@@ -1099,24 +1128,24 @@ export default function Members() {
           }}
           className={`group cursor-pointer rounded-2xl border p-4.5 transition-all duration-200 shadow-xs ${
             activeCategory === 'multiple'
-              ? 'bg-[#EDF7F0] text-[#1C1C1A] border-[#2F5D50] ring-1 ring-[#2F5D50]'
-              : 'bg-white text-[#1C1C1A] border-[#E5E5E1] hover:border-[#2F5D50]/40 hover:bg-[#F7F7F5]'
+              ? 'bg-[#EEF6F3] text-[#111111] border-[#BFD8D0] ring-1 ring-[#285F52]'
+              : 'bg-white text-[#111111] border-[#E5E7EB] hover:border-[#285F52]/40 hover:bg-[#F7F8F7]'
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className={`text-[10px] font-black uppercase tracking-wider ${activeCategory === 'multiple' ? 'text-[#2F5D50]' : 'text-[#6B6B67]'}`}>
+            <span className={`text-[10px] font-black uppercase tracking-wider ${activeCategory === 'multiple' ? 'text-[#285F52]' : 'text-[#667085]'}`}>
               Multi-Chit Roster
             </span>
-            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeCategory === 'multiple' ? 'bg-[#2F5D50]/15 text-[#2F5D50]' : 'bg-[#F7F7F5] text-[#6B6B67]'}`}>
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${activeCategory === 'multiple' ? 'bg-[#EEF6F3] text-[#285F52]' : 'bg-[#F7F8F7] text-[#667085]'}`}>
               <Layers className="w-4 h-4" />
             </div>
           </div>
-          <h3 className="text-lg md:text-xl font-black mt-2 text-[#1C1C1A]">Multi Chits</h3>
-          <div className="flex items-center justify-between text-xs mt-2.5 pt-2.5 border-t border-[#E5E5E1]">
-            <span className="font-bold text-[#2F5D50]">
+          <h3 className="text-lg md:text-xl font-black mt-2 text-[#111111]">Multi Chits</h3>
+          <div className="flex items-center justify-between text-xs mt-2.5 pt-2.5 border-t border-[#E5E7EB]">
+            <span className="font-bold text-[#285F52]">
               {stats.multiple.members} Members
             </span>
-            <Badge variant="purple" className="text-[10px] font-bold">
+            <Badge variant="neutral" className="text-[10px] font-bold">
               {stats.multiple.holdings} Tickets
             </Badge>
           </div>
@@ -1126,20 +1155,20 @@ export default function Members() {
       {/* ─────────────────────────────────────────────────────────────────────── */}
       {/* 3. SEARCH & FILTER TOOLBAR */}
       {/* ─────────────────────────────────────────────────────────────────────── */}
-      <div className="p-4 bg-white border border-[#E5E5E1] rounded-2xl shadow-xs space-y-3">
+      <div className="p-4 bg-white border border-[#E5E7EB] rounded-2xl shadow-xs space-y-3">
         <div className="flex flex-col md:flex-row gap-3 items-center justify-between">
           {/* SEARCH INPUT */}
           <div className="relative flex-1 w-full">
-            <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-[#959590] pointer-events-none" />
+            <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-[#667085] pointer-events-none" />
             <input
               type="text"
               placeholder="Search member name, phone, chit, ticket..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] pl-10 pr-9 py-2 text-xs font-semibold text-[#1C1C1A] placeholder-[#959590] focus:border-[#2F5D50] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+              className="w-full rounded-xl border border-[#E5E7EB] bg-white pl-10 pr-9 py-2 text-xs font-semibold text-[#111111] placeholder-[#667085] focus:border-[#285F52] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#285F52]"
             />
             {searchQuery && (
-              <button onClick={() => setSearchQuery('')} className="absolute right-3 top-2.5 text-[#959590] hover:text-[#1C1C1A] cursor-pointer">
+              <button onClick={() => setSearchQuery('')} className="absolute right-3 top-2.5 text-[#667085] hover:text-[#111111] cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             )}
@@ -1151,7 +1180,7 @@ export default function Members() {
             <select
               value={filterClassification}
               onChange={(e) => setFilterClassification(e.target.value)}
-              className="rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2 text-xs font-bold text-[#1C1C1A] focus:border-[#2F5D50] focus:outline-none"
+              className="rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-2 text-xs font-bold text-[#111111] focus:border-[#285F52] focus:outline-none"
             >
               <option value="all">All Classifications</option>
               <option value="single">Single Chit Only</option>
@@ -1162,7 +1191,7 @@ export default function Members() {
             <select
               value={filterPayment}
               onChange={(e) => setFilterPayment(e.target.value)}
-              className="rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2 text-xs font-bold text-[#1C1C1A] focus:border-[#2F5D50] focus:outline-none"
+              className="rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-2 text-xs font-bold text-[#111111] focus:border-[#285F52] focus:outline-none"
             >
               <option value="all">All Payment Statuses</option>
               <option value="due">Has Due / Pending</option>
@@ -1173,7 +1202,7 @@ export default function Members() {
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-              className="rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2 text-xs font-bold text-[#1C1C1A] focus:border-[#2F5D50] focus:outline-none"
+              className="rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-2 text-xs font-bold text-[#111111] focus:border-[#285F52] focus:outline-none"
             >
               <option value="active">Active Members</option>
               <option value="archived">Archived Members</option>
@@ -1189,20 +1218,20 @@ export default function Members() {
       {activeCategory !== 'multiple' && !selectedGroupId && (
         <section className="space-y-4">
           <div className="flex items-center justify-between px-1">
-            <h2 className="text-xs font-black uppercase tracking-wider text-[#6B6B67]">
+            <h2 className="text-xs font-black uppercase tracking-wider text-[#667085]">
               ₹{(Number(activeCategory) / 100000).toFixed(0)} Lakh Chit Groups ({singleChitGroups.length} Groups)
             </h2>
-            <span className="text-[11px] font-bold text-[#2F5D50]">Card-Based Group View</span>
+            <span className="text-[11px] font-bold text-[#285F52]">Card-Based Group View</span>
           </div>
 
           {loading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="p-5 bg-white border border-[#E5E5E1] rounded-2xl animate-pulse h-32" />
+                <div key={i} className="p-5 bg-white border border-[#E5E7EB] rounded-2xl animate-pulse h-32" />
               ))}
             </div>
           ) : singleChitGroups.length === 0 ? (
-            <div className="p-8 text-center text-[#6B6B67] text-xs font-bold bg-white border border-[#E5E5E1] rounded-2xl">
+            <div className="p-8 text-center text-[#667085] text-xs font-bold bg-white border border-[#E5E7EB] rounded-2xl">
               No active groups found for ₹{(Number(activeCategory) / 100000).toFixed(0)} Lakh Chits.
             </div>
           ) : (
@@ -1210,45 +1239,45 @@ export default function Members() {
               {singleChitGroups.map((group) => (
                 <div
                   key={group.groupId}
-                  className="p-5 bg-white border border-[#E5E5E1] rounded-2xl shadow-xs hover:border-[#2F5D50]/40 transition-all space-y-4"
+                  className="p-5 bg-white border border-[#E5E7EB] rounded-2xl shadow-xs hover:border-[#285F52]/40 transition-all space-y-4"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <span className="w-9 h-9 rounded-xl bg-[#2F5D50]/10 text-[#2F5D50] font-black text-sm flex items-center justify-center border border-[#2F5D50]/20">
+                      <span className="w-9 h-9 rounded-xl bg-[#EEF6F3] text-[#285F52] font-black text-sm flex items-center justify-center border border-[#BFD8D0]">
                         {group.groupId}
                       </span>
                       <div>
-                        <h3 className="text-base font-black text-[#1C1C1A]">{group.chitValue === 100000 ? '1L' : group.chitValue === 200000 ? '2L' : '5L'} Group {group.groupId}</h3>
-                        <p className="text-[11px] text-[#6B6B67] font-bold font-mono">₹{group.chitValue.toLocaleString('en-IN')}</p>
+                        <h3 className="text-base font-black text-[#111111]">{group.chitValue === 100000 ? '1L' : group.chitValue === 200000 ? '2L' : '5L'} Group {group.groupId}</h3>
+                        <p className="text-[11px] text-[#667085] font-bold font-mono">₹{group.chitValue.toLocaleString('en-IN')}</p>
                       </div>
                     </div>
-                    <Badge variant="info" className="text-[10px] font-bold">
+                    <Badge variant="neutral" className="text-[10px] font-bold">
                       {group.memberCount} / 20
                     </Badge>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-xs py-2.5 border-y border-[#E5E5E1] bg-[#F7F7F5] rounded-xl p-3">
+                  <div className="grid grid-cols-2 gap-2 text-xs py-2.5 border-y border-[#E5E7EB] bg-[#F7F8F7] rounded-xl p-3">
                     <div>
-                      <span className="text-[9px] font-black text-[#6B6B67] uppercase tracking-wider block">Monthly Installment</span>
-                      <span className="font-black text-[#2F6B4F] text-sm">₹{group.monthlyBase.toLocaleString('en-IN')}</span>
+                      <span className="text-[9px] font-black text-[#667085] uppercase tracking-wider block">Monthly Installment</span>
+                      <span className="font-black text-[#285F52] text-sm">₹{group.monthlyBase.toLocaleString('en-IN')}</span>
                     </div>
                     <div>
-                      <span className="text-[9px] font-black text-[#6B6B67] uppercase tracking-wider block">Current Cycle</span>
-                      <span className="font-bold text-[#2F5D50]">Month #8</span>
+                      <span className="text-[9px] font-black text-[#667085] uppercase tracking-wider block">Current Cycle</span>
+                      <span className="font-bold text-[#285F52]">Month #8</span>
                     </div>
                   </div>
 
                   <div className="flex items-center justify-between text-xs pt-1">
                     <button
                       onClick={() => handleOpenEditMonthlyAmount(group)}
-                      className="text-[11px] font-bold text-[#1C1C1A] hover:bg-[#E5E5E1] border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-1.5 rounded-xl cursor-pointer transition-colors"
+                      className="text-[11px] font-bold text-[#111111] hover:bg-[#E5E7EB] border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-1.5 rounded-xl cursor-pointer transition-colors"
                     >
                       Edit Monthly
                     </button>
 
                     <button
                       onClick={() => setSelectedGroupId(group.groupId)}
-                      className="text-[11px] font-black text-white bg-[#2F5D50] hover:bg-[#24493F] px-3.5 py-1.5 rounded-xl cursor-pointer flex items-center gap-1 shadow-xs"
+                      className="text-[11px] font-black text-white bg-[#285F52] hover:bg-[#214D43] px-3.5 py-1.5 rounded-xl cursor-pointer flex items-center gap-1 shadow-xs"
                     >
                       <span>View Members</span> <ChevronRight className="w-3.5 h-3.5" />
                     </button>
@@ -1264,22 +1293,22 @@ export default function Members() {
       {/* 5. SELECTED GROUP HEADER BAR (IF INSIDE SPECIFIC GROUP) */}
       {/* ─────────────────────────────────────────────────────────────────────── */}
       {selectedGroupId && activeCategory !== 'multiple' && (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#EDF7F0] border border-[#2F5D50]/30 rounded-2xl p-5 text-xs shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#EEF6F3] border border-[#BFD8D0] rounded-2xl p-5 text-xs shadow-xs">
           <div className="flex items-center gap-4">
             <button
               onClick={() => {
                 setSelectedGroupId(null);
                 navigate('/members');
               }}
-              className="flex items-center gap-1.5 font-bold text-[#2F5D50] hover:bg-[#2F5D50]/15 bg-white border border-[#2F5D50]/30 px-3.5 py-2 rounded-xl cursor-pointer shadow-xs"
+              className="flex items-center gap-1.5 font-bold text-[#285F52] hover:bg-[#285F52]/15 bg-white border border-[#BFD8D0] px-3.5 py-2 rounded-xl cursor-pointer shadow-xs"
             >
               <ArrowLeft className="w-4 h-4" /> Back to Group Cards
             </button>
             <div>
-              <h2 className="text-base font-black text-[#1C1C1A]">
+              <h2 className="text-base font-black text-[#111111]">
                 ₹{(Number(activeCategory) / 100000).toFixed(0)} Lakh — Group {selectedGroupId}
               </h2>
-              <p className="text-[11px] font-semibold text-[#6B6B67]">
+              <p className="text-[11px] font-semibold text-[#667085]">
                 {filteredMembersList.length} Members • Monthly Installment: ₹{getGroupMonthlyBaseAmount(activeCategory, selectedGroupId).toLocaleString('en-IN')}
               </p>
             </div>
@@ -1288,7 +1317,7 @@ export default function Members() {
           <div className="flex flex-wrap items-center gap-2.5">
             <button
               onClick={() => handleOpenEditMonthlyAmount({ chitValue: Number(activeCategory), groupId: selectedGroupId })}
-              className="font-bold text-[#2F5D50] bg-white border border-[#2F5D50]/30 px-3.5 py-2 rounded-xl hover:bg-[#F7F7F5] cursor-pointer shadow-2xs text-xs"
+              className="font-bold text-[#285F52] bg-white border border-[#BFD8D0] px-3.5 py-2 rounded-xl hover:bg-[#F7F8F7] cursor-pointer shadow-2xs text-xs"
             >
               Edit Monthly Payment
             </button>
@@ -1297,7 +1326,7 @@ export default function Members() {
               variant="primary"
               size="sm"
               onClick={() => handleOpenAddMemberForGroup(activeCategory, selectedGroupId)}
-              className="font-bold text-white bg-[#2F5D50] hover:bg-[#24493F] px-4 py-2 rounded-xl shadow-xs text-xs cursor-pointer gap-1.5"
+              className="font-bold text-white bg-[#285F52] hover:bg-[#214D43] px-4 py-2 rounded-xl shadow-xs text-xs cursor-pointer gap-1.5"
             >
               <UserPlus className="w-3.5 h-3.5" />
               <span>+ Add Member</span>
@@ -1311,25 +1340,36 @@ export default function Members() {
       {/* ─────────────────────────────────────────────────────────────────────── */}
       <section className="space-y-4">
         <div className="flex items-center justify-between px-1">
-          <h2 className="text-xs font-black uppercase tracking-wider text-[#6B6B67]">
+          <h2 className="text-xs font-black uppercase tracking-wider text-[#667085]">
             {activeCategory === 'multiple' ? 'Multi-Chit Directory (68 Members)' : `Group Member Directory (${filteredMembersList.length} Members)`}
           </h2>
-          <span className="text-[11px] font-bold text-[#6B6B67]">Enterprise List Mode</span>
+          <span className="text-[11px] font-bold text-[#667085]">Enterprise List Mode</span>
         </div>
 
         {loading ? (
           <div className="space-y-3">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="p-5 bg-[#111625]/90 border border-slate-800/80 rounded-3xl animate-pulse h-20" />
+              <div key={i} className="p-5 bg-white border border-[#E5E7EB] rounded-3xl animate-pulse h-20" />
             ))}
           </div>
         ) : filteredMembersList.length === 0 ? (
-          <div className="p-12 text-center text-slate-400 text-xs font-bold bg-[#111625]/90 border border-slate-800/80 rounded-3xl space-y-3">
-            <Users className="w-8 h-8 text-slate-500 mx-auto" />
-            <p>No members found matching your search or filter selection.</p>
-            <Button variant="secondary" size="sm" onClick={() => { setSearchQuery(''); setFilterClassification('all'); setFilterPayment('all'); setSelectedGroupId(null); }}>
-              Clear Search & Filters
-            </Button>
+          <div className="p-12 text-center text-[#667085] text-xs font-bold bg-white border border-[#E5E7EB] rounded-3xl space-y-3">
+            <Users className="w-8 h-8 text-[#98A2B3] mx-auto" />
+            {selectedGroupId ? (
+              <>
+                <p className="text-sm font-black text-[#111111]">
+                  {searchQuery ? 'No members found matching your search in this group.' : 'No members in this group yet.'}
+                </p>
+                <p className="text-xs text-[#667085]">You can add members to this group using the "+ Add Member" button above.</p>
+              </>
+            ) : (
+              <>
+                <p>No members found matching your search or filter selection.</p>
+                <Button variant="secondary" size="sm" onClick={() => { setSearchQuery(''); setFilterClassification('all'); setFilterPayment('all'); setSelectedGroupId(null); }}>
+                  Clear Search & Filters
+                </Button>
+              </>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
@@ -1342,45 +1382,45 @@ export default function Members() {
               return (
                 <div
                   key={member.id}
-                  className={`p-4 md:p-5 border bg-white rounded-2xl shadow-xs transition-all hover:border-[#2F5D50]/40 relative ${
-                    isMulti ? 'border-[#2F5D50]/30' : 'border-[#E5E5E1]'
+                  className={`p-4 md:p-5 border bg-white rounded-2xl shadow-xs transition-all hover:border-[#285F52]/40 relative ${
+                    isMulti ? 'border-[#BFD8D0]' : 'border-[#E5E7EB]'
                   }`}
                 >
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                     {/* MEMBER PROFILE */}
                     <div className="flex items-start gap-3.5 min-w-0">
                       <div className={`w-11 h-11 rounded-xl font-black text-base flex items-center justify-center shrink-0 text-white shadow-xs ${
-                        isMulti ? 'bg-[#2F5D50]' : 'bg-[#1C1C1A]'
+                        isMulti ? 'bg-[#285F52]' : 'bg-[#111111]'
                       }`}>
                         {(member.name || 'M').charAt(0).toUpperCase()}
                       </div>
 
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="text-base font-black text-[#1C1C1A] truncate">{member.name}</h3>
-                          <Badge variant={isMulti ? 'purple' : 'info'} className="text-[10px] font-bold">
+                          <h3 className="text-base font-black text-[#111111] truncate">{member.name}</h3>
+                          <Badge variant={isMulti ? 'neutral' : 'success'} className="text-[10px] font-bold">
                             {isMulti ? 'MULTIPLE' : 'SINGLE'}
                           </Badge>
                           {member.status === 'TEST' && <Badge variant="warning">TEST RECORD</Badge>}
                           {member.status === 'archived' && <Badge variant="danger">ARCHIVED</Badge>}
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-[#6B6B67]">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-[#667085]">
                           <span className="flex items-center gap-1 font-sans">
-                            <Phone className="w-3.5 h-3.5 text-[#959590]" />
+                            <Phone className="w-3.5 h-3.5 text-[#98A2B3]" />
                             {member.phone || 'No Phone'}
                           </span>
                           {member.whatsapp && member.whatsapp !== member.phone && (
-                            <span className="text-[11px] text-[#2F6B4F] font-mono">WA: {member.whatsapp}</span>
+                            <span className="text-[11px] text-[#285F52] font-mono">WA: {member.whatsapp}</span>
                           )}
                         </div>
                       </div>
                     </div>
 
                     {/* CHIT DETAILS & SUBSCRIPTIONS */}
-                    <div className="flex-1 min-w-0 border-t lg:border-t-0 lg:border-l border-[#E5E5E1] pt-3 lg:pt-0 lg:pl-6">
-                      <div className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                        <Layers className="w-3.5 h-3.5 text-[#2F5D50]" />
+                    <div className="flex-1 min-w-0 border-t lg:border-t-0 lg:border-l border-[#E5E7EB] pt-3 lg:pt-0 lg:pl-6">
+                      <div className="text-[10px] font-bold text-[#667085] uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                        <Layers className="w-3.5 h-3.5 text-[#285F52]" />
                         <span>{isMulti ? `Chit Subscriptions (${activeChits.length})` : 'Assigned Chit Group'}</span>
                       </div>
 
@@ -1392,12 +1432,12 @@ export default function Members() {
                           return (
                             <span
                               key={c.id}
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold bg-[#F7F7F5] border border-[#E5E5E1] text-[#1C1C1A] font-sans"
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold bg-[#F7F8F7] border border-[#E5E7EB] text-[#111111] font-sans"
                             >
                               <span>₹{valLakh}L • Group {c.groupId || 'I'}</span>
-                              {qty > 1 && <span className="text-[#2F5D50] font-extrabold bg-[#EDF7F0] px-1.5 py-0.2 rounded-md">× {qty}</span>}
-                              <span className="text-[#E5E5E1]">|</span>
-                              <span className="text-[#2F5D50] font-extrabold">{monthInfo.display}</span>
+                              {qty > 1 && <span className="text-[#285F52] font-extrabold bg-[#EEF6F3] px-1.5 py-0.2 rounded-md">× {qty}</span>}
+                              <span className="text-[#E5E7EB]">|</span>
+                              <span className="text-[#285F52] font-extrabold">{monthInfo.display}</span>
                             </span>
                           );
                         })}
@@ -1405,10 +1445,10 @@ export default function Members() {
                     </div>
 
                     {/* FINANCIAL DETAILS & COMPACT ACTIONS */}
-                    <div className="flex items-center justify-between lg:justify-end gap-4 border-t lg:border-t-0 border-[#E5E5E1] pt-3 lg:pt-0">
+                    <div className="flex items-center justify-between lg:justify-end gap-4 border-t lg:border-t-0 border-[#E5E7EB] pt-3 lg:pt-0">
                       <div className="text-left lg:text-right">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#6B6B67] block">Current Monthly Payable</span>
-                        <span className="text-lg font-black text-[#2F6B4F] font-sans">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#667085] block">Current Monthly Payable</span>
+                        <span className="text-lg font-black text-[#285F52] font-sans">
                           ₹{totalPayable.toLocaleString('en-IN')}
                         </span>
                       </div>
@@ -1417,7 +1457,7 @@ export default function Members() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="rounded-xl text-xs font-bold bg-[#F7F7F5] border-[#E5E5E1] text-[#1C1C1A] hover:bg-[#E5E5E1] cursor-pointer"
+                          className="rounded-xl text-xs font-bold bg-[#F7F8F7] border-[#E5E7EB] text-[#111111] hover:bg-[#E5E7EB] cursor-pointer"
                           onClick={() => handleOpenDetails(member)}
                         >
                           View Details
@@ -1430,7 +1470,7 @@ export default function Members() {
                               e.stopPropagation();
                               setActiveActionMenuMemberId(isActionMenuOpen ? null : member.id);
                             }}
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#E5E5E1] bg-white text-[#1C1C1A] hover:bg-[#F7F7F5] transition-colors cursor-pointer"
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#E5E7EB] bg-white text-[#111111] hover:bg-[#F7F8F7] transition-colors cursor-pointer"
                             aria-label="Actions menu"
                           >
                             <MoreVertical className="w-4 h-4" />
@@ -1440,30 +1480,30 @@ export default function Members() {
                           {isActionMenuOpen && (
                             <div
                               ref={actionMenuRef}
-                              className="absolute right-0 top-10 z-40 w-48 rounded-xl bg-white text-[#1C1C1A] p-1.5 shadow-lg border border-[#E5E5E1] text-xs font-semibold animate-in fade-in zoom-in-95 duration-150"
+                              className="absolute right-0 top-10 z-40 w-48 rounded-xl bg-white text-[#111111] p-1.5 shadow-lg border border-[#E5E7EB] text-xs font-semibold animate-in fade-in zoom-in-95 duration-150"
                             >
                               <button
                                 onClick={() => handleOpenDetails(member)}
-                                className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[#F7F7F5] text-[#1C1C1A] cursor-pointer"
+                                className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[#F7F8F7] text-[#111111] cursor-pointer"
                               >
-                                <Eye className="w-3.5 h-3.5 text-sky-600" />
+                                <Eye className="w-3.5 h-3.5 text-[#285F52]" />
                                 <span>View Details</span>
                               </button>
 
                               <button
                                 onClick={() => handleOpenEditMember(member)}
-                                className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[#F7F7F5] text-[#1C1C1A] cursor-pointer"
+                                className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[#F7F8F7] text-[#111111] cursor-pointer"
                               >
-                                <Edit className="w-3.5 h-3.5 text-[#2F5D50]" />
+                                <Edit className="w-3.5 h-3.5 text-[#285F52]" />
                                 <span>Edit Member Info</span>
                               </button>
 
                               {activeChits.length > 0 && (
                                 <button
                                   onClick={() => handleOpenEditAdjustment(member, activeChits[0])}
-                                  className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[#F7F7F5] text-[#1C1C1A] cursor-pointer"
+                                  className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[#F7F8F7] text-[#111111] cursor-pointer"
                                 >
-                                  <SlidersHorizontal className="w-3.5 h-3.5 text-amber-600" />
+                                  <SlidersHorizontal className="w-3.5 h-3.5 text-[#B7791F]" />
                                   <span>Edit Adjustments</span>
                                 </button>
                               )}
@@ -1474,9 +1514,9 @@ export default function Members() {
                                   setIsMessageModalOpen(true);
                                   setActiveActionMenuMemberId(null);
                                 }}
-                                className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[#F7F7F5] text-[#1C1C1A] cursor-pointer"
+                                className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[#F7F8F7] text-[#111111] cursor-pointer"
                               >
-                                <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+                                <MessageSquare className="w-3.5 h-3.5 text-[#285F52]" />
                                 <span>Send WhatsApp</span>
                               </button>
 
@@ -1485,9 +1525,9 @@ export default function Members() {
                                   navigate(`/history?memberId=${member.id}`);
                                   setActiveActionMenuMemberId(null);
                                 }}
-                                className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[#F7F7F5] text-[#1C1C1A] cursor-pointer"
+                                className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[#F7F8F7] text-[#111111] cursor-pointer"
                               >
-                                <History className="w-3.5 h-3.5 text-purple-600" />
+                                <History className="w-3.5 h-3.5 text-[#667085]" />
                                 <span>View History Audit</span>
                               </button>
 
@@ -1669,7 +1709,7 @@ export default function Members() {
               </div>
             </div>
 
-            <div className="flex justify-between items-center pt-3 border-t border-[#E5E5E1]">
+            <div className="flex justify-between items-center pt-3 border-t border-[#E5E7EB]">
               <Button
                 variant="outline"
                 size="sm"
@@ -1830,14 +1870,14 @@ export default function Members() {
         >
           <form onSubmit={handleSaveEditMember} className="space-y-5 text-xs font-sans">
             {/* MEMBER PERSONAL DETAILS */}
-            <div className="p-4 bg-[#F7F7F5] border border-[#E5E5E1] rounded-2xl space-y-3">
-              <span className="text-[10px] font-black text-[#2F5D50] uppercase tracking-wider block">
+            <div className="p-4 bg-[#F7F8F7] border border-[#E5E7EB] rounded-2xl space-y-3">
+              <span className="text-[10px] font-black text-[#285F52] uppercase tracking-wider block">
                 1. Member Personal Details
               </span>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-[#1C1C1A] uppercase tracking-wider mb-1">
+                  <label className="block text-[11px] font-bold text-[#111111] uppercase tracking-wider mb-1">
                     Member Name *
                   </label>
                   <input
@@ -1845,12 +1885,12 @@ export default function Members() {
                     required
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
-                    className="w-full rounded-xl border border-[#E5E5E1] bg-white px-3.5 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+                    className="w-full rounded-xl border border-[#E5E7EB] bg-white px-3.5 py-2 text-xs font-bold text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-[#1C1C1A] uppercase tracking-wider mb-1">
+                  <label className="block text-[11px] font-bold text-[#111111] uppercase tracking-wider mb-1">
                     Mobile Phone (WhatsApp) *
                   </label>
                   <input
@@ -1858,33 +1898,33 @@ export default function Members() {
                     required
                     value={editPhone}
                     onChange={(e) => setEditPhone(e.target.value)}
-                    className="w-full rounded-xl border border-[#E5E5E1] bg-white px-3.5 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50] font-mono"
+                    className="w-full rounded-xl border border-[#E5E7EB] bg-white px-3.5 py-2 text-xs font-bold text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52] font-mono"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-[#1C1C1A] uppercase tracking-wider mb-1">
+                  <label className="block text-[11px] font-bold text-[#111111] uppercase tracking-wider mb-1">
                     Address
                   </label>
                   <input
                     type="text"
                     value={editAddress}
                     onChange={(e) => setEditAddress(e.target.value)}
-                    className="w-full rounded-xl border border-[#E5E5E1] bg-white px-3.5 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+                    className="w-full rounded-xl border border-[#E5E7EB] bg-white px-3.5 py-2 text-xs font-bold text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-[#1C1C1A] uppercase tracking-wider mb-1">
+                  <label className="block text-[11px] font-bold text-[#111111] uppercase tracking-wider mb-1">
                     Nominee Name
                   </label>
                   <input
                     type="text"
                     value={editNominee}
                     onChange={(e) => setEditNominee(e.target.value)}
-                    className="w-full rounded-xl border border-[#E5E5E1] bg-white px-3.5 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+                    className="w-full rounded-xl border border-[#E5E7EB] bg-white px-3.5 py-2 text-xs font-bold text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
                   />
                 </div>
               </div>
@@ -1894,10 +1934,10 @@ export default function Members() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] font-black text-[#2F5D50] uppercase tracking-wider block">
+                  <span className="text-[10px] font-black text-[#285F52] uppercase tracking-wider block">
                     2. Chit Subscriptions ({editMemberSubscriptions.length})
                   </span>
-                  <p className="text-[11px] text-[#6B6B67]">
+                  <p className="text-[11px] text-[#667085]">
                     Adjust group and monthly payment individually for each chit held by this member.
                   </p>
                 </div>
@@ -1906,7 +1946,7 @@ export default function Members() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="rounded-xl text-xs font-bold gap-1 border-[#2F5D50] text-[#2F5D50] hover:bg-[#EDF7F0] cursor-pointer"
+                  className="rounded-xl text-xs font-bold gap-1 border-[#285F52] text-[#285F52] hover:bg-[#EEF6F3] cursor-pointer"
                   onClick={handleAddEditSubscriptionRow}
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -1918,11 +1958,11 @@ export default function Members() {
                 {editMemberSubscriptions.map((sub, idx) => (
                   <div
                     key={sub.id || idx}
-                    className="p-3.5 bg-white border border-[#E5E5E1] rounded-2xl shadow-xs space-y-3 relative"
+                    className="p-3.5 bg-white border border-[#E5E7EB] rounded-2xl shadow-xs space-y-3 relative"
                   >
-                    <div className="flex items-center justify-between border-b border-[#E5E5E1] pb-2">
-                      <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-[#1C1C1A]">
-                        <span className="w-5 h-5 rounded-full bg-[#2F5D50] text-white flex items-center justify-center text-[10px]">
+                    <div className="flex items-center justify-between border-b border-[#E5E7EB] pb-2">
+                      <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-[#111111]">
+                        <span className="w-5 h-5 rounded-full bg-[#285F52] text-white flex items-center justify-center text-[10px]">
                           {idx + 1}
                         </span>
                         <span>Chit Subscription {idx + 1}</span>
@@ -1932,7 +1972,7 @@ export default function Members() {
                         <button
                           type="button"
                           onClick={() => handleRemoveEditSubscriptionRow(idx)}
-                          className="text-red-500 hover:text-red-700 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                          className="text-[#B42318] hover:text-[#911c13] text-xs font-bold flex items-center gap-1 cursor-pointer"
                           title="Remove Subscription"
                         >
                           <Trash className="w-3.5 h-3.5" />
@@ -1943,13 +1983,13 @@ export default function Members() {
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
-                        <label className="block text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider mb-1">
+                        <label className="block text-[10px] font-bold text-[#667085] uppercase tracking-wider mb-1">
                           Chit Value *
                         </label>
                         <select
                           value={sub.chitValue}
                           onChange={(e) => handleEditSubscriptionChange(idx, 'chitValue', e.target.value)}
-                          className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none cursor-pointer"
+                          className="w-full rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-2 text-xs font-bold text-[#111111] focus:outline-none cursor-pointer"
                         >
                           <option value="100000">₹1 Lakh Chit</option>
                           <option value="200000">₹2 Lakh Chit</option>
@@ -1959,13 +1999,13 @@ export default function Members() {
                       </div>
 
                       <div>
-                        <label className="block text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider mb-1">
+                        <label className="block text-[10px] font-bold text-[#667085] uppercase tracking-wider mb-1">
                           Chit Group *
                         </label>
                         <select
                           value={sub.groupId}
                           onChange={(e) => handleEditSubscriptionChange(idx, 'groupId', e.target.value)}
-                          className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none cursor-pointer"
+                          className="w-full rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-2 text-xs font-bold text-[#111111] focus:outline-none cursor-pointer"
                         >
                           {groupedAvailableGroups.map((cat) => (
                             <optgroup key={cat.val} label={`── ${cat.label} ──`}>
@@ -1980,7 +2020,7 @@ export default function Members() {
                       </div>
 
                       <div>
-                        <label className="block text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider mb-1">
+                        <label className="block text-[10px] font-bold text-[#667085] uppercase tracking-wider mb-1">
                           Monthly Amount (₹) *
                         </label>
                         <input
@@ -1990,7 +2030,7 @@ export default function Members() {
                           step="1"
                           value={sub.monthlyAmount}
                           onChange={(e) => handleEditSubscriptionChange(idx, 'monthlyAmount', e.target.value)}
-                          className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none font-sans"
+                          className="w-full rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-2 text-xs font-bold text-[#111111] focus:outline-none font-sans"
                         />
                       </div>
                     </div>
@@ -1999,7 +2039,7 @@ export default function Members() {
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E5E1]">
+            <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E7EB]">
               <Button type="button" variant="secondary" size="sm" onClick={() => setIsEditModalOpen(false)}>
                 Cancel
               </Button>
@@ -2007,7 +2047,7 @@ export default function Members() {
                 type="submit"
                 variant="primary"
                 size="sm"
-                className="bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold"
+                className="bg-[#285F52] hover:bg-[#214D43] text-white font-bold"
                 disabled={isSavingEdit}
               >
                 {isSavingEdit ? 'Saving...' : 'Save Member & Subscriptions'}
@@ -2030,14 +2070,14 @@ export default function Members() {
         >
           <form onSubmit={handleAddMemberSubmit} className="space-y-5 text-xs font-sans">
             {/* MEMBER PERSONAL DETAILS */}
-            <div className="p-4 bg-[#F7F7F5] border border-[#E5E5E1] rounded-2xl space-y-3">
-              <span className="text-[10px] font-black text-[#2F5D50] uppercase tracking-wider block">
+            <div className="p-4 bg-[#F7F8F7] border border-[#E5E7EB] rounded-2xl space-y-3">
+              <span className="text-[10px] font-black text-[#285F52] uppercase tracking-wider block">
                 1. Member Personal Details
               </span>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-[#1C1C1A] uppercase tracking-wider mb-1">
+                  <label className="block text-[11px] font-bold text-[#111111] uppercase tracking-wider mb-1">
                     Full Name *
                   </label>
                   <input
@@ -2046,12 +2086,12 @@ export default function Members() {
                     placeholder="e.g. Ramesh Kumar"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
-                    className="w-full rounded-xl border border-[#E5E5E1] bg-white px-3.5 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+                    className="w-full rounded-xl border border-[#E5E7EB] bg-white px-3.5 py-2 text-xs font-bold text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-[#1C1C1A] uppercase tracking-wider mb-1">
+                  <label className="block text-[11px] font-bold text-[#111111] uppercase tracking-wider mb-1">
                     Mobile Phone (WhatsApp) *
                   </label>
                   <input
@@ -2060,14 +2100,14 @@ export default function Members() {
                     placeholder="e.g. 9848012345"
                     value={newPhone}
                     onChange={(e) => setNewPhone(e.target.value)}
-                    className="w-full rounded-xl border border-[#E5E5E1] bg-white px-3.5 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50] font-mono"
+                    className="w-full rounded-xl border border-[#E5E7EB] bg-white px-3.5 py-2 text-xs font-bold text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52] font-mono"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-[#1C1C1A] uppercase tracking-wider mb-1">
+                  <label className="block text-[11px] font-bold text-[#111111] uppercase tracking-wider mb-1">
                     Address
                   </label>
                   <input
@@ -2075,12 +2115,12 @@ export default function Members() {
                     placeholder="e.g. Hyderabad / Local area"
                     value={newAddress}
                     onChange={(e) => setNewAddress(e.target.value)}
-                    className="w-full rounded-xl border border-[#E5E5E1] bg-white px-3.5 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+                    className="w-full rounded-xl border border-[#E5E7EB] bg-white px-3.5 py-2 text-xs font-bold text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-[#1C1C1A] uppercase tracking-wider mb-1">
+                  <label className="block text-[11px] font-bold text-[#111111] uppercase tracking-wider mb-1">
                     Nominee Name
                   </label>
                   <input
@@ -2088,7 +2128,7 @@ export default function Members() {
                     placeholder="e.g. Nominee / Relation"
                     value={newNominee}
                     onChange={(e) => setNewNominee(e.target.value)}
-                    className="w-full rounded-xl border border-[#E5E5E1] bg-white px-3.5 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+                    className="w-full rounded-xl border border-[#E5E7EB] bg-white px-3.5 py-2 text-xs font-bold text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
                   />
                 </div>
               </div>
@@ -2098,10 +2138,10 @@ export default function Members() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] font-black text-[#2F5D50] uppercase tracking-wider block">
+                  <span className="text-[10px] font-black text-[#285F52] uppercase tracking-wider block">
                     2. Chit Subscriptions ({newChitSubscriptions.length})
                   </span>
-                  <p className="text-[11px] text-[#6B6B67]">
+                  <p className="text-[11px] text-[#667085]">
                     Configure monthly payment and group details for every chit held by this member.
                   </p>
                 </div>
@@ -2110,7 +2150,7 @@ export default function Members() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="rounded-xl text-xs font-bold gap-1 border-[#2F5D50] text-[#2F5D50] hover:bg-[#EDF7F0] cursor-pointer"
+                  className="rounded-xl text-xs font-bold gap-1 border-[#285F52] text-[#285F52] hover:bg-[#EEF6F3] cursor-pointer"
                   onClick={handleAddSubscriptionRow}
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -2122,11 +2162,11 @@ export default function Members() {
                 {newChitSubscriptions.map((sub, idx) => (
                   <div
                     key={sub.id || idx}
-                    className="p-3.5 bg-white border border-[#E5E5E1] rounded-2xl shadow-xs space-y-3 relative"
+                    className="p-3.5 bg-white border border-[#E5E7EB] rounded-2xl shadow-xs space-y-3 relative"
                   >
-                    <div className="flex items-center justify-between border-b border-[#E5E5E1] pb-2">
-                      <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-[#1C1C1A]">
-                        <span className="w-5 h-5 rounded-full bg-[#2F5D50] text-white flex items-center justify-center text-[10px]">
+                    <div className="flex items-center justify-between border-b border-[#E5E7EB] pb-2">
+                      <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-[#111111]">
+                        <span className="w-5 h-5 rounded-full bg-[#285F52] text-white flex items-center justify-center text-[10px]">
                           {idx + 1}
                         </span>
                         <span>Chit Subscription {idx + 1}</span>
@@ -2136,7 +2176,7 @@ export default function Members() {
                         <button
                           type="button"
                           onClick={() => handleRemoveSubscriptionRow(idx)}
-                          className="text-red-500 hover:text-red-700 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                          className="text-[#B42318] hover:text-[#911c13] text-xs font-bold flex items-center gap-1 cursor-pointer"
                           title="Remove Subscription"
                         >
                           <Trash className="w-3.5 h-3.5" />
@@ -2147,13 +2187,13 @@ export default function Members() {
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
-                        <label className="block text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider mb-1">
+                        <label className="block text-[10px] font-bold text-[#667085] uppercase tracking-wider mb-1">
                           Chit Value *
                         </label>
                         <select
                           value={sub.chitValue}
                           onChange={(e) => handleSubscriptionChange(idx, 'chitValue', e.target.value)}
-                          className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none cursor-pointer"
+                          className="w-full rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-2 text-xs font-bold text-[#111111] focus:outline-none cursor-pointer"
                         >
                           <option value="100000">₹1 Lakh Chit</option>
                           <option value="200000">₹2 Lakh Chit</option>
@@ -2163,13 +2203,13 @@ export default function Members() {
                       </div>
 
                       <div>
-                        <label className="block text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider mb-1">
+                        <label className="block text-[10px] font-bold text-[#667085] uppercase tracking-wider mb-1">
                           Chit Group *
                         </label>
                         <select
                           value={sub.groupId}
                           onChange={(e) => handleSubscriptionChange(idx, 'groupId', e.target.value)}
-                          className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none cursor-pointer"
+                          className="w-full rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-2 text-xs font-bold text-[#111111] focus:outline-none cursor-pointer"
                         >
                           {groupedAvailableGroups.map((cat) => (
                             <optgroup key={cat.val} label={`── ${cat.label} ──`}>
@@ -2184,7 +2224,7 @@ export default function Members() {
                       </div>
 
                       <div>
-                        <label className="block text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider mb-1">
+                        <label className="block text-[10px] font-bold text-[#667085] uppercase tracking-wider mb-1">
                           Monthly Amount (₹) *
                         </label>
                         <input
@@ -2194,7 +2234,7 @@ export default function Members() {
                           step="1"
                           value={sub.monthlyAmount}
                           onChange={(e) => handleSubscriptionChange(idx, 'monthlyAmount', e.target.value)}
-                          className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-2 text-xs font-bold text-[#1C1C1A] focus:outline-none font-sans"
+                          className="w-full rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-2 text-xs font-bold text-[#111111] focus:outline-none font-sans"
                         />
                       </div>
                     </div>
@@ -2203,7 +2243,7 @@ export default function Members() {
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E5E1]">
+            <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E7EB]">
               <Button type="button" variant="secondary" size="sm" onClick={() => setIsAddModalOpen(false)}>
                 Cancel
               </Button>
@@ -2211,7 +2251,7 @@ export default function Members() {
                 type="submit"
                 variant="primary"
                 size="sm"
-                className="bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold"
+                className="bg-[#285F52] hover:bg-[#214D43] text-white font-bold"
                 disabled={isSavingAdd}
               >
                 {isSavingAdd ? 'Saving Member...' : `Save Member (${newChitSubscriptions.length} Chit${newChitSubscriptions.length > 1 ? 's' : ''})`}
@@ -2245,24 +2285,24 @@ export default function Members() {
               </p>
             </div>
 
-            <div className="p-3 bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl space-y-1.5 text-xs">
+            <div className="p-3 bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl space-y-1.5 text-xs">
               <div className="flex justify-between">
-                <span className="text-[#6B6B67]">Member Name:</span>
-                <span className="font-bold text-[#1C1C1A]">{deleteConfirmMember.name}</span>
+                <span className="text-[#667085]">Member Name:</span>
+                <span className="font-bold text-[#111111]">{deleteConfirmMember.name}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#6B6B67]">Phone:</span>
-                <span className="font-mono font-bold text-[#1C1C1A]">{deleteConfirmMember.phone}</span>
+                <span className="text-[#667085]">Phone:</span>
+                <span className="font-mono font-bold text-[#111111]">{deleteConfirmMember.phone}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#6B6B67]">Chit Subscriptions:</span>
-                <span className="font-bold text-[#2F5D50]">
+                <span className="text-[#667085]">Chit Subscriptions:</span>
+                <span className="font-bold text-[#285F52]">
                   {(deleteConfirmMember.chits || []).length} Chit(s)
                 </span>
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E5E1]">
+            <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E7EB]">
               <Button
                 type="button"
                 variant="secondary"

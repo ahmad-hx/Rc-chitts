@@ -13,13 +13,13 @@ export default function Button({
   const baseStyles = 'inline-flex items-center justify-center font-bold rounded-xl transition-all focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer h-10 px-4 text-xs tracking-tight';
 
   const variants = {
-    primary: 'bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold focus:ring-[#2F5D50]',
-    secondary: 'border border-[#E5E5E1] bg-white text-[#1C1C1A] hover:bg-[#F7F7F5] font-bold focus:ring-[#E5E5E1]',
-    outline: 'border border-[#E5E5E1] bg-white text-[#1C1C1A] hover:bg-[#F7F7F5] font-bold focus:ring-[#E5E5E1]',
-    ghost: 'bg-transparent text-[#6B6B67] hover:bg-[#F2F2EF] hover:text-[#1C1C1A] font-bold',
-    success: 'bg-[#2F6B4F] hover:bg-[#24553E] text-white font-bold focus:ring-[#2F6B4F]',
-    danger: 'bg-[#A33A3A] hover:bg-[#852E2E] text-white font-bold focus:ring-[#A33A3A]',
-    gold: 'bg-[#8A5A12] hover:bg-[#6D460E] text-white font-bold focus:ring-[#8A5A12]',
+    primary: 'bg-[#285F52] hover:bg-[#214D43] text-white font-bold focus:ring-[#285F52]',
+    secondary: 'border border-[#E5E7EB] bg-white text-[#111111] hover:bg-[#F7F8F7] font-bold focus:ring-[#285F52]',
+    outline: 'border border-[#E5E7EB] bg-white text-[#111111] hover:bg-[#F7F8F7] font-bold focus:ring-[#285F52]',
+    ghost: 'bg-transparent text-[#667085] hover:bg-[#F7F8F7] hover:text-[#111111] font-bold',
+    success: 'bg-[#285F52] hover:bg-[#214D43] text-white font-bold focus:ring-[#285F52]',
+    danger: 'border border-[#FECACA] bg-[#FEF3F2] text-[#B42318] hover:bg-[#FEE4E2] font-bold focus:ring-[#B42318]',
+    gold: 'bg-[#285F52] hover:bg-[#214D43] text-white font-bold focus:ring-[#285F52]',
   };
 
   const sizes = {
@@ -40,3 +40,4 @@ export default function Button({
     </button>
   );
 }
+

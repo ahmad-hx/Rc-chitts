@@ -18,11 +18,12 @@ import {
 } from 'firebase/firestore';
 import {
   ref,
-  uploadBytes,
+  uploadBytesResumable,
   getDownloadURL,
   deleteObject,
 } from 'firebase/storage';
 import { db, storage, auth } from '../firebase.js';
+import { compressImage } from '../utils/imageCompressor.js';
 
 // Helper to ensure auth is ready before Firestore/Storage operations
 const ensureAuthReady = async () => {
@@ -42,7 +43,7 @@ const ALLOWED_MIME_TYPES = [
   'image/webp',
 ];
 
-const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024; // 15 MB max
+const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB max before compression
 
 export const dashboardImageService = {
   /**
@@ -71,7 +72,7 @@ export const dashboardImageService = {
       const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
       return {
         valid: false,
-        error: `File is too large (${sizeMB} MB). Maximum allowed size is 15 MB.`,
+        error: `File is too large (${sizeMB} MB). Maximum allowed size is 25 MB.`,
       };
     }
 
@@ -95,47 +96,117 @@ export const dashboardImageService = {
       throw new Error(validation.error);
     }
 
-    // 1. Generate unique image ID and clean storage path
+    // 1. Compress & resize image client-side for fast upload
+    if (onProgress) {
+      onProgress({ status: 'optimizing', percent: 0, message: 'Optimizing image file...' });
+    }
+
+    let fileToUpload = file;
+    try {
+      fileToUpload = await compressImage(file, { maxWidth: 1920, maxHeight: 1920, quality: 0.82 });
+    } catch (compressErr) {
+      console.warn('Client-side image compression fallback to original file:', compressErr);
+      fileToUpload = file;
+    }
+
+    // 2. Generate unique image ID and clean storage path
     const uniqueId = `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    const sanitizedFileName = (file.name || 'image.jpg').replace(/[^a-zA-Z0-9._-]/g, '_');
+    const sanitizedFileName = (fileToUpload.name || 'image.jpg').replace(/[^a-zA-Z0-9._-]/g, '_');
     const storagePath = `dashboard-images/${uniqueId}/${sanitizedFileName}`;
 
-    if (onProgress) onProgress({ status: 'uploading', message: 'Uploading image to Firebase Storage...' });
-
-    // 2. Upload the binary file to Firebase Storage
     const storageRef = ref(storage, storagePath);
     const metadata = {
-      contentType: file.type || 'image/jpeg',
+      contentType: fileToUpload.type || 'image/jpeg',
       customMetadata: {
         originalName: file.name,
+        originalSize: String(file.size),
+        optimizedSize: String(fileToUpload.size),
         uploadedAt: new Date().toISOString(),
       },
     };
 
-    await uploadBytes(storageRef, file, metadata);
+    // 3. Upload file with uploadBytesResumable for real-time progress tracking
+    if (onProgress) {
+      onProgress({ status: 'uploading', percent: 0, message: 'Uploading image... 0%' });
+    }
 
-    // 3. Obtain public download URL
-    if (onProgress) onProgress({ status: 'download_url', message: 'Generating download URL...' });
-    const downloadUrl = await getDownloadURL(storageRef);
+    let downloadUrl = '';
+    try {
+      const uploadTask = uploadBytesResumable(storageRef, fileToUpload, metadata);
 
-    // 4. Save metadata in dedicated 'dashboardImages' collection
-    if (onProgress) onProgress({ status: 'saving_metadata', message: 'Saving image information in Firestore...' });
+      await new Promise((resolve, reject) => {
+        uploadTask.on(
+          'state_changed',
+          (snapshot) => {
+            const percent = Math.round(
+              (snapshot.bytesTransferred / snapshot.totalBytes) * 100
+            );
+            if (onProgress) {
+              onProgress({
+                status: 'uploading',
+                percent,
+                message: `Uploading image... ${percent}%`,
+              });
+            }
+          },
+          (error) => {
+            reject(error);
+          },
+          async () => {
+            try {
+              if (onProgress) {
+                onProgress({ status: 'download_url', percent: 100, message: 'Generating download URL...' });
+              }
+              downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+              resolve();
+            } catch (urlErr) {
+              reject(urlErr);
+            }
+          }
+        );
+      });
+    } catch (uploadErr) {
+      console.error('Firebase Storage upload failed:', uploadErr);
+      throw new Error(`Image upload failed. ${uploadErr.message || 'Please try again.'}`);
+    }
 
+    // 4. Save metadata in dedicated 'dashboardImages' Firestore collection
+    if (onProgress) {
+      onProgress({ status: 'saving_metadata', percent: 100, message: 'Saving image information in Firestore...' });
+    }
+
+    let docRef;
     const docData = {
       title: (title || '').trim(),
       description: (description || '').trim(),
       imageUrl: downloadUrl,
       storagePath,
-      fileName: file.name,
-      fileType: file.type || 'image/jpeg',
-      fileSize: file.size,
+      fileName: fileToUpload.name,
+      originalFileName: file.name,
+      fileType: fileToUpload.type || 'image/jpeg',
+      fileSize: fileToUpload.size,
+      originalFileSize: file.size,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
 
-    const docRef = await addDoc(collection(db, 'dashboardImages'), docData);
+    try {
+      docRef = await addDoc(collection(db, 'dashboardImages'), docData);
+    } catch (firestoreErr) {
+      console.error('Firestore metadata save failed after Storage upload:', firestoreErr);
+      // Clean up orphaned Storage object if metadata save fails
+      try {
+        await deleteObject(storageRef);
+        console.info('Cleaned up orphaned Firebase Storage file:', storagePath);
+      } catch (cleanupErr) {
+        console.warn('Failed cleanup of orphaned storage file:', cleanupErr.message);
+      }
+      throw new Error(`Failed to save image metadata document: ${firestoreErr.message}`);
+    }
 
-    if (onProgress) onProgress({ status: 'done', message: 'Image saved successfully!' });
+    if (onProgress) {
+      onProgress({ status: 'done', percent: 100, message: 'Saved' });
+    }
 
     return {
       id: docRef.id,

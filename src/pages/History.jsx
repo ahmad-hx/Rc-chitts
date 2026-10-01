@@ -168,33 +168,33 @@ export default function History() {
       )}
 
       {/* PAGE HEADER */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/80 pb-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E5E7EB] pb-5">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="flex h-2 w-2 rounded-full bg-sky-400 animate-pulse"></span>
-            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-sky-400">Historical Audit & Archive</p>
+            <span className="flex h-2 w-2 rounded-full bg-[#285F52] animate-pulse"></span>
+            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[#285F52]">Historical Audit & Archive</p>
           </div>
-          <h1 className="text-2xl md:text-3xl font-black text-white">Audit & History Logs</h1>
-          <p className="text-xs font-semibold text-slate-400 mt-1">
+          <h1 className="text-2xl md:text-3xl font-black text-[#111111]">Audit & History Logs</h1>
+          <p className="text-xs font-semibold text-[#667085] mt-1">
             Immutably preserved historical records, group archives, auction history, and administrative logs.
           </p>
         </div>
 
-        <Button variant="secondary" onClick={handleResetFilters} className="gap-2 rounded-2xl shrink-0 cursor-pointer text-xs bg-slate-900 text-slate-300 border-slate-800 hover:text-white">
-          <RotateCcw className="w-3.5 h-3.5" />
+        <Button variant="secondary" onClick={handleResetFilters} className="gap-2 rounded-2xl shrink-0 cursor-pointer text-xs bg-white text-[#111111] border-[#E5E7EB] hover:bg-[#F7F8F7]">
+          <RotateCcw className="w-3.5 h-3.5 text-[#285F52]" />
           Reset Filters
         </Button>
       </div>
 
       {/* TABS NAVIGATION */}
-      <div className="flex flex-wrap items-center gap-2 p-1.5 bg-[#111625]/90 border border-slate-800/80 rounded-2xl text-xs font-bold">
+      <div className="flex flex-wrap items-center gap-2 p-1.5 bg-[#F7F8F7] border border-[#E5E7EB] rounded-2xl text-xs font-bold">
         <button
           type="button"
           onClick={() => setActiveTab('audit')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer ${
             activeTab === 'audit'
-              ? 'bg-sky-500 text-white shadow-md'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+              ? 'bg-[#285F52] text-white shadow-xs'
+              : 'text-[#667085] hover:text-[#111111] hover:bg-white'
           }`}
         >
           <FileText className="w-4 h-4" />
@@ -206,8 +206,8 @@ export default function History() {
           onClick={() => setActiveTab('auctions')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer ${
             activeTab === 'auctions'
-              ? 'bg-emerald-600 text-white shadow-md'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+              ? 'bg-[#285F52] text-white shadow-xs'
+              : 'text-[#667085] hover:text-[#111111] hover:bg-white'
           }`}
         >
           <Gavel className="w-4 h-4" />
@@ -219,8 +219,8 @@ export default function History() {
           onClick={() => setActiveTab('archived')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all cursor-pointer ${
             activeTab === 'archived'
-              ? 'bg-amber-600 text-white shadow-md'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+              ? 'bg-[#285F52] text-white shadow-xs'
+              : 'text-[#667085] hover:text-[#111111] hover:bg-white'
           }`}
         >
           <Archive className="w-4 h-4" />
@@ -229,20 +229,20 @@ export default function History() {
       </div>
 
       {/* HIERARCHICAL FILTER BAR */}
-      <div className="p-5 bg-[#111625]/90 border border-slate-800/80 rounded-3xl shadow-xl space-y-4">
-        <div className="flex items-center justify-between font-bold text-xs text-slate-300">
+      <div className="p-5 bg-white border border-[#E5E7EB] rounded-3xl shadow-xs space-y-4">
+        <div className="flex items-center justify-between font-bold text-xs text-[#111111]">
           <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-sky-400" />
+            <Filter className="w-4 h-4 text-[#285F52]" />
             <span>Search & Historical Filter Engine</span>
           </div>
 
           {activeTab === 'auctions' && (
-            <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
+            <div className="flex items-center gap-1.5 bg-[#F7F8F7] p-1 rounded-xl border border-[#E5E7EB]">
               <button
                 type="button"
                 onClick={() => setAuctionStatusFilter('all')}
                 className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
-                  auctionStatusFilter === 'all' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-200'
+                  auctionStatusFilter === 'all' ? 'bg-[#285F52] text-white' : 'text-[#667085] hover:text-[#111111]'
                 }`}
               >
                 All ({auctionsList.length})
@@ -251,7 +251,7 @@ export default function History() {
                 type="button"
                 onClick={() => setAuctionStatusFilter('completed')}
                 className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
-                  auctionStatusFilter === 'completed' ? 'bg-emerald-700 text-white' : 'text-slate-400 hover:text-emerald-400'
+                  auctionStatusFilter === 'completed' ? 'bg-[#EEF6F3] text-[#285F52] border border-[#BFD8D0]' : 'text-[#667085] hover:text-[#285F52]'
                 }`}
               >
                 ✓ Completed ({completedAuctionsCount})
@@ -260,7 +260,7 @@ export default function History() {
                 type="button"
                 onClick={() => setAuctionStatusFilter('deleted')}
                 className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
-                  auctionStatusFilter === 'deleted' ? 'bg-rose-700 text-white' : 'text-slate-400 hover:text-rose-400'
+                  auctionStatusFilter === 'deleted' ? 'bg-[#FEF3F2] text-[#B42318] border border-[#FECACA]' : 'text-[#667085] hover:text-[#B42318]'
                 }`}
               >
                 🗑 Deleted ({deletedAuctionsCount})
@@ -272,11 +272,11 @@ export default function History() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {/* YEAR SELECTOR */}
           <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Year</label>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-[#667085] mb-1">Year</label>
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(e.target.value)}
-              className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              className="w-full rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-2 text-xs font-bold text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
             >
               <option value="all">All Years</option>
               {['2026', '2025', '2024', '2023', '2022', '2021', '2020'].map((y) => (
@@ -289,11 +289,11 @@ export default function History() {
 
           {/* MONTH SELECTOR */}
           <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Month</label>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-[#667085] mb-1">Month</label>
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
-              className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              className="w-full rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-2 text-xs font-bold text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
             >
               <option value="all">All Months</option>
               {[
@@ -319,11 +319,11 @@ export default function History() {
 
           {/* CHIT VALUE SELECTOR */}
           <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Chit Value</label>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-[#667085] mb-1">Chit Value</label>
             <select
               value={selectedChitValue}
               onChange={(e) => setSelectedChitValue(e.target.value)}
-              className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              className="w-full rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-2 text-xs font-bold text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
             >
               <option value="all">All Values</option>
               <option value="100000">₹1 Lakh</option>
@@ -334,11 +334,11 @@ export default function History() {
 
           {/* CATEGORY SELECTOR */}
           <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Category</label>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-[#667085] mb-1">Category</label>
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              className="w-full rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-2 text-xs font-bold text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
             >
               <option value="all">All Categories</option>
               <option value="Auction">Auction Records</option>
@@ -353,11 +353,11 @@ export default function History() {
 
           {/* GROUP ID SELECTOR */}
           <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Group ID</label>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-[#667085] mb-1">Group ID</label>
             <select
               value={selectedGroupId}
               onChange={(e) => setSelectedGroupId(e.target.value)}
-              className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              className="w-full rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-2 text-xs font-bold text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
             >
               <option value="all">All Groups</option>
               {['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'A', 'B', 'C', 'D', 'E', 'F'].map((g) => (
@@ -370,15 +370,15 @@ export default function History() {
 
           {/* SEARCH INPUT */}
           <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Search</label>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-[#667085] mb-1">Search</label>
             <div className="relative">
-              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-500" />
+              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[#98A2B3]" />
               <input
                 type="text"
                 placeholder={activeTab === 'auctions' ? 'Search winner or group...' : 'Search history...'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full rounded-xl border border-slate-800 bg-slate-950 pl-9 pr-3 py-2 text-xs font-semibold text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                className="w-full rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] pl-9 pr-3 py-2 text-xs font-semibold text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
               />
             </div>
           </div>
@@ -389,22 +389,22 @@ export default function History() {
       {activeTab === 'auctions' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between px-1">
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <Gavel className="w-5 h-5 text-emerald-400" />
+            <h2 className="text-lg font-bold text-[#111111] flex items-center gap-2">
+              <Gavel className="w-5 h-5 text-[#285F52]" />
               <span>Auction History & Audit Records ({filteredAuctions.length})</span>
             </h2>
-            <span className="text-xs text-slate-400 font-semibold">Includes completed & soft-deleted auctions</span>
+            <span className="text-xs text-[#667085] font-semibold">Includes completed & soft-deleted auctions</span>
           </div>
 
           {loading ? (
-            <Card className="p-12 text-center text-slate-400 font-bold text-sm bg-[#111625] border border-slate-800 rounded-3xl">
+            <Card className="p-12 text-center text-[#667085] font-bold text-sm bg-white border border-[#E5E7EB] rounded-3xl">
               Loading auction history records...
             </Card>
           ) : filteredAuctions.length === 0 ? (
-            <Card className="p-12 text-center text-slate-400 font-bold text-sm bg-[#111625] border border-slate-800 rounded-3xl space-y-2">
-              <Clock className="w-8 h-8 text-slate-600 mx-auto" />
+            <Card className="p-12 text-center text-[#667085] font-bold text-sm bg-white border border-[#E5E7EB] rounded-3xl space-y-2">
+              <Clock className="w-8 h-8 text-[#98A2B3] mx-auto" />
               <p>No auction history records found matching your filters.</p>
-              <p className="text-xs text-slate-500 font-normal">Try clearing search filters or changing the status tab.</p>
+              <p className="text-xs text-[#667085] font-normal">Try clearing search filters or changing the status tab.</p>
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -418,57 +418,57 @@ export default function History() {
                     key={auction.id}
                     className={`p-5 rounded-3xl border transition-all space-y-3 ${
                       isDel
-                        ? 'border-rose-900/60 bg-rose-950/20 text-rose-200'
-                        : 'border-slate-800 bg-[#111625] text-slate-200 hover:border-slate-700'
+                        ? 'border-[#FECACA] bg-[#FEF3F2] text-[#B42318]'
+                        : 'border-[#E5E7EB] bg-white text-[#111111] hover:border-[#BFD8D0]'
                     }`}
                   >
                     {/* TOP BADGE ROW */}
-                    <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-800/80">
+                    <div className="flex items-center justify-between gap-2 pb-2 border-b border-[#E5E7EB]">
                       {isDel ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-950 border border-rose-800 text-rose-300 text-[10px] font-black tracking-wide">
-                          <Trash2 className="w-3 h-3 text-rose-400" />
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#FEF3F2] border border-[#FECACA] text-[#B42318] text-[10px] font-black tracking-wide">
+                          <Trash2 className="w-3 h-3 text-[#B42318]" />
                           DELETED
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950 border border-emerald-800 text-emerald-300 text-[10px] font-black tracking-wide">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#EEF6F3] border border-[#BFD8D0] text-[#285F52] text-[10px] font-black tracking-wide">
+                          <CheckCircle2 className="w-3 h-3 text-[#285F52]" />
                           COMPLETED
                         </span>
                       )}
 
-                      <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-900 px-2 py-0.5 rounded-md border border-slate-800">
+                      <span className="text-[10px] font-mono font-bold text-[#667085] bg-[#F7F8F7] px-2 py-0.5 rounded-md border border-[#E5E7EB]">
                         Round {auction.roundNumber || 1} • {auction.billingMonth}
                       </span>
                     </div>
 
                     {/* WINNER & GROUP */}
                     <div className="space-y-1">
-                      <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                      <p className="text-[10px] font-extrabold uppercase tracking-wider text-[#667085]">
                         Winner Member
                       </p>
-                      <p className="text-base font-black text-white truncate">
+                      <p className="text-base font-black text-[#111111] truncate">
                         {auction.memberName || auction.winnerName || 'Member'}
                       </p>
-                      <p className="text-xs font-bold text-sky-400">
+                      <p className="text-xs font-bold text-[#285F52]">
                         {fullGroupTitle}
                       </p>
                     </div>
 
                     {/* FINANCIAL METRICS */}
-                    <div className="grid grid-cols-2 gap-2 p-2.5 bg-slate-950/70 rounded-xl border border-slate-800/80 text-xs">
+                    <div className="grid grid-cols-2 gap-2 p-2.5 bg-[#F7F8F7] rounded-xl border border-[#E5E7EB] text-xs">
                       <div>
-                        <span className="text-[9px] font-bold text-slate-400 uppercase block">Auction Bid</span>
-                        <span className="font-black text-white">₹{auction.bidAmount?.toLocaleString('en-IN')}</span>
+                        <span className="text-[9px] font-bold text-[#667085] uppercase block">Auction Bid</span>
+                        <span className="font-black text-[#111111]">₹{auction.bidAmount?.toLocaleString('en-IN')}</span>
                       </div>
                       <div>
-                        <span className="text-[9px] font-bold text-slate-400 uppercase block">Dividend / Member</span>
-                        <span className="font-black text-emerald-400">₹{auction.dividend?.toLocaleString('en-IN')}</span>
+                        <span className="text-[9px] font-bold text-[#667085] uppercase block">Dividend / Member</span>
+                        <span className="font-black text-[#285F52]">₹{auction.dividend?.toLocaleString('en-IN')}</span>
                       </div>
                     </div>
 
                     {/* DATES & ACTION */}
-                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800/80 text-[11px]">
-                      <span className="text-slate-400">
+                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-[#E5E7EB] text-[11px]">
+                      <span className="text-[#667085]">
                         Conducted: {auction.auctionDate || 'Recent'}
                       </span>
 
@@ -483,7 +483,7 @@ export default function History() {
                               })
                             }
                             title="Delete Auction"
-                            className="p-1 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+                            className="p-1 text-[#98A2B3] hover:text-[#B42318] transition-colors cursor-pointer"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -497,7 +497,7 @@ export default function History() {
                               groupTitle: fullGroupTitle,
                             })
                           }
-                          className="flex items-center gap-1 font-bold text-sky-400 hover:text-sky-300 transition-colors cursor-pointer"
+                          className="flex items-center gap-1 font-bold text-[#285F52] hover:text-[#214D43] transition-colors cursor-pointer"
                         >
                           <Eye className="w-3.5 h-3.5" />
                           <span>Details</span>
@@ -516,32 +516,32 @@ export default function History() {
       {activeTab === 'audit' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between px-1">
-            <h2 className="text-lg font-bold text-white">Historical Audit Records ({historyEvents.length})</h2>
-            <span className="text-xs text-slate-400 font-semibold">Ordered by Date & Time</span>
+            <h2 className="text-lg font-bold text-[#111111]">Historical Audit Records ({historyEvents.length})</h2>
+            <span className="text-xs text-[#667085] font-semibold">Ordered by Date & Time</span>
           </div>
 
           {loading ? (
-            <Card className="p-12 text-center text-slate-400 font-bold text-sm bg-[#111625] border border-slate-800 rounded-3xl">
+            <Card className="p-12 text-center text-[#667085] font-bold text-sm bg-white border border-[#E5E7EB] rounded-3xl">
               Loading historical audit data...
             </Card>
           ) : historyEvents.length === 0 ? (
-            <Card className="p-12 text-center text-slate-400 font-bold text-sm bg-[#111625] border border-slate-800 rounded-3xl space-y-2">
-              <Clock className="w-8 h-8 text-slate-600 mx-auto" />
+            <Card className="p-12 text-center text-[#667085] font-bold text-sm bg-white border border-[#E5E7EB] rounded-3xl space-y-2">
+              <Clock className="w-8 h-8 text-[#98A2B3] mx-auto" />
               <p>No historical audit records found for the selected filters.</p>
-              <p className="text-xs text-slate-500 font-normal">Try adjusting the Year, Month, or Category selection above.</p>
+              <p className="text-xs text-[#667085] font-normal">Try adjusting the Year, Month, or Category selection above.</p>
             </Card>
           ) : (
             <div className="space-y-3">
               {historyEvents.map((evt) => (
-                <Card key={evt.id} className="p-4 sm:p-5 border border-slate-800 bg-[#111625] rounded-3xl shadow-xs hover:border-sky-500/50 transition-all space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800/80">
+                <Card key={evt.id} className="p-4 sm:p-5 border border-[#E5E7EB] bg-white rounded-3xl shadow-xs hover:border-[#BFD8D0] transition-all space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[#E5E7EB]">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-2xl bg-sky-500/10 text-sky-400 font-bold flex items-center justify-center shrink-0 border border-sky-500/20">
+                      <div className="w-9 h-9 rounded-2xl bg-[#EEF6F3] text-[#285F52] font-bold flex items-center justify-center shrink-0 border border-[#BFD8D0]">
                         <FileText className="w-4.5 h-4.5" />
                       </div>
                       <div>
-                        <h3 className="text-sm font-bold text-white">{evt.title || evt.action}</h3>
-                        <p className="text-xs text-slate-400 mt-0.5">{evt.details || 'No detailed note provided.'}</p>
+                        <h3 className="text-sm font-bold text-[#111111]">{evt.title || evt.action}</h3>
+                        <p className="text-xs text-[#667085] mt-0.5">{evt.details || 'No detailed note provided.'}</p>
                       </div>
                     </div>
 
@@ -549,31 +549,31 @@ export default function History() {
                       <Badge variant={getActionBadgeVariant(evt.action)} className="text-[10px] uppercase font-extrabold">
                         {evt.action}
                       </Badge>
-                      <span className="text-[11px] font-semibold text-slate-400">{evt.year} - {evt.month}</span>
+                      <span className="text-[11px] font-semibold text-[#667085]">{evt.year} - {evt.month}</span>
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-between text-xs text-slate-400 gap-2 pt-1">
+                  <div className="flex flex-wrap items-center justify-between text-xs text-[#667085] gap-2 pt-1">
                     <div className="flex items-center gap-3">
                       {evt.category && (
-                        <span className="font-semibold text-slate-300 bg-slate-900 border border-slate-800 px-2.5 py-0.5 rounded-full">
+                        <span className="font-semibold text-[#111111] bg-[#F7F8F7] border border-[#E5E7EB] px-2.5 py-0.5 rounded-full">
                           Category: {evt.category}
                         </span>
                       )}
                       {evt.groupId && (
-                        <span className="font-semibold text-slate-300 bg-slate-900 border border-slate-800 px-2.5 py-0.5 rounded-full">
+                        <span className="font-semibold text-[#111111] bg-[#F7F8F7] border border-[#E5E7EB] px-2.5 py-0.5 rounded-full">
                           Group {evt.groupId}
                         </span>
                       )}
                       {evt.chitValue && (
-                        <span className="font-semibold text-sky-400 bg-sky-950 border border-sky-800 px-2.5 py-0.5 rounded-full">
+                        <span className="font-semibold text-[#285F52] bg-[#EEF6F3] border border-[#BFD8D0] px-2.5 py-0.5 rounded-full">
                           ₹{(evt.chitValue / 100000).toFixed(0)} Lakh Chit
                         </span>
                       )}
                     </div>
 
-                    <div className="flex items-center gap-1.5 text-slate-400 text-[11px]">
-                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                    <div className="flex items-center gap-1.5 text-[#667085] text-[11px]">
+                      <ShieldCheck className="w-3.5 h-3.5 text-[#285F52]" />
                       <span>Performed by: {evt.performedBy || 'Admin'}</span>
                     </div>
                   </div>
@@ -588,24 +588,24 @@ export default function History() {
       {activeTab === 'archived' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between px-1">
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <Archive className="w-5 h-5 text-amber-400" />
+            <h2 className="text-lg font-bold text-[#111111] flex items-center gap-2">
+              <Archive className="w-5 h-5 text-[#B7791F]" />
               <span>Archived Members ({archivedMembers.length})</span>
             </h2>
             <Badge variant="warning">{archivedMembers.length} Saved in History</Badge>
           </div>
 
           {archivedMembers.length === 0 ? (
-            <Card className="p-12 text-center text-slate-400 font-bold text-sm bg-[#111625] border border-slate-800 rounded-3xl">
+            <Card className="p-12 text-center text-[#667085] font-bold text-sm bg-white border border-[#E5E7EB] rounded-3xl">
               No archived members recorded in history.
             </Card>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               {archivedMembers.map((m) => (
-                <div key={m.id} className="p-4 bg-[#111625] border border-slate-800 rounded-2xl text-xs space-y-2">
-                  <p className="font-bold text-white text-sm">{m.name}</p>
-                  <p className="text-slate-400">Phone: {m.phone || 'N/A'}</p>
-                  <p className="text-[11px] text-amber-400 font-semibold">Holdings Preserved: {m.chits?.length || 0}</p>
+                <div key={m.id} className="p-4 bg-white border border-[#E5E7EB] rounded-2xl text-xs space-y-2 shadow-xs">
+                  <p className="font-bold text-[#111111] text-sm">{m.name}</p>
+                  <p className="text-[#667085]">Phone: {m.phone || 'N/A'}</p>
+                  <p className="text-[11px] text-[#B7791F] font-semibold">Holdings Preserved: {m.chits?.length || 0}</p>
                 </div>
               ))}
             </div>
@@ -625,67 +625,67 @@ export default function History() {
           <div className="space-y-4 text-xs font-sans">
             <div className={`p-4 rounded-2xl space-y-2 border ${
               selectedAuctionModal.isDeleted || selectedAuctionModal.status === 'DELETED'
-                ? 'bg-rose-950/30 border-rose-800 text-rose-200'
-                : 'bg-emerald-950/30 border-emerald-800 text-emerald-200'
+                ? 'bg-[#FEF3F2] border-[#FECACA] text-[#B42318]'
+                : 'bg-[#EEF6F3] border-[#BFD8D0] text-[#285F52]'
             }`}>
               <div className="flex items-center justify-between">
                 <span className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
                   {selectedAuctionModal.isDeleted || selectedAuctionModal.status === 'DELETED' ? (
                     <>
-                      <Trash2 className="w-4 h-4 text-rose-400" />
+                      <Trash2 className="w-4 h-4 text-[#B42318]" />
                       DELETED AUCTION RECORD
                     </>
                   ) : (
                     <>
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      <CheckCircle2 className="w-4 h-4 text-[#285F52]" />
                       COMPLETED AUCTION RECORD
                     </>
                   )}
                 </span>
-                <span className="text-[10px] font-mono font-bold bg-slate-900 px-2 py-0.5 rounded border border-slate-700 text-slate-300">
+                <span className="text-[10px] font-mono font-bold bg-white px-2 py-0.5 rounded border border-[#E5E7EB] text-[#111111]">
                   Round {selectedAuctionModal.roundNumber || 1}
                 </span>
               </div>
-              <p className="text-base font-black text-white">
+              <p className="text-base font-black text-[#111111]">
                 {selectedAuctionModal.memberName || selectedAuctionModal.winnerName || 'Member'}
               </p>
-              <p className="text-xs font-bold text-sky-400">
+              <p className="text-xs font-bold text-[#285F52]">
                 {selectedAuctionModal.groupTitle}
               </p>
             </div>
 
-            <div className="space-y-2.5 bg-slate-950 border border-slate-800 p-4 rounded-xl text-slate-300">
+            <div className="space-y-2.5 bg-[#F7F8F7] border border-[#E5E7EB] p-4 rounded-xl text-[#111111]">
               <div className="flex justify-between">
-                <span className="text-slate-400 font-semibold">Total Chit Value:</span>
-                <span className="font-bold text-white">₹{selectedAuctionModal.totalChitValue?.toLocaleString('en-IN')}</span>
+                <span className="text-[#667085] font-semibold">Total Chit Value:</span>
+                <span className="font-bold text-[#111111]">₹{selectedAuctionModal.totalChitValue?.toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400 font-semibold">Bid Discount Amount:</span>
-                <span className="font-bold text-white">₹{selectedAuctionModal.bidAmount?.toLocaleString('en-IN')}</span>
+                <span className="text-[#667085] font-semibold">Bid Discount Amount:</span>
+                <span className="font-bold text-[#111111]">₹{selectedAuctionModal.bidAmount?.toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400 font-semibold">Dividend / Member:</span>
-                <span className="font-bold text-emerald-400">₹{selectedAuctionModal.dividend?.toLocaleString('en-IN')}</span>
+                <span className="text-[#667085] font-semibold">Dividend / Member:</span>
+                <span className="font-bold text-[#285F52]">₹{selectedAuctionModal.dividend?.toLocaleString('en-IN')}</span>
               </div>
-              <div className="flex justify-between pt-2 border-t border-slate-800">
-                <span className="text-slate-200 font-bold">Net Prize Payout:</span>
-                <span className="font-black text-emerald-400 text-sm">
+              <div className="flex justify-between pt-2 border-t border-[#E5E7EB]">
+                <span className="text-[#111111] font-bold">Net Prize Payout:</span>
+                <span className="font-black text-[#285F52] text-sm">
                   ₹{selectedAuctionModal.netPayout?.toLocaleString('en-IN')}
                 </span>
               </div>
-              <div className="flex justify-between pt-1 border-t border-slate-800 text-[11px]">
-                <span className="text-slate-400">Conducted Date:</span>
-                <span className="font-medium text-white">{selectedAuctionModal.auctionDate || 'N/A'}</span>
+              <div className="flex justify-between pt-1 border-t border-[#E5E7EB] text-[11px]">
+                <span className="text-[#667085]">Conducted Date:</span>
+                <span className="font-medium text-[#111111]">{selectedAuctionModal.auctionDate || 'N/A'}</span>
               </div>
               <div className="flex justify-between text-[11px]">
-                <span className="text-slate-400">Billing Cycle:</span>
-                <span className="font-medium text-white">{selectedAuctionModal.billingMonth}</span>
+                <span className="text-[#667085]">Billing Cycle:</span>
+                <span className="font-medium text-[#111111]">{selectedAuctionModal.billingMonth}</span>
               </div>
 
               {(selectedAuctionModal.isDeleted || selectedAuctionModal.status === 'DELETED') && (
-                <div className="p-2.5 bg-rose-950/40 border border-rose-800/80 rounded-lg text-rose-300 text-[11px] space-y-1">
+                <div className="p-2.5 bg-[#FEF3F2] border border-[#FECACA] rounded-lg text-[#B42318] text-[11px] space-y-1">
                   <div className="font-bold flex items-center gap-1">
-                    <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                    <AlertTriangle className="w-3.5 h-3.5 text-[#B42318]" />
                     Deletion Audit Trail
                   </div>
                   <div>Deleted By: {selectedAuctionModal.deletedBy || 'Admin'}</div>
@@ -694,12 +694,12 @@ export default function History() {
               )}
             </div>
 
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+            <div className="flex justify-end gap-2 pt-2 border-t border-[#E5E7EB]">
               <Button
                 variant="secondary"
                 size="sm"
                 onClick={() => setSelectedAuctionModal(null)}
-                className="bg-slate-900 text-slate-200 border-slate-800"
+                className="bg-white text-[#111111] border-[#E5E7EB]"
               >
                 Close
               </Button>
@@ -718,26 +718,26 @@ export default function History() {
           maxWidth="max-w-md"
         >
           <div className="space-y-4 font-sans text-xs">
-            <div className="p-3 bg-rose-950/30 border border-rose-800 rounded-xl space-y-1 text-rose-200">
-              <p className="font-bold text-white">
+            <div className="p-3 bg-[#FEF3F2] border border-[#FECACA] rounded-xl space-y-1 text-[#B42318]">
+              <p className="font-bold text-[#111111]">
                 Winner: {deletingAuctionTarget.memberName || 'Member'}
               </p>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-[#667085]">
                 Group: {deletingAuctionTarget.groupTitle || `Group ${deletingAuctionTarget.groupId}`} • Round {deletingAuctionTarget.roundNumber || 1}
               </p>
             </div>
 
-            <p className="text-slate-300 leading-relaxed">
+            <p className="text-[#667085] leading-relaxed">
               The auction will be removed from the active auction view, but its complete record will remain in Auction History.
             </p>
 
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#E5E7EB]">
               <Button
                 variant="secondary"
                 size="sm"
                 disabled={isDeletingAuction}
                 onClick={() => setDeletingAuctionTarget(null)}
-                className="bg-slate-900 text-slate-300 border-slate-800"
+                className="bg-white text-[#111111] border-[#E5E7EB]"
               >
                 Cancel
               </Button>
@@ -746,7 +746,7 @@ export default function History() {
                 size="sm"
                 disabled={isDeletingAuction}
                 onClick={handleConfirmDeleteAuction}
-                className="bg-rose-600 hover:bg-rose-700 text-white font-bold cursor-pointer"
+                className="bg-[#B42318] hover:bg-[#911c13] text-white font-bold cursor-pointer"
               >
                 {isDeletingAuction ? 'Deleting...' : 'Delete Auction'}
               </Button>

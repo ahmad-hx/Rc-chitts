@@ -74,6 +74,11 @@ export default function PendingPayments() {
   const [isApplyAllModalOpen, setIsApplyAllModalOpen] = useState(false);
   const [isBulkSending, setIsBulkSending] = useState(false);
   const [sendProgress, setSendProgress] = useState({ current: 0, total: 0 });
+  
+  // Record Payment Modal target state
+  const [selectedRecordPaymentTarget, setSelectedRecordPaymentTarget] = useState(null);
+  // Completed Follow-ups state
+  const [completedFollowUps, setCompletedFollowUps] = useState([]);
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
@@ -104,6 +109,14 @@ export default function PendingPayments() {
   useEffect(() => {
     loadData();
   }, [selectedMonth]);
+
+  // Mark Follow-up as Done (Does NOT alter actual payment amounts or mark full payment)
+  const handleMarkDone = (row) => {
+    setCompletedFollowUps((prev) =>
+      prev.includes(row.rowKey) ? prev.filter((k) => k !== row.rowKey) : [...prev, row.rowKey]
+    );
+    showToast(`✓ Follow-up updated for ${row.memberName}. Actual payment balance remains preserved.`, 'info');
+  };
 
   // Extract all unique Chit Groups dynamically from loaded chits & members
   const availableGroups = useMemo(() => {
@@ -199,9 +212,7 @@ export default function PendingPayments() {
 
         const reqChitAmount = getEffectiveMonthlyAmount(m, c, groupPaymentSettings);
 
-        // ─────────────────────────────────────────────────────────────────────────
-        // Calculate paid amount from actual payment transactions for selectedMonth
-        // ─────────────────────────────────────────────────────────────────────────
+        // Calculate paid amount from actual payment transactions in Firestore for selectedMonth
         let paidFromTxns = 0;
         const mPhoneClean = (m.phone || m.whatsapp || '').replace(/\D/g, '');
         const mNameClean = (m.name || '').trim().toLowerCase();
@@ -251,16 +262,13 @@ export default function PendingPayments() {
 
           let isGrpMatch = false;
           if (!isMultiChit) {
-            // Single chit member: payment applies to their only chit
             isGrpMatch = true;
           } else {
-            // Multi-chit member: check specific group match or chit ID
             if (p.chitId && (p.chitId === c.id || p.chitId === c.groupId)) {
               isGrpMatch = true;
             } else if (pGrp && pGrp !== 'ALL') {
               isGrpMatch = (cleanGroupStr === pGrp || cleanGroupStr.includes(pGrp) || pGrp.includes(cleanGroupStr));
             } else {
-              // If group is empty or ALL, match if default group matches
               isGrpMatch = (cleanGroupStr === String(m.groupId || m.group || 'I').replace(/^GROUP\s+/i, '').toUpperCase());
             }
           }
@@ -285,14 +293,11 @@ export default function PendingPayments() {
           }
         }
 
-        // ─────────────────────────────────────────────────────────────────────────
         // Section Rules:
-        // - Fully Paid (paidAmount >= reqChitAmount): Excluded from Pending Payments
-        // - Full Pending (paidAmount = 0): Section 1
-        // - Partial Payment (0 < paidAmount < reqChitAmount): Section 2
-        // ─────────────────────────────────────────────────────────────────────────
+        // - Fully Paid (paidAmount >= reqChitAmount or pendingAmount <= 0): Excluded from active Pending queue
+        // - Unpaid (paidAmount = 0): Section 1 (FULL PENDING / UNPAID)
+        // - Partial Payment (0 < paidAmount < reqChitAmount): Section 2 (PARTIALLY PAID)
         if (pendingAmount <= 0 || paidAmount >= reqChitAmount) {
-          // Fully paid for this month -> DO NOT show in Pending Payments
           return;
         }
 
@@ -323,7 +328,7 @@ export default function PendingPayments() {
     return rows;
   }, [members, chits, payments, groupPaymentSettings, editedAmounts, selectedGroupId, selectedMonth, searchQuery]);
 
-  // Section 1: Full Pending Members (Paid = ₹0)
+  // Section 1: Full Pending / Unpaid Members (Paid = ₹0)
   const fullPendingRows = useMemo(() => {
     return memberPaymentRows.filter((r) => r.status === 'PENDING');
   }, [memberPaymentRows]);
@@ -454,12 +459,12 @@ export default function PendingPayments() {
       return;
     }
 
-    let msg = `Dear ${row.memberName}, `;
-    if (row.status === 'PARTIAL') {
-      msg += `your remaining chit payment for Group ${row.groupId} (${selectedMonth}) is ₹${row.pendingAmount.toLocaleString('en-IN')}. Please complete the payment at your earliest convenience.`;
-    } else {
-      msg += `your pending chit payment for Group ${row.groupId} (${selectedMonth}) is ₹${row.pendingAmount.toLocaleString('en-IN')}. Please clear the payment at your earliest convenience.`;
-    }
+    const msg = generatePersonalizedMessage(row.memberObj, null, {
+      billingMonth: selectedMonth,
+      groupPaymentSettings,
+      allGroupsList: chits,
+      paymentsList: payments,
+    });
 
     try {
       const res = await sendSingleWhatsAppMessage({
@@ -533,7 +538,7 @@ export default function PendingPayments() {
       'Paid Amount (INR)': r.paidAmount,
       'Remaining Balance (INR)': r.pendingAmount,
       'Total Due (INR)': r.totalDue,
-      'Payment Status': r.status === 'PARTIAL' ? 'Partial Payment' : 'Full Pending',
+      'Payment Status': r.status === 'PARTIAL' ? 'Partially Paid' : 'Unpaid (Full Pending)',
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
@@ -553,26 +558,26 @@ export default function PendingPayments() {
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       {/* HEADER */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E5E5E1] pb-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E5E7EB] pb-5">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#2F5D50]">Collection & Audit</span>
-            <span className="text-[#959590]">•</span>
-            <span className="text-xs font-bold text-[#1C1C1A]">{selectedMonth}</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#285F52]">Collection & Audit</span>
+            <span className="text-[#98A2B3]">•</span>
+            <span className="text-xs font-bold text-[#111111]">{selectedMonth}</span>
           </div>
-          <h1 className="text-2xl md:text-3xl font-black text-[#1C1C1A] tracking-tight">Pending Payments & Collection</h1>
-          <p className="text-xs text-[#6B6B67] mt-1">
-            Independently calculates Full Pending (Paid ₹0) and Partial Payments per chit subscription for {selectedMonth}.
+          <h1 className="text-2xl md:text-3xl font-black text-[#111111] tracking-tight">Pending Payments & Partial Collection</h1>
+          <p className="text-xs text-[#667085] mt-1">
+            Track Unpaid (Paid ₹0) & Partially Paid members. Members only leave Pending when remaining balance is ₹0.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" className="gap-2 rounded-xl text-xs font-bold cursor-pointer" onClick={handleExportToExcel}>
-            <Download className="w-4 h-4 text-[#2F5D50]" />
+          <Button variant="outline" className="gap-2 rounded-xl text-xs font-bold cursor-pointer border-[#E5E7EB] bg-white text-[#111111]" onClick={handleExportToExcel}>
+            <Download className="w-4 h-4 text-[#285F52]" />
             Export to Excel
           </Button>
 
-          <Button variant="primary" className="gap-2 rounded-xl text-xs font-bold bg-[#2F5D50] hover:bg-[#24493F] text-white cursor-pointer" onClick={handleSendRemindersToSelected}>
+          <Button variant="primary" className="gap-2 rounded-xl text-xs font-bold bg-[#285F52] hover:bg-[#214D43] text-white cursor-pointer" onClick={handleSendRemindersToSelected}>
             <Send className="w-4 h-4" />
             Send Reminders ({selectedRowKeys.length})
           </Button>
@@ -581,51 +586,51 @@ export default function PendingPayments() {
 
       {/* DASHBOARD SUMMARY CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="p-4 border border-[#E5E5E1] bg-white rounded-2xl shadow-xs">
+        <Card className="p-4 border border-[#E5E7EB] bg-white rounded-2xl shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-extrabold text-[#6B6B67] uppercase tracking-wider">Full Pending Subscriptions</span>
-            <Clock className="w-4 h-4 text-amber-600" />
+            <span className="text-[10px] font-extrabold text-[#667085] uppercase tracking-wider">Unpaid Subscriptions</span>
+            <Clock className="w-4 h-4 text-[#B7791F]" />
           </div>
-          <p className="text-2xl font-black text-[#1C1C1A] mt-2">{summaryMetrics.totalPendingMembers}</p>
-          <p className="text-[11px] font-semibold text-amber-700 mt-1">Zero payment (₹0) for {selectedMonth}</p>
+          <p className="text-2xl font-black text-[#111111] mt-2">{summaryMetrics.totalPendingMembers}</p>
+          <p className="text-[11px] font-semibold text-[#B7791F] mt-1">Zero payment (Paid ₹0)</p>
         </Card>
 
-        <Card className="p-4 border border-[#E5E5E1] bg-white rounded-2xl shadow-xs">
+        <Card className="p-4 border border-[#E5E7EB] bg-white rounded-2xl shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-extrabold text-[#6B6B67] uppercase tracking-wider">Partial Payment Subscriptions</span>
-            <AlertCircle className="w-4 h-4 text-amber-500" />
+            <span className="text-[10px] font-extrabold text-[#667085] uppercase tracking-wider">Partially Paid Subscriptions</span>
+            <AlertCircle className="w-4 h-4 text-[#B7791F]" />
           </div>
-          <p className="text-2xl font-black text-[#1C1C1A] mt-2">{summaryMetrics.partialPaymentMembers}</p>
-          <p className="text-[11px] font-semibold text-amber-600 mt-1">Paid part of monthly amount</p>
+          <p className="text-2xl font-black text-[#111111] mt-2">{summaryMetrics.partialPaymentMembers}</p>
+          <p className="text-[11px] font-semibold text-[#B7791F] mt-1">Paid partial amount</p>
         </Card>
 
-        <Card className="p-4 border border-[#E5E5E1] bg-white rounded-2xl shadow-xs">
+        <Card className="p-4 border border-[#E5E7EB] bg-white rounded-2xl shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-extrabold text-[#6B6B67] uppercase tracking-wider">Total Full Pending Dues</span>
-            <IndianRupee className="w-4 h-4 text-amber-600" />
+            <span className="text-[10px] font-extrabold text-[#667085] uppercase tracking-wider">Unpaid Dues</span>
+            <IndianRupee className="w-4 h-4 text-[#B7791F]" />
           </div>
-          <p className="text-2xl font-black text-amber-700 mt-2">₹{summaryMetrics.totalPendingAmount.toLocaleString('en-IN')}</p>
-          <p className="text-[11px] font-semibold text-[#6B6B67] mt-1">Outstanding sum from full pending</p>
+          <p className="text-2xl font-black text-[#B7791F] mt-2">₹{summaryMetrics.totalPendingAmount.toLocaleString('en-IN')}</p>
+          <p className="text-[11px] font-semibold text-[#667085] mt-1">Outstanding sum from unpaid</p>
         </Card>
 
-        <Card className="p-4 border border-[#E5E5E1] bg-white rounded-2xl shadow-xs">
+        <Card className="p-4 border border-[#E5E7EB] bg-white rounded-2xl shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-extrabold text-[#6B6B67] uppercase tracking-wider">Total Partial Remaining</span>
-            <IndianRupee className="w-4 h-4 text-amber-500" />
+            <span className="text-[10px] font-extrabold text-[#667085] uppercase tracking-wider">Partial Remaining</span>
+            <IndianRupee className="w-4 h-4 text-[#B7791F]" />
           </div>
-          <p className="text-2xl font-black text-amber-600 mt-2">₹{summaryMetrics.totalPartialRemaining.toLocaleString('en-IN')}</p>
-          <p className="text-[11px] font-semibold text-[#6B6B67] mt-1">Remaining balance from partials</p>
+          <p className="text-2xl font-black text-[#B7791F] mt-2">₹{summaryMetrics.totalPartialRemaining.toLocaleString('en-IN')}</p>
+          <p className="text-[11px] font-semibold text-[#667085] mt-1">Remaining balance from partials</p>
         </Card>
       </div>
 
       {/* CONTROL AREA AT TOP */}
-      <Card className="p-5 border border-[#E5E5E1] bg-white rounded-2xl shadow-xs space-y-4 font-sans">
-        <div className="flex items-center justify-between border-b border-[#E5E5E1] pb-3">
+      <Card className="p-5 border border-[#E5E7EB] bg-white rounded-2xl shadow-xs space-y-4 font-sans">
+        <div className="flex items-center justify-between border-b border-[#E5E7EB] pb-3">
           <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-[#2F5D50]" />
-            <span className="text-xs font-black uppercase text-[#1C1C1A]">Payment Collection Control Panel</span>
+            <Filter className="w-4 h-4 text-[#285F52]" />
+            <span className="text-xs font-black uppercase text-[#111111]">Payment Collection Control Panel</span>
           </div>
-          <button onClick={handleResetForm} className="text-xs text-[#2F5D50] hover:text-[#24493F] font-bold flex items-center gap-1 cursor-pointer">
+          <button onClick={handleResetForm} className="text-xs text-[#285F52] hover:text-[#214D43] font-bold flex items-center gap-1 cursor-pointer">
             <RotateCcw className="w-3.5 h-3.5" />
             Reset Edits
           </button>
@@ -634,11 +639,11 @@ export default function PendingPayments() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* 1. CHIT GROUP */}
           <div>
-            <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block mb-1">Chit Group</label>
+            <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block mb-1">Chit Group</label>
             <select
               value={selectedGroupId}
               onChange={(e) => setSelectedGroupId(e.target.value)}
-              className="w-full px-3 py-2 text-xs font-bold bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50] cursor-pointer"
+              className="w-full px-3 py-2 text-xs font-bold bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52] cursor-pointer"
             >
               <option value="all">All Chit Groups</option>
               {groupedAvailableGroups.map((cat) => (
@@ -655,11 +660,11 @@ export default function PendingPayments() {
 
           {/* 2. BILLING MONTH */}
           <div>
-            <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block mb-1">Billing Month</label>
+            <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block mb-1">Billing Month</label>
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
-              className="w-full px-3 py-2 text-xs font-bold bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+              className="w-full px-3 py-2 text-xs font-bold bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
             >
               {availableMonths.map((m) => (
                 <option key={m} value={m}>
@@ -671,39 +676,39 @@ export default function PendingPayments() {
 
           {/* 3. GROUP CHIT AMOUNT */}
           <div>
-            <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block mb-1">Group Monthly Chit Amount</label>
+            <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block mb-1">Group Monthly Chit Amount</label>
             <input
               type="number"
               min="0"
               step="1"
               value={groupMonthlyChitAmount}
               onChange={(e) => setGroupMonthlyChitAmount(Number(e.target.value) || 0)}
-              className="w-full px-3 py-2 text-xs font-bold bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+              className="w-full px-3 py-2 text-xs font-bold bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
             />
           </div>
 
           {/* 4. GROUP PENDING AMOUNT */}
           <div>
-            <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block mb-1">Total Outstanding Pending</label>
-            <div className="w-full px-3 py-2 text-xs font-black bg-[#FFF7E6] border border-[#FCD34D] rounded-xl text-amber-800">
+            <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block mb-1">Total Outstanding Pending</label>
+            <div className="w-full px-3 py-2 text-xs font-black bg-[#FFF8E7] border border-[#FDE68A] rounded-xl text-[#B7791F]">
               ₹{(summaryMetrics.totalPendingAmount + summaryMetrics.totalPartialRemaining).toLocaleString('en-IN')}
             </div>
           </div>
         </div>
 
         {/* BULK ACTION CONTROLS */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[#E5E5E1]">
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[#E5E7EB]">
           <div className="flex items-center gap-2">
             <input
               type="text"
               placeholder="Filter member name or phone..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-64 px-3 py-1.5 text-xs bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] focus:outline-none"
+              className="w-64 px-3 py-1.5 text-xs bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] focus:outline-none"
             />
             <button
               onClick={handleSelectAllCurrent}
-              className="px-3 py-1.5 text-xs font-bold border border-[#E5E5E1] bg-[#F7F7F5] text-[#1C1C1A] rounded-xl hover:bg-[#E5E5E1] cursor-pointer"
+              className="px-3 py-1.5 text-xs font-bold border border-[#E5E7EB] bg-[#F7F8F7] text-[#111111] rounded-xl hover:bg-[#E5E7EB] cursor-pointer"
             >
               Select All / Clear
             </button>
@@ -713,7 +718,7 @@ export default function PendingPayments() {
             <Button
               variant="outline"
               size="sm"
-              className="rounded-xl text-xs font-bold cursor-pointer"
+              className="rounded-xl text-xs font-bold cursor-pointer border-[#E5E7EB] bg-white text-[#111111]"
               onClick={handleApplyToSelected}
             >
               Apply to Selected ({selectedRowKeys.length})
@@ -722,7 +727,7 @@ export default function PendingPayments() {
             <Button
               variant="primary"
               size="sm"
-              className="rounded-xl text-xs font-bold bg-[#2F5D50] hover:bg-[#24493F] text-white cursor-pointer"
+              className="rounded-xl text-xs font-bold bg-[#285F52] hover:bg-[#214D43] text-white cursor-pointer"
               onClick={() => setIsApplyAllModalOpen(true)}
             >
               Apply All ({fullPendingRows.length + partialPaymentRows.length})
@@ -732,87 +737,99 @@ export default function PendingPayments() {
       </Card>
 
       {loading ? (
-        <div className="p-12 text-center text-slate-500 font-bold text-sm">Loading payment records...</div>
+        <div className="p-12 text-center text-[#667085] font-bold text-sm">Loading payment records...</div>
       ) : (
         <div className="space-y-8">
-          {/* ─── SECTION 1: FULL PENDING MEMBERS (Paid Amount = ₹0) ─────────────────────────── */}
-          <Card className="border border-[#E5E5E1] bg-white rounded-2xl shadow-xs overflow-hidden">
-            <div className="p-4 bg-[#FFF7E6] border-b border-[#FCD34D] flex items-center justify-between">
+          {/* ─── SECTION 1: UNPAID MEMBERS (Paid Amount = ₹0) ─────────────────────────── */}
+          <Card className="border border-[#E5E7EB] bg-white rounded-2xl shadow-xs overflow-hidden">
+            <div className="p-4 bg-[#FFF8E7] border-b border-[#FDE68A] flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider bg-amber-600 text-white rounded-lg">
-                  FULL PENDING
+                <span className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider bg-[#B7791F] text-white rounded-lg">
+                  UNPAID
                 </span>
-                <h2 className="text-sm font-black text-[#1C1C1A]">SECTION 1 — FULL PENDING MEMBERS</h2>
-                <span className="text-xs text-[#6B6B67]">({fullPendingRows.length} Subscriptions • Paid Amount = ₹0 for {selectedMonth})</span>
+                <h2 className="text-sm font-black text-[#111111]">SECTION 1 — UNPAID MEMBERS</h2>
+                <span className="text-xs text-[#667085]">({fullPendingRows.length} Subscriptions • Paid Amount = ₹0 for {selectedMonth})</span>
               </div>
             </div>
 
             {fullPendingRows.length === 0 ? (
-              <div className="p-8 text-center text-[#6B6B67] text-xs font-bold">
-                ✓ No full pending members found for {selectedMonth}.
+              <div className="p-8 text-center text-[#667085] text-xs font-bold">
+                ✓ No unpaid members found for {selectedMonth}.
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs font-sans">
-                  <thead className="bg-[#F7F7F5] border-b border-[#E5E5E1] text-[10px] font-black uppercase tracking-wider text-[#6B6B67]">
+                  <thead className="bg-[#F7F8F7] border-b border-[#E5E7EB] text-[10px] font-black uppercase tracking-wider text-[#667085]">
                     <tr>
                       <th className="p-3 w-10 text-center">Select</th>
                       <th className="p-3">Member Name</th>
                       <th className="p-3">Chit / Group</th>
-                      <th className="p-3">Phone Number</th>
-                      <th className="p-3 text-right">Required Monthly Amount</th>
-                      <th className="p-3 text-center">Billing Month</th>
-                      <th className="p-3 text-right">Paid Amount ₹</th>
-                      <th className="p-3 text-right">Pending Balance ₹</th>
-                      <th className="p-3 text-right">Total Due ₹</th>
+                      <th className="p-3 text-right">Due ₹</th>
+                      <th className="p-3 text-right">Paid ₹</th>
+                      <th className="p-3 text-right">Remaining ₹</th>
                       <th className="p-3 text-center">Status</th>
-                      <th className="p-3 text-right">Action</th>
+                      <th className="p-3 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#E5E5E1]">
+                  <tbody className="divide-y divide-[#E5E7EB]">
                     {fullPendingRows.map((row) => {
                       const isChecked = selectedRowKeys.includes(row.rowKey);
+                      const isDone = completedFollowUps.includes(row.rowKey);
                       return (
-                        <tr key={row.rowKey} className={`hover:bg-[#F7F7F5] transition-colors ${isChecked ? 'bg-[#EDF7F0]' : ''}`}>
+                        <tr key={row.rowKey} className={`hover:bg-[#F7F8F7] transition-colors ${isChecked ? 'bg-[#EEF6F3]' : ''}`}>
                           <td className="p-3 text-center">
                             <input
                               type="checkbox"
                               checked={isChecked}
                               onChange={() => handleToggleRow(row.rowKey)}
-                              className="rounded border-slate-300 text-[#2F5D50] focus:ring-[#2F5D50] cursor-pointer"
+                              className="rounded border-slate-300 text-[#285F52] focus:ring-[#285F52] cursor-pointer"
                             />
                           </td>
-                          <td className="p-3 font-bold text-[#1C1C1A]">{row.memberName}</td>
-                          <td className="p-3 font-semibold text-[#6B6B67]">{row.groupName}</td>
-                          <td className="p-3 font-mono text-[#6B6B67]">{row.phone}</td>
-                          <td className="p-3 text-right font-bold text-[#1C1C1A]">₹{row.reqChitAmount.toLocaleString('en-IN')}</td>
-                          <td className="p-3 text-center text-[#6B6B67]">{selectedMonth}</td>
-                          <td className="p-3 text-right font-bold text-[#6B6B67]">₹0</td>
-                          
-                          {/* EDITABLE PENDING AMOUNT */}
-                          <td className="p-3 text-right">
-                            <input
-                              type="number"
-                              min="0"
-                              step="1"
-                              value={row.pendingAmount}
-                              onChange={(e) => handleAmountChange(row.rowKey, 'pendingAmount', e.target.value)}
-                              className="w-24 px-2 py-1 text-right text-xs font-bold bg-[#FFF7E6] border border-amber-300 rounded-lg text-amber-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                            />
+                          <td className="p-3 font-bold text-[#111111]">
+                            <div>{row.memberName}</div>
+                            <div className="text-[10px] font-normal text-[#667085] font-mono">{row.phone}</div>
                           </td>
-
-                          <td className="p-3 text-right font-black text-amber-700">₹{row.totalDue.toLocaleString('en-IN')}</td>
+                          <td className="p-3 font-semibold text-[#667085]">{row.groupName}</td>
+                          <td className="p-3 text-right font-bold text-[#111111]">₹{row.reqChitAmount.toLocaleString('en-IN')}</td>
+                          <td className="p-3 text-right font-bold text-[#667085]">₹0</td>
+                          <td className="p-3 text-right font-black text-[#B7791F]">₹{row.pendingAmount.toLocaleString('en-IN')}</td>
                           <td className="p-3 text-center">
-                            <Badge variant="pending" dot>PENDING</Badge>
+                            {isDone ? (
+                              <Badge variant="success" dot>Follow-up Done ✓</Badge>
+                            ) : (
+                              <Badge variant="pending" dot>UNPAID</Badge>
+                            )}
                           </td>
                           <td className="p-3 text-right">
-                            <button
-                              onClick={() => handleSendWhatsAppReminder(row)}
-                              className="p-1.5 rounded-lg border border-[#2F5D50]/30 bg-[#EDF7F0] text-[#2F5D50] hover:bg-[#2F5D50] hover:text-white transition-colors cursor-pointer"
-                              title="Send WhatsApp Reminder"
-                            >
-                              <Send className="w-3.5 h-3.5" />
-                            </button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => setSelectedRecordPaymentTarget(row)}
+                                className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-[#BFD8D0] bg-[#EEF6F3] text-[#285F52] hover:bg-[#285F52] hover:text-white transition-colors cursor-pointer shrink-0"
+                                title="Record Payment for this member"
+                              >
+                                Record Payment
+                              </button>
+
+                              <button
+                                onClick={() => handleSendWhatsAppReminder(row)}
+                                className="p-1.5 rounded-lg border border-[#E5E7EB] bg-white text-[#285F52] hover:bg-[#EEF6F3] transition-colors cursor-pointer shrink-0"
+                                title="Send WhatsApp Reminder"
+                              >
+                                <Send className="w-3.5 h-3.5" />
+                              </button>
+
+                              <button
+                                onClick={() => handleMarkDone(row)}
+                                className={`px-2 py-1 text-[11px] font-bold rounded-lg border transition-colors cursor-pointer shrink-0 ${
+                                  isDone
+                                    ? 'bg-[#EEF6F3] text-[#285F52] border-[#BFD8D0]'
+                                    : 'bg-white text-[#667085] border-[#E5E7EB] hover:text-[#111111]'
+                                }`}
+                                title="Mark follow-up completed without altering payment balance"
+                              >
+                                {isDone ? 'Done ✓' : 'Done'}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -823,93 +840,103 @@ export default function PendingPayments() {
             )}
           </Card>
 
-          {/* ─── SECTION 2: PARTIAL PAYMENTS (Paid Amount > 0 and < Required) ───────────────── */}
-          <Card className="border border-[#E5E5E1] bg-white rounded-2xl shadow-xs overflow-hidden">
-            <div className="p-4 bg-[#F7F7F5] border-b border-[#E5E5E1] flex items-center justify-between">
+          {/* ─── SECTION 2: PARTIALLY PAID MEMBERS (0 < Paid < Required) ───────────────── */}
+          <Card className="border border-[#E5E7EB] bg-white rounded-2xl shadow-xs overflow-hidden">
+            <div className="p-4 bg-[#FFF8E7] border-b border-[#FDE68A] flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider bg-amber-500 text-white rounded-lg">
-                  PARTIAL PAYMENTS
+                <span className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider bg-[#B7791F] text-white rounded-lg">
+                  PARTIALLY PAID
                 </span>
-                <h2 className="text-sm font-black text-[#1C1C1A]">SECTION 2 — PARTIAL PAYMENTS</h2>
-                <span className="text-xs text-[#6B6B67]">({partialPaymentRows.length} Subscriptions • Paid part of monthly amount)</span>
+                <h2 className="text-sm font-black text-[#111111]">SECTION 2 — PARTIALLY PAID MEMBERS</h2>
+                <span className="text-xs text-[#667085]">({partialPaymentRows.length} Subscriptions • Paid partial amount)</span>
               </div>
             </div>
 
             {partialPaymentRows.length === 0 ? (
-              <div className="p-8 text-center text-[#6B6B67] text-xs font-bold">
+              <div className="p-8 text-center text-[#667085] text-xs font-bold">
                 ✓ No partial payment records for {selectedMonth}.
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs font-sans">
-                  <thead className="bg-[#F7F7F5] border-b border-[#E5E5E1] text-[10px] font-black uppercase tracking-wider text-[#6B6B67]">
+                  <thead className="bg-[#F7F8F7] border-b border-[#E5E7EB] text-[10px] font-black uppercase tracking-wider text-[#667085]">
                     <tr>
                       <th className="p-3 w-10 text-center">Select</th>
                       <th className="p-3">Member Name</th>
                       <th className="p-3">Chit / Group</th>
-                      <th className="p-3">Phone Number</th>
-                      <th className="p-3 text-right">Required Monthly Amount</th>
-                      <th className="p-3 text-center">Billing Month</th>
-                      <th className="p-3 text-right">Amount Already Paid ₹</th>
-                      <th className="p-3 text-right">Remaining Balance ₹</th>
-                      <th className="p-3 text-right">Total Due ₹</th>
+                      <th className="p-3 text-right">Due ₹</th>
+                      <th className="p-3 text-right">Paid ₹</th>
+                      <th className="p-3 text-right">Remaining ₹</th>
                       <th className="p-3 text-center">Status</th>
-                      <th className="p-3 text-right">Action</th>
+                      <th className="p-3 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#E5E5E1]">
+                  <tbody className="divide-y divide-[#E5E7EB]">
                     {partialPaymentRows.map((row) => {
                       const isChecked = selectedRowKeys.includes(row.rowKey);
+                      const isDone = completedFollowUps.includes(row.rowKey);
                       return (
-                        <tr key={row.rowKey} className={`hover:bg-[#F7F7F5] transition-colors ${isChecked ? 'bg-[#EDF7F0]' : ''}`}>
+                        <tr key={row.rowKey} className={`hover:bg-[#F7F8F7] transition-colors ${isChecked ? 'bg-[#EEF6F3]' : ''}`}>
                           <td className="p-3 text-center">
                             <input
                               type="checkbox"
                               checked={isChecked}
                               onChange={() => handleToggleRow(row.rowKey)}
-                              className="rounded border-slate-300 text-[#2F5D50] focus:ring-[#2F5D50] cursor-pointer"
+                              className="rounded border-slate-300 text-[#285F52] focus:ring-[#285F52] cursor-pointer"
                             />
                           </td>
-                          <td className="p-3 font-bold text-[#1C1C1A]">
+                          <td className="p-3 font-bold text-[#111111]">
                             <div className="flex items-center gap-1.5">
                               <span>{row.memberName}</span>
-                              <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
+                              <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-[#FFF8E7] text-[#B7791F] border border-[#FDE68A] shrink-0">
                                 PARTIAL
                               </span>
                             </div>
+                            <div className="text-[10px] font-normal text-[#667085] font-mono">{row.phone}</div>
                           </td>
-                          <td className="p-3 font-semibold text-[#6B6B67]">{row.groupName}</td>
-                          <td className="p-3 font-mono text-[#6B6B67]">{row.phone}</td>
-                          <td className="p-3 text-right font-bold text-[#1C1C1A]">₹{row.reqChitAmount.toLocaleString('en-IN')}</td>
-                          <td className="p-3 text-center text-[#6B6B67]">{selectedMonth}</td>
-                          <td className="p-3 text-right font-bold text-emerald-700">₹{row.paidAmount.toLocaleString('en-IN')}</td>
-                          
-                          {/* EDITABLE REMAINING BALANCE AMOUNT */}
-                          <td className="p-3 text-right">
-                            <input
-                              type="number"
-                              min="0"
-                              step="1"
-                              value={row.pendingAmount}
-                              onChange={(e) => handleAmountChange(row.rowKey, 'pendingAmount', e.target.value)}
-                              className="w-24 px-2 py-1 text-right text-xs font-bold bg-[#FFF7E6] border border-amber-300 rounded-lg text-amber-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                            />
-                          </td>
-
-                          <td className="p-3 text-right font-black text-amber-700">₹{row.totalDue.toLocaleString('en-IN')}</td>
+                          <td className="p-3 font-semibold text-[#667085]">{row.groupName}</td>
+                          <td className="p-3 text-right font-bold text-[#111111]">₹{row.reqChitAmount.toLocaleString('en-IN')}</td>
+                          <td className="p-3 text-right font-bold text-[#285F52]">₹{row.paidAmount.toLocaleString('en-IN')}</td>
+                          <td className="p-3 text-right font-black text-[#B7791F]">₹{row.pendingAmount.toLocaleString('en-IN')}</td>
                           <td className="p-3 text-center">
-                            <Badge variant="partial" dot>
-                              PARTIAL (₹{row.pendingAmount.toLocaleString('en-IN')} Left)
-                            </Badge>
+                            {isDone ? (
+                              <Badge variant="success" dot>Follow-up Done ✓</Badge>
+                            ) : (
+                              <Badge variant="partial" dot>
+                                PARTIALLY PAID (₹{row.pendingAmount.toLocaleString('en-IN')} Left)
+                              </Badge>
+                            )}
                           </td>
                           <td className="p-3 text-right">
-                            <button
-                              onClick={() => handleSendWhatsAppReminder(row)}
-                              className="p-1.5 rounded-lg border border-[#2F5D50]/30 bg-[#EDF7F0] text-[#2F5D50] hover:bg-[#2F5D50] hover:text-white transition-colors cursor-pointer"
-                              title="Send WhatsApp Reminder"
-                            >
-                              <Send className="w-3.5 h-3.5" />
-                            </button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => setSelectedRecordPaymentTarget(row)}
+                                className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-[#BFD8D0] bg-[#EEF6F3] text-[#285F52] hover:bg-[#285F52] hover:text-white transition-colors cursor-pointer shrink-0"
+                                title="Record further partial or full payment"
+                              >
+                                Record Payment
+                              </button>
+
+                              <button
+                                onClick={() => handleSendWhatsAppReminder(row)}
+                                className="p-1.5 rounded-lg border border-[#E5E7EB] bg-white text-[#285F52] hover:bg-[#EEF6F3] transition-colors cursor-pointer shrink-0"
+                                title="Send WhatsApp Reminder for current remaining balance"
+                              >
+                                <Send className="w-3.5 h-3.5" />
+                              </button>
+
+                              <button
+                                onClick={() => handleMarkDone(row)}
+                                className={`px-2 py-1 text-[11px] font-bold rounded-lg border transition-colors cursor-pointer shrink-0 ${
+                                  isDone
+                                    ? 'bg-[#EEF6F3] text-[#285F52] border-[#BFD8D0]'
+                                    : 'bg-white text-[#667085] border-[#E5E7EB] hover:text-[#111111]'
+                                }`}
+                                title="Mark follow-up completed without altering payment balance"
+                              >
+                                {isDone ? 'Done ✓' : 'Done'}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -922,6 +949,28 @@ export default function PendingPayments() {
         </div>
       )}
 
+      {/* RECORD PAYMENT MODAL FOR SINGLE ROW TARGET */}
+      {selectedRecordPaymentTarget && (
+        <RecordPaymentModal
+          isOpen={Boolean(selectedRecordPaymentTarget)}
+          onClose={() => setSelectedRecordPaymentTarget(null)}
+          onRecord={(newTxn, meta = {}) => {
+            if (meta.isFullyPaid) {
+              showToast(`✓ Payment completed successfully for ${newTxn.member || 'Member'}! Automatically removed from Pending Payments.`, 'success');
+            } else {
+              showToast(`✓ Payment of ₹${newTxn.amount.toLocaleString('en-IN')} recorded for ${newTxn.member || 'Member'}.`, 'success');
+            }
+            setSelectedRecordPaymentTarget(null);
+            loadData();
+          }}
+          members={members}
+          groupPaymentSettings={groupPaymentSettings}
+          initialMemberId={selectedRecordPaymentTarget.memberId}
+          initialGroupId={selectedRecordPaymentTarget.groupId}
+          payments={payments}
+        />
+      )}
+
       {/* CONFIRMATION MODAL FOR APPLY ALL */}
       <Modal
         isOpen={isApplyAllModalOpen}
@@ -930,22 +979,22 @@ export default function PendingPayments() {
         subtitle="This action will save payment records for all loaded members."
         maxWidth="max-w-md"
       >
-        <div className="space-y-4">
-          <p className="text-xs text-[#1C1C1A] leading-relaxed">
+        <div className="space-y-4 font-sans">
+          <p className="text-xs text-[#111111] leading-relaxed">
             Apply changes to all <strong>{fullPendingRows.length + partialPaymentRows.length} subscriptions</strong> in{' '}
             <strong>{selectedGroupId === 'all' ? 'All Groups' : `Group ${selectedGroupId}`}</strong> for{' '}
             <strong>{selectedMonth}</strong>?
           </p>
 
-          <div className="p-3 bg-[#FFF7E6] border border-[#FCD34D] rounded-xl text-xs text-amber-800">
+          <div className="p-3 bg-[#FFF8E7] border border-[#FDE68A] rounded-xl text-xs text-[#B7791F]">
             <strong>Note:</strong> Previous monthly historical records will remain safe and unchanged.
           </div>
 
-          <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E5E1]">
+          <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E7EB]">
             <Button variant="secondary" size="sm" onClick={() => setIsApplyAllModalOpen(false)}>
               Cancel
             </Button>
-            <Button variant="primary" size="sm" className="bg-[#2F5D50] text-white" onClick={handleConfirmApplyAll}>
+            <Button variant="primary" size="sm" className="bg-[#285F52] hover:bg-[#214D43] text-white" onClick={handleConfirmApplyAll}>
               Confirm Apply All
             </Button>
           </div>

@@ -5,10 +5,9 @@ import {
   doc,
   updateDoc,
   deleteDoc,
-  getDoc,
   serverTimestamp,
 } from 'firebase/firestore';
-import { db, auth } from '../firebase';
+import { db, auth } from '../firebase.js';
 
 async function ensureAuthReady() {
   if (auth?.authStateReady) {
@@ -22,7 +21,7 @@ async function ensureAuthReady() {
 
 export const calculationService = {
   /**
-   * Fetch all saved calculations from Firestore 'calculations' collection.
+   * Fetch all saved working notes from Firestore 'calculations' collection.
    */
   async getCalculations() {
     await ensureAuthReady();
@@ -35,12 +34,11 @@ export const calculationService = {
         const d = docSnap.data();
         list.push({
           id: docSnap.id,
-          title: d.title || 'Untitled Calculation',
+          title: d.title || 'New Note',
           content: d.content || '',
-          result: d.result || '',
-          createdAt: d.createdAt || new Date().toISOString(),
-          updatedAt: d.updatedAt || new Date().toISOString(),
-          performedBy: d.performedBy || 'Admin',
+          createdAt: d.createdAt || d.updatedAt || new Date().toISOString(),
+          updatedAt: d.updatedAt || d.createdAt || new Date().toISOString(),
+          createdBy: d.createdBy || d.performedBy || 'Admin',
         });
       });
 
@@ -49,14 +47,14 @@ export const calculationService = {
       return list;
     } catch (err) {
       console.error('Firestore getCalculations error:', err.message);
-      return [];
+      throw err;
     }
   },
 
   /**
-   * Save a new calculation to Firestore.
+   * Save a new working note to Firestore.
    */
-  async createCalculation({ title = 'Untitled Calculation', content = '', result = '' }) {
+  async createCalculation({ title = 'New Note', content = '' }) {
     await ensureAuthReady();
     const adminUser = auth.currentUser?.email || 'Admin';
     const nowIso = new Date().toISOString();
@@ -64,23 +62,22 @@ export const calculationService = {
     try {
       const calcRef = collection(db, 'calculations');
       const docRef = await addDoc(calcRef, {
-        title: title.trim() || 'Untitled Calculation',
-        content,
-        result: String(result),
+        title: title.trim() || 'New Note',
+        content: content || '',
         createdAt: nowIso,
         updatedAt: nowIso,
         timestamp: serverTimestamp(),
+        createdBy: adminUser,
         performedBy: adminUser,
       });
 
       return {
         id: docRef.id,
-        title: title.trim() || 'Untitled Calculation',
-        content,
-        result: String(result),
+        title: title.trim() || 'New Note',
+        content: content || '',
         createdAt: nowIso,
         updatedAt: nowIso,
-        performedBy: adminUser,
+        createdBy: adminUser,
       };
     } catch (err) {
       console.error('Firestore createCalculation error:', err.message);
@@ -89,10 +86,10 @@ export const calculationService = {
   },
 
   /**
-   * Update an existing calculation document in Firestore.
+   * Update an existing note document in Firestore.
    */
-  async updateCalculation(id, { title, content, result }) {
-    if (!id) throw new Error('Calculation ID is required for update.');
+  async updateCalculation(id, { title, content }) {
+    if (!id) throw new Error('Note ID is required for update.');
     await ensureAuthReady();
     const nowIso = new Date().toISOString();
 
@@ -103,9 +100,8 @@ export const calculationService = {
         timestamp: serverTimestamp(),
       };
 
-      if (title !== undefined) updateData.title = title.trim() || 'Untitled Calculation';
-      if (content !== undefined) updateData.content = content;
-      if (result !== undefined) updateData.result = String(result);
+      if (title !== undefined) updateData.title = title.trim() || 'New Note';
+      if (content !== undefined) updateData.content = content || '';
 
       await updateDoc(docRef, updateData);
       return { id, ...updateData };
@@ -116,23 +112,10 @@ export const calculationService = {
   },
 
   /**
-   * Duplicate a calculation in Firestore.
-   */
-  async duplicateCalculation(calculation) {
-    if (!calculation) throw new Error('Calculation object is required.');
-    const duplicateTitle = `Copy of ${calculation.title || 'Untitled Calculation'}`;
-    return await this.createCalculation({
-      title: duplicateTitle,
-      content: calculation.content || '',
-      result: calculation.result || '',
-    });
-  },
-
-  /**
-   * Delete a calculation from Firestore.
+   * Delete a note document from Firestore.
    */
   async deleteCalculation(id) {
-    if (!id) throw new Error('Calculation ID is required for deletion.');
+    if (!id) throw new Error('Note ID is required for deletion.');
     await ensureAuthReady();
 
     try {
@@ -145,3 +128,4 @@ export const calculationService = {
     }
   },
 };
+

@@ -20,16 +20,16 @@ export default function Modal({ isOpen, onClose, title, subtitle, children, maxW
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-      <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs" onClick={onClose}></div>
-      <div className={`relative w-full ${maxWidth} max-h-[92vh] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl z-10 flex flex-col`}>
-        <div className="px-4 sm:px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-xs" onClick={onClose}></div>
+      <div className={`relative w-full ${maxWidth} max-h-[92vh] overflow-hidden rounded-3xl border border-[#E5E7EB] bg-white shadow-xl z-10 flex flex-col`}>
+        <div className="px-4 sm:px-6 py-4 border-b border-[#E5E7EB] flex items-center justify-between bg-[#F7F8F7] shrink-0">
           <div className="pr-2 min-w-0">
-            <h3 className="text-base sm:text-lg font-bold text-slate-900 font-sans truncate">{title}</h3>
-            {subtitle && <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{subtitle}</p>}
+            <h3 className="text-base sm:text-lg font-bold text-[#111111] font-sans truncate">{title}</h3>
+            {subtitle && <p className="text-xs text-[#667085] mt-0.5 line-clamp-2">{subtitle}</p>}
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-xl hover:bg-slate-200/60 text-slate-400 hover:text-slate-700 transition-colors shrink-0 cursor-pointer"
+            className="p-2 rounded-xl hover:bg-[#E5E7EB] text-[#98A2B3] hover:text-[#111111] transition-colors shrink-0 cursor-pointer"
             aria-label="Close modal"
           >
             <X className="w-5 h-5" />

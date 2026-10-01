@@ -63,21 +63,21 @@ export default function MemberMessageModal({ isOpen, onClose, member, onSent, gr
     >
       <div className="space-y-5 font-sans">
         {/* UPI PAY ACTION BANNER */}
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+        <div className="rounded-2xl border border-[#E5E7EB] bg-[#F7F8F7] p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
-              <CreditCard className="w-4 h-4 text-emerald-600" />
+            <div className="flex items-center gap-2 text-xs font-bold text-[#111111]">
+              <CreditCard className="w-4 h-4 text-[#285F52]" />
               <span>Instant UPI Payment Action</span>
             </div>
-            <span className="text-sm font-black text-slate-900 font-sans">{upiInfo.formattedAmount}</span>
+            <span className="text-sm font-black text-[#111111] font-sans">{upiInfo.formattedAmount}</span>
           </div>
 
           <button
             type="button"
             onClick={handleLaunchUpiIntent}
-            className="w-full flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-800 transition-colors cursor-pointer shadow-xs"
+            className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#285F52] hover:bg-[#214D43] px-4 py-2.5 text-xs font-bold text-white transition-colors cursor-pointer shadow-xs"
           >
-            <CreditCard className="w-4 h-4 text-emerald-400" />
+            <CreditCard className="w-4 h-4 text-white" />
             <span>{upiInfo.isMobile ? 'Open GPay / PhonePe / PayTM' : 'Copy Desktop UPI Intent Link'}</span>
           </button>
         </div>
@@ -85,25 +85,25 @@ export default function MemberMessageModal({ isOpen, onClose, member, onSent, gr
         {/* BILINGUAL WHATSAPP MESSAGE BOX */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Bilingual WhatsApp Template (English + Telugu)</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#667085]">WhatsApp Payment Reminder Template</span>
             <button
               type="button"
               onClick={() => handleCopyMessage(whatsappMessage)}
-              className="text-xs font-bold text-sky-700 hover:text-sky-900 flex items-center gap-1 cursor-pointer"
+              className="text-xs font-bold text-[#285F52] hover:text-[#214D43] flex items-center gap-1 cursor-pointer"
             >
               <Copy className="w-3.5 h-3.5" />
               {copied ? 'Copied!' : 'Copy Text'}
             </button>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs font-sans leading-relaxed text-slate-900 whitespace-pre-wrap max-h-60 overflow-y-auto">
+          <div className="rounded-2xl border border-[#E5E7EB] bg-[#F7F8F7] p-4 text-xs font-sans leading-relaxed text-[#111111] whitespace-pre-wrap max-h-60 overflow-y-auto font-mono">
             {whatsappMessage}
           </div>
         </div>
 
         {/* MODAL ACTIONS */}
-        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
-          <Button variant="secondary" size="sm" onClick={onClose} className="rounded-xl">
+        <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#E5E7EB]">
+          <Button variant="secondary" size="sm" onClick={onClose} className="rounded-xl border-[#E5E7EB] text-[#111111]">
             Cancel
           </Button>
 
@@ -111,7 +111,7 @@ export default function MemberMessageModal({ isOpen, onClose, member, onSent, gr
             variant="primary"
             size="sm"
             onClick={handleOpenWhatsAppWeb}
-            className="gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+            className="gap-2 rounded-xl bg-[#285F52] hover:bg-[#214D43] text-white cursor-pointer font-bold"
           >
             <Send className="w-4 h-4" />
             Open in WhatsApp Web

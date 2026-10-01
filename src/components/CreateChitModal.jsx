@@ -111,14 +111,14 @@ export default function CreateChitModal({ isOpen, onClose, onCreate }) {
     >
       <form onSubmit={handleSubmit} className="space-y-4 text-xs font-sans">
         {error && (
-          <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl font-bold">
+          <div className="p-3 bg-[#FEF3F2] border border-[#FECACA] text-[#B42318] text-xs rounded-xl font-bold">
             {error}
           </div>
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block">
+            <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">
               Group ID *
             </label>
             <input
@@ -127,12 +127,12 @@ export default function CreateChitModal({ isOpen, onClose, onCreate }) {
               placeholder="e.g. I, II, XVIII"
               value={groupId}
               onChange={(e) => setGroupId(e.target.value)}
-              className="w-full px-3 py-2 text-xs bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50] font-mono font-bold uppercase"
+              className="w-full px-3 py-2 text-xs bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52] font-mono font-bold uppercase"
             />
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block">
+            <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">
               Chit Group Name
             </label>
             <input
@@ -140,32 +140,32 @@ export default function CreateChitModal({ isOpen, onClose, onCreate }) {
               placeholder="Auto-generated if blank"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 text-xs bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+              className="w-full px-3 py-2 text-xs bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
             />
           </div>
         </div>
 
         {/* STARTING MONTH & YEAR INPUTS WITH LIVE PREVIEW */}
-        <div className="p-3.5 bg-[#EDF7F0] border border-[#2F5D50]/20 rounded-xl space-y-2.5">
+        <div className="p-3.5 bg-[#EEF6F3] border border-[#BFD8D0] rounded-xl space-y-2.5">
           <div className="flex items-center justify-between">
-            <label className="text-[10px] font-extrabold text-[#2F5D50] uppercase tracking-wider flex items-center gap-1.5">
+            <label className="text-[10px] font-extrabold text-[#285F52] uppercase tracking-wider flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5" />
               Starting Month & Year (Chit Month 1) *
             </label>
-            <span className="text-[10px] font-bold text-[#2F5D50] bg-white px-2 py-0.5 rounded-md border border-[#2F5D50]/20">
+            <span className="text-[10px] font-bold text-[#285F52] bg-white px-2 py-0.5 rounded-md border border-[#BFD8D0]">
               Month 1 / 20
             </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block">
+              <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">
                 Starting Month
               </label>
               <select
                 value={startingMonthName}
                 onChange={(e) => setStartingMonthName(e.target.value)}
-                className="w-full px-3 py-2 text-xs font-bold bg-white border border-[#E5E5E1] rounded-xl text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50] cursor-pointer"
+                className="w-full px-3 py-2 text-xs font-bold bg-white border border-[#E5E7EB] rounded-xl text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52] cursor-pointer"
               >
                 {FORMATTED_MONTH_NAMES.map((m) => (
                   <option key={m} value={m}>
@@ -176,7 +176,7 @@ export default function CreateChitModal({ isOpen, onClose, onCreate }) {
             </div>
 
             <div className="space-y-1">
-              <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block">
+              <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">
                 Starting Year
               </label>
               <input
@@ -187,42 +187,42 @@ export default function CreateChitModal({ isOpen, onClose, onCreate }) {
                 value={startingYear}
                 onChange={(e) => setStartingYear(e.target.value)}
                 placeholder="2026"
-                className="w-full px-3 py-2 text-xs font-bold bg-white border border-[#E5E5E1] rounded-xl text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+                className="w-full px-3 py-2 text-xs font-bold bg-white border border-[#E5E7EB] rounded-xl text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
               />
             </div>
           </div>
 
-          <div className="pt-2 border-t border-[#2F5D50]/20 space-y-1">
+          <div className="pt-2 border-t border-[#BFD8D0] space-y-1">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-[#6B6B67] font-semibold">Selected Starting Date:</span>
-              <span className="font-bold text-[#1C1C1A]">{startingMonthName} {startingYear}</span>
+              <span className="text-[#667085] font-semibold">Selected Starting Date:</span>
+              <span className="font-bold text-[#111111]">{startingMonthName} {startingYear}</span>
             </div>
             <div className="flex items-center justify-between text-xs">
-              <span className="text-[#6B6B67] font-semibold">Active Billing Month:</span>
-              <span className="font-bold text-[#1C1C1A]">{selectedMonth}</span>
+              <span className="text-[#667085] font-semibold">Active Billing Month:</span>
+              <span className="font-bold text-[#111111]">{selectedMonth}</span>
             </div>
-            <div className="flex items-center justify-between text-xs pt-1 border-t border-[#2F5D50]/15">
-              <span className="text-[#2F5D50] font-extrabold uppercase tracking-wider">Chit Month Preview:</span>
-              <span className="font-black text-[#2F5D50] bg-white px-2.5 py-0.5 rounded-lg border border-[#2F5D50]/25 text-sm">
+            <div className="flex items-center justify-between text-xs pt-1 border-t border-[#BFD8D0]/60">
+              <span className="text-[#285F52] font-extrabold uppercase tracking-wider">Chit Month Preview:</span>
+              <span className="font-black text-[#285F52] bg-white px-2.5 py-0.5 rounded-lg border border-[#BFD8D0] text-sm">
                 {calculatedChitMonth.display}
               </span>
             </div>
           </div>
 
-          <p className="text-[11px] text-[#2F5D50] font-medium leading-relaxed">
+          <p className="text-[11px] text-[#285F52] font-medium leading-relaxed">
             ℹ The selected starting month is Chit Month 1. The chit month will automatically increase every month up to 20/20 based on the active billing month.
           </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block">
+            <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">
               Total Chit Value (₹) *
             </label>
             <select
               value={totalChitValue}
               onChange={(e) => handleTotalChitValueChange(e.target.value)}
-              className="w-full px-3 py-2 text-xs font-bold bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50] cursor-pointer"
+              className="w-full px-3 py-2 text-xs font-bold bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52] cursor-pointer"
             >
               <option value="100000">₹1,00,000 (1 Lakh)</option>
               <option value="200000">₹2,00,000 (2 Lakh)</option>
@@ -232,7 +232,7 @@ export default function CreateChitModal({ isOpen, onClose, onCreate }) {
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block">
+            <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">
               Monthly Premium (₹) *
             </label>
             <input
@@ -243,26 +243,26 @@ export default function CreateChitModal({ isOpen, onClose, onCreate }) {
               placeholder="5000"
               value={monthlyPremium}
               onChange={(e) => setMonthlyPremium(e.target.value)}
-              className="w-full px-3 py-2 text-xs font-bold bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+              className="w-full px-3 py-2 text-xs font-bold bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
             />
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block">
+            <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">
               Duration *
             </label>
             <input
               type="text"
               readOnly
               value={duration}
-              className="w-full px-3 py-2 text-xs font-bold bg-[#EFEFEA] border border-[#E5E5E1] rounded-xl text-[#6B6B67] cursor-not-allowed"
+              className="w-full px-3 py-2 text-xs font-bold bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#667085] cursor-not-allowed"
             />
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block">
+            <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">
               Capacity (Members) *
             </label>
             <input
@@ -272,13 +272,13 @@ export default function CreateChitModal({ isOpen, onClose, onCreate }) {
               max="50"
               value={capacity}
               onChange={(e) => setCapacity(e.target.value)}
-              className="w-full px-3 py-2 text-xs font-bold bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+              className="w-full px-3 py-2 text-xs font-bold bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
             />
           </div>
         </div>
 
         <div className="space-y-1">
-          <label className="text-[10px] font-bold text-[#6B6B67] uppercase tracking-wider block">
+          <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">
             First Auction Date
           </label>
           <input
@@ -286,11 +286,11 @@ export default function CreateChitModal({ isOpen, onClose, onCreate }) {
             required
             value={nextAuctionDate}
             onChange={(e) => setNextAuctionDate(e.target.value)}
-            className="w-full px-3 py-2 text-xs bg-[#F7F7F5] border border-[#E5E5E1] rounded-xl text-[#1C1C1A] focus:outline-none focus:ring-1 focus:ring-[#2F5D50]"
+            className="w-full px-3 py-2 text-xs bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
           />
         </div>
 
-        <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E5E1]">
+        <div className="flex justify-end gap-2 pt-3 border-t border-[#E5E7EB]">
           <Button type="button" variant="secondary" size="sm" onClick={onClose} disabled={isSubmitting}>
             Cancel
           </Button>
@@ -298,7 +298,7 @@ export default function CreateChitModal({ isOpen, onClose, onCreate }) {
             type="submit"
             variant="primary"
             size="sm"
-            className="gap-1.5 bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold"
+            className="gap-1.5 bg-[#285F52] hover:bg-[#214D43] text-white font-bold"
             disabled={isSubmitting}
           >
             <Layers className="w-3.5 h-3.5" />

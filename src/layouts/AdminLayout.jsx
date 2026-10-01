@@ -37,7 +37,15 @@ export default function AdminLayout({ children, onLogout }) {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const searchContainerRef = useRef(null);
 
-  const { selectedMonth, setSelectedMonth, availableMonths, addNewMonth } = useBillingMonth();
+  const {
+    selectedMonth,
+    setSelectedMonth,
+    availableMonths,
+    addNewMonth,
+    currentCalendarMonth,
+    isManuallySelected,
+    resetToCurrentMonth,
+  } = useBillingMonth();
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -244,16 +252,16 @@ export default function AdminLayout({ children, onLogout }) {
   };
 
   return (
-    <div className="min-h-screen bg-[#F7F7F5] text-[#1C1C1A] font-sans selection:bg-[#2F5D50] selection:text-white">
+    <div className="min-h-screen bg-[#F7F8F7] text-[#111111] font-sans selection:bg-[#285F52] selection:text-white">
       <div className="mx-auto flex min-h-screen max-w-[1920px]">
-        {/* DESKTOP SIDEBAR (CHARCOAL #1C1C1A) */}
+        {/* DESKTOP SIDEBAR (DARK #171918) */}
         <aside
-          className={`hidden shrink-0 border-r border-[#2A2A28] bg-[#1C1C1A] text-[#D8D8D3] lg:flex lg:flex-col transition-all duration-300 ${
+          className={`sidebar sticky top-0 h-screen h-[100dvh] overflow-hidden hidden shrink-0 border-r border-[#262928] bg-[#171918] text-[#B8C0BC] lg:flex lg:flex-col transition-all duration-300 ${
             isSidebarCollapsed ? 'w-20' : 'w-72'
           }`}
         >
-          {/* LOGO & SIDEBAR COLLAPSE TOGGLE */}
-          <div className="border-b border-[#2A2A28] px-5 py-4 flex items-center justify-between">
+          {/* LOGO & SIDEBAR COLLAPSE TOGGLE (FIXED HEADER) */}
+          <div className="sidebar-brand sidebar-header shrink-0 border-b border-[#262928] px-5 py-4 flex items-center justify-between">
             {!isSidebarCollapsed ? (
               <Logo size="md" href="/dashboard" className="no-underline text-white" />
             ) : (
@@ -263,7 +271,7 @@ export default function AdminLayout({ children, onLogout }) {
             )}
             <button
               onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-              className="hidden lg:flex h-8 w-8 items-center justify-center rounded-xl bg-[#2A2A28] border border-[#3A3A36] text-[#D8D8D3] hover:text-white hover:bg-[#3A3A36] transition-all cursor-pointer"
+              className="hidden lg:flex h-8 w-8 items-center justify-center rounded-xl bg-[#262928] border border-[#333735] text-[#B8C0BC] hover:text-white hover:bg-[#333735] transition-all cursor-pointer shrink-0"
               title={isSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
               aria-label="Toggle sidebar"
             >
@@ -271,12 +279,12 @@ export default function AdminLayout({ children, onLogout }) {
             </button>
           </div>
 
-          {/* NAV ITEMS */}
-          <nav className="flex-1 space-y-4 px-3 py-4 overflow-y-auto">
+          {/* NAV ITEMS (SCROLLABLE NAVIGATION) */}
+          <nav className="sidebar-menu sidebar-navigation flex-1 min-h-0 space-y-4 px-3 py-4 overflow-y-auto overflow-x-hidden">
             {navigationSections.map((section) => (
               <div key={section.title} className="space-y-1">
                 {!isSidebarCollapsed && (
-                  <p className="px-3 text-[10px] font-black uppercase tracking-[0.18em] text-[#80807B] mb-1.5 mt-3 first:mt-0">
+                  <p className="px-3 text-[10px] font-black uppercase tracking-[0.18em] text-[#808A85] mb-1.5 mt-3 first:mt-0">
                     {section.title}
                   </p>
                 )}
@@ -291,13 +299,13 @@ export default function AdminLayout({ children, onLogout }) {
                       title={isSidebarCollapsed ? item.name : undefined}
                       className={`group flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-bold transition-all duration-150 ${
                         active
-                          ? 'bg-[#2F5D50] text-white shadow-xs'
-                          : 'text-[#D8D8D3] hover:bg-[#2A2A28] hover:text-white'
+                          ? 'bg-[#285F52] text-white shadow-xs'
+                          : 'text-[#B8C0BC] hover:bg-[#262928] hover:text-white'
                       } ${isSidebarCollapsed ? 'justify-center px-0' : ''}`}
                     >
                       <span
                         className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors shrink-0 ${
-                          active ? 'bg-[#24493F] text-white' : 'bg-[#2A2A28] text-[#959590] group-hover:text-white'
+                          active ? 'bg-[#214D43] text-white' : 'bg-[#262928] text-[#808A85] group-hover:text-white'
                         }`}
                       >
                         <Icon className="h-4 w-4 shrink-0" />
@@ -311,21 +319,21 @@ export default function AdminLayout({ children, onLogout }) {
             ))}
           </nav>
 
-          {/* FOOTER USER / LOGOUT */}
-          <div className="border-t border-[#2A2A28] bg-[#171715] p-3 space-y-3">
+          {/* FOOTER USER / LOGOUT (FIXED FOOTER) */}
+          <div className="shrink-0 border-t border-[#262928] bg-[#121413] p-3 space-y-3">
             {!isSidebarCollapsed ? (
-              <div className="flex items-center gap-3 rounded-xl border border-[#2A2A28] bg-[#222220] p-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#2F5D50] text-xs font-black text-white shrink-0">
+              <div className="flex items-center gap-3 rounded-xl border border-[#262928] bg-[#1C1F1E] p-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#285F52] text-xs font-black text-white shrink-0">
                   RA
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-extrabold text-white">Raghavendra Admin</p>
-                  <p className="truncate text-[10px] font-medium text-[#959590]">Enterprise Control</p>
+                  <p className="truncate text-[10px] font-medium text-[#B8C0BC]">Enterprise Control</p>
                 </div>
               </div>
             ) : (
               <div className="flex justify-center" title="Raghavendra Admin">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#2F5D50] text-xs font-black text-white">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#285F52] text-xs font-black text-white">
                   RA
                 </div>
               </div>
@@ -334,7 +342,7 @@ export default function AdminLayout({ children, onLogout }) {
             <button
               onClick={handleLogout}
               title={isSidebarCollapsed ? 'Logout' : undefined}
-              className={`flex w-full items-center justify-center gap-2 rounded-xl border border-[#A33A3A]/30 bg-[#A33A3A]/10 px-3 py-2 text-xs font-bold text-red-300 transition-colors hover:bg-[#A33A3A]/20 cursor-pointer ${
+              className={`flex w-full items-center justify-center gap-2 rounded-xl border border-[#FEF3F2]/20 bg-[#FEF3F2]/10 px-3 py-2 text-xs font-bold text-[#FEE4E2] transition-colors hover:bg-[#FEF3F2]/20 cursor-pointer ${
                 isSidebarCollapsed ? 'px-0' : ''
               }`}
             >
@@ -344,29 +352,29 @@ export default function AdminLayout({ children, onLogout }) {
           </div>
         </aside>
 
-        {/* MAIN CONTENT AREA (WARM OFF-WHITE #F7F7F5) */}
-        <main className="flex-1 min-w-0 flex flex-col bg-[#F7F7F5]">
+        {/* MAIN CONTENT AREA */}
+        <main className="flex-1 min-w-0 flex flex-col bg-[#F7F8F7]">
           {/* MOBILE TOP BAR */}
-          <div className="sticky top-0 z-30 border-b border-[#E5E5E1] bg-white/95 px-4 py-3 backdrop-blur-xs lg:hidden">
+          <div className="sticky top-0 z-30 border-b border-[#E5E7EB] bg-white/95 px-4 py-3 backdrop-blur-xs lg:hidden">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] text-[#1C1C1A] cursor-pointer active:scale-95 transition-transform"
+                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] text-[#111111] cursor-pointer active:scale-95 transition-transform"
                   aria-label="Toggle menu"
                 >
                   {isMobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
                 </button>
                 <div className="min-w-0">
-                  <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-[#2F5D50] truncate">Raghavendra Chitts</p>
-                  <h1 className="text-sm font-black text-[#1C1C1A] truncate">{getPageTitle()}</h1>
+                  <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-[#285F52] truncate">Raghavendra Chitts</p>
+                  <h1 className="text-sm font-black text-[#111111] truncate">{getPageTitle()}</h1>
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
                 <button
                   onClick={toggleFullscreen}
-                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] text-[#6B6B67] hover:text-[#1C1C1A]"
+                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] text-[#667085] hover:text-[#111111]"
                   title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
                 >
                   {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
@@ -379,27 +387,27 @@ export default function AdminLayout({ children, onLogout }) {
           {/* MOBILE NAVIGATION DRAWER */}
           {isMobileMenuOpen && (
             <div
-              className="fixed inset-0 z-50 bg-[#1C1C1A]/60 backdrop-blur-xs lg:hidden transition-opacity"
+              className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs lg:hidden transition-opacity"
               onClick={() => setIsMobileMenuOpen(false)}
             >
               <div
-                className="h-full w-[85%] max-w-xs bg-[#1C1C1A] p-5 text-[#D8D8D3] flex flex-col shadow-xl animate-in slide-in-from-left duration-200 border-r border-[#2A2A28]"
+                className="h-full w-[85%] max-w-xs bg-[#171918] p-5 text-[#B8C0BC] flex flex-col shadow-xl animate-in slide-in-from-left duration-200 border-r border-[#262928]"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="mb-6 flex items-center justify-between border-b border-[#2A2A28] pb-4">
+                <div className="sidebar-brand sidebar-header shrink-0 mb-6 flex items-center justify-between border-b border-[#262928] pb-4">
                   <Logo size="sm" href="/dashboard" className="no-underline text-white" />
                   <button
                     onClick={() => setIsMobileMenuOpen(false)}
-                    className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#2A2A28] border border-[#3A3A36] text-[#D8D8D3] hover:text-white cursor-pointer"
+                    className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#262928] border border-[#333735] text-[#B8C0BC] hover:text-white cursor-pointer"
                   >
                     <X className="h-4 w-4" />
                   </button>
                 </div>
 
-                <nav className="flex-1 space-y-4 overflow-y-auto pr-1">
+                <nav className="sidebar-menu sidebar-navigation flex-1 min-h-0 space-y-4 overflow-y-auto overflow-x-hidden pr-1">
                   {navigationSections.map((section) => (
                     <div key={section.title} className="space-y-1">
-                      <p className="px-3 text-[10px] font-black uppercase tracking-[0.18em] text-[#80807B] mb-1.5 mt-3 first:mt-0">
+                      <p className="px-3 text-[10px] font-black uppercase tracking-[0.18em] text-[#808A85] mb-1.5 mt-3 first:mt-0">
                         {section.title}
                       </p>
                       {section.items.map((item) => {
@@ -412,13 +420,13 @@ export default function AdminLayout({ children, onLogout }) {
                             onClick={() => setIsMobileMenuOpen(false)}
                             className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-bold transition-all cursor-pointer ${
                               active
-                                ? 'bg-[#2F5D50] text-white shadow-xs'
-                                : 'text-[#D8D8D3] hover:bg-[#2A2A28] hover:text-white'
+                                ? 'bg-[#285F52] text-white shadow-xs'
+                                : 'text-[#B8C0BC] hover:bg-[#262928] hover:text-white'
                             }`}
                           >
                             <span
                               className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors shrink-0 ${
-                                active ? 'bg-[#24493F] text-white' : 'bg-[#2A2A28] text-[#959590]'
+                                active ? 'bg-[#214D43] text-white' : 'bg-[#262928] text-[#808A85]'
                               }`}
                             >
                               <Icon className="h-4 w-4 shrink-0" />
@@ -432,17 +440,17 @@ export default function AdminLayout({ children, onLogout }) {
                   ))}
                 </nav>
 
-                <div className="pt-4 border-t border-[#2A2A28] space-y-3">
-                  <div className="flex items-center gap-2.5 rounded-xl bg-[#222220] p-3 border border-[#2A2A28]">
-                    <ShieldCheck className="h-4 w-4 text-[#2F6B4F] shrink-0" />
-                    <span className="text-xs font-bold text-[#D8D8D3] truncate">Private Admin Session</span>
+                <div className="shrink-0 pt-4 border-t border-[#262928] space-y-3">
+                  <div className="flex items-center gap-2.5 rounded-xl bg-[#1C1F1E] p-3 border border-[#262928]">
+                    <ShieldCheck className="h-4 w-4 text-[#285F52] shrink-0" />
+                    <span className="text-xs font-bold text-[#B8C0BC] truncate">Private Admin Session</span>
                   </div>
                   <button
                     onClick={() => {
                       setIsMobileMenuOpen(false);
                       handleLogout();
                     }}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#A33A3A]/30 bg-[#A33A3A]/10 px-4 py-2.5 text-xs font-bold text-red-200 hover:bg-[#A33A3A]/20 cursor-pointer"
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#FEF3F2]/20 bg-[#FEF3F2]/10 px-4 py-2.5 text-xs font-bold text-[#FEE4E2] hover:bg-[#FEF3F2]/20 cursor-pointer"
                   >
                     <LogOut className="h-4 w-4" />
                     Logout
@@ -453,12 +461,12 @@ export default function AdminLayout({ children, onLogout }) {
           )}
 
           {/* TOP HEADER (PURE WHITE #FFFFFF) */}
-          <header className="border-b border-[#E5E5E1] bg-white px-4 sm:px-6 lg:px-8 py-3 lg:py-3.5 relative lg:sticky lg:top-0 z-20">
+          <header className="border-b border-[#E5E7EB] bg-white px-4 sm:px-6 lg:px-8 py-3 lg:py-3.5 relative lg:sticky lg:top-0 z-20">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 sm:gap-3.5 lg:gap-4 w-full">
               {/* GLOBAL SEARCH BAR WITH DROPDOWN */}
               <div ref={searchContainerRef} className="relative w-full lg:flex-1 lg:min-w-[280px] lg:max-w-[620px]">
                 <form onSubmit={handleGlobalSearchSubmit} className="relative w-full">
-                  <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-[#959590] pointer-events-none" />
+                  <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-[#667085] pointer-events-none" />
                   <input
                     type="text"
                     placeholder="Search member name, phone, chit..."
@@ -471,7 +479,7 @@ export default function AdminLayout({ children, onLogout }) {
                       setGlobalSearchQuery(e.target.value);
                       setIsSearchFocused(true);
                     }}
-                    className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] pl-10 pr-9 py-2 text-xs font-semibold text-[#1C1C1A] placeholder-[#959590] focus:border-[#2F5D50] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#2F5D50] transition-all"
+                    className="w-full rounded-xl border border-[#E5E7EB] bg-white pl-10 pr-9 py-2 text-xs font-semibold text-[#111111] placeholder-[#667085] focus:border-[#285F52] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#285F52] transition-all"
                   />
                   {globalSearchQuery && (
                     <button
@@ -480,7 +488,7 @@ export default function AdminLayout({ children, onLogout }) {
                         setGlobalSearchQuery('');
                         setIsSearchFocused(false);
                       }}
-                      className="absolute right-3 top-2.5 text-[#959590] hover:text-[#1C1C1A] cursor-pointer"
+                      className="absolute right-3 top-2.5 text-[#667085] hover:text-[#111111] cursor-pointer"
                     >
                       <X className="h-4 w-4" />
                     </button>
@@ -489,12 +497,12 @@ export default function AdminLayout({ children, onLogout }) {
 
                 {/* SEARCH RESULTS DROPDOWN */}
                 {isSearchFocused && globalSearchQuery.trim() && (
-                  <div className="absolute left-0 top-full mt-2 z-50 rounded-2xl bg-white border border-[#E5E5E1] shadow-2xl overflow-hidden font-sans text-xs w-full sm:w-[540px] md:w-[600px] max-w-[calc(100vw-2rem)]">
+                  <div className="absolute left-0 top-full mt-2 z-50 rounded-2xl bg-white border border-[#E5E7EB] shadow-2xl overflow-hidden font-sans text-xs w-full sm:w-[540px] md:w-[600px] max-w-[calc(100vw-2rem)]">
                     {searchResults.length > 0 ? (
-                      <div className="max-h-[380px] overflow-y-auto divide-y divide-[#F0F0EC]">
-                        <div className="px-4 py-2.5 bg-[#F7F7F5] border-b border-[#E5E5E1] flex items-center justify-between text-[11px] font-extrabold">
-                          <span className="uppercase tracking-wider font-black text-[#1C1C1A]">Matching Members ({searchResults.length})</span>
-                          <span className="text-[10px] font-semibold text-[#80807B]">Click to open profile</span>
+                      <div className="max-h-[380px] overflow-y-auto divide-y divide-[#E5E7EB]">
+                        <div className="px-4 py-2.5 bg-[#F7F8F7] border-b border-[#E5E7EB] flex items-center justify-between text-[11px] font-extrabold">
+                          <span className="uppercase tracking-wider font-black text-[#111111]">Matching Members ({searchResults.length})</span>
+                          <span className="text-[10px] font-semibold text-[#667085]">Click to open profile</span>
                         </div>
                         {searchResults.map((m) => {
                           const activeChits = (m.chits || []).filter((c) => !c.status || c.status === 'ACTIVE');
@@ -505,29 +513,29 @@ export default function AdminLayout({ children, onLogout }) {
                               key={m.id}
                               type="button"
                               onClick={() => handleSelectSearchResult(m)}
-                              className="w-full px-4 py-3.5 text-left hover:bg-[#F7F7F5] active:bg-[#EDF7F0] transition-colors flex items-start justify-between gap-3 cursor-pointer group"
+                              className="w-full px-4 py-3.5 text-left hover:bg-[#F7F8F7] active:bg-[#EEF6F3] transition-colors flex items-start justify-between gap-3 cursor-pointer group"
                             >
                               <div className="flex items-start gap-3.5 min-w-0 flex-1">
-                                <div className="w-9 h-9 rounded-xl bg-[#2F5D50]/10 text-[#2F5D50] font-black text-sm flex items-center justify-center shrink-0 border border-[#2F5D50]/20 group-hover:bg-[#2F5D50] group-hover:text-white transition-colors mt-0.5">
+                                <div className="w-9 h-9 rounded-xl bg-[#EEF6F3] text-[#285F52] font-black text-sm flex items-center justify-center shrink-0 border border-[#BFD8D0] group-hover:bg-[#285F52] group-hover:text-white transition-colors mt-0.5">
                                   {m.name ? m.name.charAt(0).toUpperCase() : 'M'}
                                 </div>
                                 <div className="min-w-0 flex-1 space-y-1">
-                                  {/* PRIMARY MEMBER NAME - Fully visible */}
-                                  <p className="text-sm font-black text-[#1C1C1A] group-hover:text-[#2F5D50] transition-colors leading-snug break-words">
+                                  {/* PRIMARY MEMBER NAME */}
+                                  <p className="text-sm font-black text-[#111111] group-hover:text-[#285F52] transition-colors leading-snug break-words">
                                     {m.name}
                                   </p>
 
                                   {/* PHONE NUMBER */}
                                   {m.phone && (
-                                    <p className="text-xs font-bold font-mono text-[#6B6B67] leading-tight">
+                                    <p className="text-xs font-bold font-mono text-[#667085] leading-tight">
                                       {m.phone}
                                     </p>
                                   )}
 
-                                  {/* BADGES ROW - Below name & phone so name is never truncated */}
+                                  {/* BADGES ROW */}
                                   <div className="flex flex-wrap items-center gap-1.5 pt-1">
                                     {isMulti ? (
-                                      <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-black bg-purple-50 text-purple-700 border border-purple-200">
+                                      <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-black bg-[#F7F8F7] text-[#111111] border border-[#E5E7EB]">
                                         Multiple Chits • {activeChits.length} Active Chits
                                       </span>
                                     ) : activeChits.length === 1 ? (
@@ -535,13 +543,13 @@ export default function AdminLayout({ children, onLogout }) {
                                         const c = activeChits[0];
                                         const valLakh = (c.totalChitValue || 100000) / 100000;
                                         return (
-                                          <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-black bg-[#EDF7F0] text-[#2F5D50] border border-[#2F5D50]/20">
+                                          <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-black bg-[#EEF6F3] text-[#285F52] border border-[#BFD8D0]">
                                             ₹{valLakh} Lakh Group {c.groupId || 'I'}
                                           </span>
                                         );
                                       })()
                                     ) : (
-                                      <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-gray-100 text-gray-500 border border-gray-200">
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-[#F7F8F7] text-[#667085] border border-[#E5E7EB]">
                                         No Active Chits
                                       </span>
                                     )}
@@ -549,7 +557,7 @@ export default function AdminLayout({ children, onLogout }) {
                                 </div>
                               </div>
 
-                              <div className="pt-1.5 shrink-0 text-[#959590] group-hover:text-[#2F5D50] transition-colors">
+                              <div className="pt-1.5 shrink-0 text-[#98A2B3] group-hover:text-[#285F52] transition-colors">
                                 <ChevronRight className="h-5 w-5" />
                               </div>
                             </button>
@@ -557,7 +565,7 @@ export default function AdminLayout({ children, onLogout }) {
                         })}
                       </div>
                     ) : (
-                      <div className="p-6 text-center text-xs font-bold text-[#6B6B67] bg-white">
+                      <div className="p-6 text-center text-xs font-bold text-[#667085] bg-white">
                         No members found
                       </div>
                     )}
@@ -567,11 +575,11 @@ export default function AdminLayout({ children, onLogout }) {
 
               {/* RIGHT CONTROLS WRAPPER */}
               <div className="flex flex-wrap items-center justify-between sm:justify-start lg:justify-end gap-2.5 sm:gap-3 shrink-0">
-                {/* EDITABLE ACTIVE BILLING MONTH SELECTOR */}
-                <div className="flex items-center gap-2 rounded-xl border border-[#2F5D50]/30 bg-[#EDF7F0] px-3.5 py-1.5 shadow-2xs shrink-0 w-full sm:w-[300px]">
-                  <CalendarIcon className="h-4 w-4 text-[#2F5D50] shrink-0" />
+                {/* MONTH SELECTOR */}
+                <div className="flex items-center gap-2 rounded-xl border border-[#BFD8D0] bg-[#EEF6F3] px-3.5 py-1.5 shadow-2xs shrink-0 w-full sm:w-[320px]">
+                  <CalendarIcon className="h-4 w-4 text-[#285F52] shrink-0" />
                   <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                    <span className="text-[10px] font-black uppercase text-[#2F5D50] tracking-wider shrink-0">Month:</span>
+                    <span className="text-[10px] font-black uppercase text-[#285F52] tracking-wider shrink-0">MONTH:</span>
                     <select
                       value={selectedMonth}
                       onChange={(e) => {
@@ -582,16 +590,26 @@ export default function AdminLayout({ children, onLogout }) {
                           setSelectedMonth(e.target.value);
                         }
                       }}
-                      className="bg-transparent text-xs font-black text-[#1C1C1A] focus:outline-none cursor-pointer pr-1 flex-1 min-w-0 truncate"
+                      className="bg-transparent text-xs font-black text-[#111111] focus:outline-none cursor-pointer pr-1 flex-1 min-w-0 truncate"
                     >
                       {availableMonths.map((m) => (
                         <option key={m} value={m}>
-                          {m}
+                          {m === currentCalendarMonth ? `${m} (Current)` : m}
                         </option>
                       ))}
-                      <option value="__NEW__">+ Add New Month...</option>
+                      <option value="__NEW__">+ Add Custom Month...</option>
                     </select>
                   </div>
+                  {isManuallySelected && (
+                    <button
+                      type="button"
+                      onClick={resetToCurrentMonth}
+                      title="Reset to current calendar month"
+                      className="text-[10px] font-extrabold text-[#285F52] hover:bg-[#285F52] hover:text-white transition-colors shrink-0 bg-white px-1.5 py-0.5 rounded-md border border-[#BFD8D0] cursor-pointer"
+                    >
+                      Reset
+                    </button>
+                  )}
                 </div>
 
                 {/* ACTION BUTTONS GROUP */}
@@ -605,45 +623,45 @@ export default function AdminLayout({ children, onLogout }) {
                         setIsSidebarCollapsed(!isSidebarCollapsed);
                       }
                     }}
-                    className="flex items-center gap-1.5 sm:gap-2 rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-1.5 text-xs font-bold text-[#1C1C1A] hover:bg-[#F2F2EF] transition-colors cursor-pointer shrink-0"
+                    className="flex items-center gap-1.5 sm:gap-2 rounded-xl border border-[#E5E7EB] bg-[#FFFFFF] px-3 py-1.5 text-xs font-bold text-[#111111] hover:bg-[#F7F8F7] transition-colors cursor-pointer shrink-0"
                     title={isSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
                   >
-                    {isSidebarCollapsed ? <ChevronsRight className="h-4 w-4 text-[#2F5D50]" /> : <ChevronsLeft className="h-4 w-4 text-[#2F5D50]" />}
+                    {isSidebarCollapsed ? <ChevronsRight className="h-4 w-4 text-[#285F52]" /> : <ChevronsLeft className="h-4 w-4 text-[#285F52]" />}
                     <span>{isSidebarCollapsed ? 'Expand' : 'Collapse'}</span>
                   </button>
 
                   {/* FULLSCREEN BUTTON */}
                   <button
                     onClick={toggleFullscreen}
-                    className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] text-[#6B6B67] hover:text-[#1C1C1A] hover:bg-[#F2F2EF] transition-all cursor-pointer shrink-0"
+                    className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#E5E7EB] bg-[#FFFFFF] text-[#667085] hover:text-[#111111] hover:bg-[#F7F8F7] transition-all cursor-pointer shrink-0"
                     title={isFullscreen ? 'Exit Fullscreen' : 'Maximize Fullscreen'}
                     aria-label="Toggle fullscreen"
                   >
-                    {isFullscreen ? <Minimize className="h-4 w-4 text-[#2F5D50]" /> : <Maximize className="h-4 w-4 text-[#2F5D50]" />}
+                    {isFullscreen ? <Minimize className="h-4 w-4 text-[#285F52]" /> : <Maximize className="h-4 w-4 text-[#285F52]" />}
                   </button>
 
                   {/* NOTIFICATION INDICATOR */}
                   <div className="relative shrink-0">
                     <button
                       onClick={() => navigate('/whatsapp')}
-                      className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] text-[#6B6B67] hover:text-[#1C1C1A] hover:bg-[#F2F2EF] transition-all cursor-pointer"
+                      className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#E5E7EB] bg-[#FFFFFF] text-[#667085] hover:text-[#111111] hover:bg-[#F7F8F7] transition-all cursor-pointer"
                       title="Notifications"
                     >
-                      <Bell className="h-4 w-4 text-[#6B6B67]" />
+                      <Bell className="h-4 w-4 text-[#667085]" />
                     </button>
-                    <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-[#2F6B4F] ring-2 ring-white"></span>
+                    <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-[#285F52] ring-2 ring-white"></span>
                   </div>
                 </div>
 
                 {/* ADMIN PROFILE PILL */}
-                <div className="flex items-center gap-2.5 rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] px-3 py-1.5 shrink-0">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#2F5D50] text-[10px] font-black text-white shrink-0">
+                <div className="flex items-center gap-2.5 rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] px-3 py-1.5 shrink-0">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#285F52] text-[10px] font-black text-white shrink-0">
                     RA
                   </div>
                   <div className="text-left min-w-0">
-                    <p className="text-xs font-bold text-[#1C1C1A] leading-tight truncate">Raghavendra Admin</p>
-                    <p className="text-[9px] font-semibold text-[#2F6B4F] leading-tight flex items-center gap-1">
-                      <span className="h-1.5 w-1.5 rounded-full bg-[#2F6B4F] animate-pulse"></span> System Active
+                    <p className="text-xs font-bold text-[#111111] leading-tight truncate">Raghavendra Admin</p>
+                    <p className="text-[9px] font-semibold text-[#285F52] leading-tight flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-[#285F52] animate-pulse"></span> System Active
                     </p>
                   </div>
                 </div>
@@ -651,13 +669,13 @@ export default function AdminLayout({ children, onLogout }) {
             </div>
           </header>
 
-          {/* PAGE CONTENT CONTAINER WITH GENEROUS 32PX / 40PX SPACING */}
+          {/* PAGE CONTENT CONTAINER */}
           <div className="flex-1 min-h-[calc(100vh-4.5rem)] p-6 md:p-10 pb-24 lg:pb-10">
             {children}
           </div>
 
           {/* MOBILE BOTTOM NAVIGATION BAR */}
-          <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-[#E5E5E1] bg-white/95 px-2 py-2 backdrop-blur-xs lg:hidden">
+          <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-[#E5E7EB] bg-white/95 px-2 py-2 backdrop-blur-xs lg:hidden">
             <div className="mx-auto flex max-w-md items-center justify-around gap-1">
               {navigationItems.slice(0, 6).map((item) => {
                 const Icon = item.icon;
@@ -668,10 +686,10 @@ export default function AdminLayout({ children, onLogout }) {
                     key={item.name}
                     to={item.path}
                     className={`flex min-h-[44px] min-w-[48px] flex-col items-center justify-center gap-1 rounded-xl px-1 py-1 text-[9px] font-bold transition-all ${
-                      active ? 'bg-[#DDE8E2] text-[#2F5D50] border border-[#2F5D50]/30' : 'text-[#6B6B67] hover:text-[#1C1C1A]'
+                      active ? 'bg-[#EEF6F3] text-[#285F52] border border-[#BFD8D0]' : 'text-[#667085] hover:text-[#111111]'
                     }`}
                   >
-                    <Icon className={`h-4 w-4 ${active ? 'text-[#2F5D50]' : ''}`} />
+                    <Icon className={`h-4 w-4 ${active ? 'text-[#285F52]' : ''}`} />
                     <span className="truncate max-w-[55px]">{item.name}</span>
                   </Link>
                 );
@@ -679,7 +697,7 @@ export default function AdminLayout({ children, onLogout }) {
 
               <button
                 onClick={handleLogout}
-                className="flex min-h-[44px] min-w-[48px] flex-col items-center justify-center gap-1 rounded-xl px-1 py-1 text-[9px] font-bold text-[#6B6B67] hover:text-[#A33A3A] cursor-pointer"
+                className="flex min-h-[44px] min-w-[48px] flex-col items-center justify-center gap-1 rounded-xl px-1 py-1 text-[9px] font-bold text-[#667085] hover:text-[#B42318] cursor-pointer"
                 aria-label="Logout"
               >
                 <LogOut className="h-4 w-4" />

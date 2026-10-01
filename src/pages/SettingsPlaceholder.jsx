@@ -301,9 +301,9 @@ export default function SettingsPlaceholder() {
 
       {/* HEADER */}
       <div>
-        <p className="text-xs font-bold uppercase tracking-[0.25em] text-sky-600">Administration</p>
-        <h1 className="text-2xl md:text-3xl font-black text-slate-900">System Settings</h1>
-        <p className="text-xs text-slate-500 mt-1">Manage agency details, operator access controls, Excel data migration, and notification triggers.</p>
+        <p className="text-xs font-bold uppercase tracking-[0.25em] text-[#285F52]">Administration</p>
+        <h1 className="text-2xl md:text-3xl font-black text-[#111111]">System Settings</h1>
+        <p className="text-xs text-[#667085] mt-1">Manage agency details, operator access controls, Excel data migration, and notification triggers.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -326,11 +326,11 @@ export default function SettingsPlaceholder() {
                 onClick={() => setActiveTab(item.id)}
                 className={`w-full flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-xs font-bold transition-all border cursor-pointer ${
                   active
-                    ? 'bg-sky-600 text-white border-sky-600 shadow-md'
-                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-900'
+                    ? 'bg-[#285F52] text-white border-[#285F52] shadow-xs'
+                    : 'bg-white text-[#667085] border-[#E5E7EB] hover:bg-[#F7F8F7] hover:text-[#111111]'
                 }`}
               >
-                <Icon className={`w-4 h-4 ${active ? 'text-white' : 'text-sky-600'}`} />
+                <Icon className={`w-4 h-4 ${active ? 'text-white' : 'text-[#285F52]'}`} />
                 <span>{item.name}</span>
               </button>
             );
@@ -340,16 +340,16 @@ export default function SettingsPlaceholder() {
         {/* TAB CONTENTS */}
         <div className="lg:col-span-2 space-y-6">
           {activeTab === 'excel_import' && (
-            <Card className="border border-slate-200 bg-white rounded-3xl p-6 shadow-xs space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+            <Card className="border border-[#E5E7EB] bg-white rounded-3xl p-6 shadow-xs space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#E5E7EB]">
                 <div>
                   <div className="flex items-center gap-2">
-                    <FileSpreadsheet className="w-5 h-5 text-sky-600" />
-                    <h3 className="text-base font-black text-slate-900">
+                    <FileSpreadsheet className="w-5 h-5 text-[#285F52]" />
+                    <h3 className="text-base font-black text-[#111111]">
                       Production Excel Migration & Reconciler
                     </h3>
                   </div>
-                  <p className="text-xs text-slate-500 mt-1">
+                  <p className="text-xs text-[#667085] mt-1">
                     Upload real Raghavendra Chitts workbooks (₹1 Lakh, ₹2 Lakh, ₹5 Lakh). Automatically deduplicates by phone number and calculates +N holdings.
                   </p>
                 </div>
@@ -358,7 +358,7 @@ export default function SettingsPlaceholder() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="rounded-xl gap-1.5 border-sky-500 text-sky-700 hover:bg-sky-50 font-bold"
+                    className="rounded-xl gap-1.5 border-[#BFD8D0] text-[#285F52] hover:bg-[#EEF6F3] font-bold"
                     onClick={handleVerifyFirestoreConnection}
                     disabled={isVerifying}
                   >
@@ -368,10 +368,10 @@ export default function SettingsPlaceholder() {
                   <Button
                     variant="secondary"
                     size="sm"
-                    className="rounded-xl gap-1.5"
+                    className="rounded-xl gap-1.5 border-[#E5E7EB] bg-white text-[#111111]"
                     onClick={handleRunPipelineTest}
                   >
-                    <RefreshCw className="w-3.5 h-3.5 text-sky-600" />
+                    <RefreshCw className="w-3.5 h-3.5 text-[#285F52]" />
                     Run Pipeline Test
                   </Button>
                 </div>
@@ -379,10 +379,10 @@ export default function SettingsPlaceholder() {
 
               {/* FIRESTORE CONNECTION DIAGNOSTIC RESULT BOX */}
               {connectionResult && (
-                <div className="p-4 rounded-2xl bg-slate-950 text-white space-y-3 text-xs font-mono border border-slate-800 shadow-md">
-                  <div className="flex items-center justify-between font-sans border-b border-slate-800 pb-2">
-                    <span className="font-bold text-sky-400 flex items-center gap-1.5">
-                      <ShieldCheck className="w-4 h-4 text-sky-400" />
+                <div className="p-4 rounded-2xl bg-[#171918] text-white space-y-3 text-xs font-mono border border-[#E5E7EB]/20 shadow-md">
+                  <div className="flex items-center justify-between font-sans border-b border-white/10 pb-2">
+                    <span className="font-bold text-[#BFD8D0] flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-[#BFD8D0]" />
                       Firestore Diagnostic Status
                     </span>
                     <Badge variant={connectionResult.success ? 'success' : 'danger'}>
@@ -392,40 +392,40 @@ export default function SettingsPlaceholder() {
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
                     <div>
-                      <span className="text-slate-500 block text-[9px] uppercase">Firebase Project</span>
-                      <p className="text-sky-300 font-bold font-sans">{connectionResult.projectId}</p>
+                      <span className="text-[#98A2B3] block text-[9px] uppercase">Firebase Project</span>
+                      <p className="text-[#BFD8D0] font-bold font-sans">{connectionResult.projectId}</p>
                     </div>
                     <div>
-                      <span className="text-slate-500 block text-[9px] uppercase">Firestore Database</span>
-                      <p className="text-slate-300 font-bold font-sans">{connectionResult.database}</p>
+                      <span className="text-[#98A2B3] block text-[9px] uppercase">Firestore Database</span>
+                      <p className="text-white font-bold font-sans">{connectionResult.database}</p>
                     </div>
                     <div>
-                      <span className="text-slate-500 block text-[9px] uppercase">Authenticated User</span>
-                      <p className="text-emerald-300 font-bold font-sans">{connectionResult.authUser}</p>
+                      <span className="text-[#98A2B3] block text-[9px] uppercase">Authenticated User</span>
+                      <p className="text-[#EEF6F3] font-bold font-sans">{connectionResult.authUser}</p>
                     </div>
                     <div>
-                      <span className="text-slate-500 block text-[9px] uppercase">Members Collection</span>
-                      <p className="text-amber-300 font-bold font-sans">{connectionResult.docCount} documents</p>
+                      <span className="text-[#98A2B3] block text-[9px] uppercase">Members Collection</span>
+                      <p className="text-[#FDE68A] font-bold font-sans">{connectionResult.docCount} documents</p>
                     </div>
                   </div>
 
                   {connectionResult.error ? (
-                    <div className="p-3 bg-red-950/90 border border-red-800 rounded-xl text-red-200 text-[11px] space-y-1 font-sans">
-                      <p className="font-bold text-red-100">❌ Firebase Query Failure ({connectionResult.error.code})</p>
-                      <p className="text-red-300">{connectionResult.error.message}</p>
+                    <div className="p-3 bg-[#FEF3F2] border border-[#FECACA] rounded-xl text-[#B42318] text-[11px] space-y-1 font-sans">
+                      <p className="font-bold text-[#B42318]">✕ Firebase Query Failure ({connectionResult.error.code})</p>
+                      <p className="text-[#B42318]">{connectionResult.error.message}</p>
                     </div>
                   ) : (
-                    <div className="space-y-1 pt-2 border-t border-slate-800 text-[11px]">
-                      <p className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">First 3 Members in Firestore:</p>
+                    <div className="space-y-1 pt-2 border-t border-white/10 text-[11px]">
+                      <p className="text-[#98A2B3] text-[10px] uppercase font-bold tracking-wider">First 3 Members in Firestore:</p>
                       {connectionResult.sampleMembers.length > 0 ? (
                         connectionResult.sampleMembers.map((m, idx) => (
-                          <div key={m.id} className="p-1.5 bg-slate-900 rounded-lg flex items-center justify-between font-sans">
+                          <div key={m.id} className="p-1.5 bg-[#111111] rounded-lg flex items-center justify-between font-sans">
                             <span>{idx + 1}. <strong className="text-white">{m.name}</strong> ({m.phone})</span>
-                            <span className="text-slate-400 font-mono text-[10px]">ID: {m.id}</span>
+                            <span className="text-[#98A2B3] font-mono text-[10px]">ID: {m.id}</span>
                           </div>
                         ))
                       ) : (
-                        <p className="text-amber-400 text-[11px] font-sans">0 documents found in `members` collection.</p>
+                        <p className="text-[#B7791F] text-[11px] font-sans">0 documents found in `members` collection.</p>
                       )}
                     </div>
                   )}
@@ -434,17 +434,17 @@ export default function SettingsPlaceholder() {
 
               {/* TEST PIPELINE RESULT CARD */}
               {testResult && (
-                <div className="p-4 rounded-2xl bg-slate-900 text-white space-y-2 text-xs font-mono border border-slate-800 shadow-sm font-sans">
+                <div className="p-4 rounded-2xl bg-[#171918] text-white space-y-2 text-xs font-mono border border-white/10 shadow-sm font-sans">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-sky-300">Algorithm Test Suite Result</span>
+                    <span className="font-bold text-[#BFD8D0]">Algorithm Test Suite Result</span>
                     <Badge variant={testResult.success ? 'success' : 'danger'}>
                       {testResult.success ? 'PASS ✅' : 'FAIL ❌'}
                     </Badge>
                   </div>
-                  <div className="text-[11px] text-slate-300 space-y-1 pt-1 border-t border-slate-800 font-mono">
-                    <p>• Critical Case (Mummadi Ramu +3 = 4 holdings, 1 Member Doc): <strong className="text-emerald-400">{testResult.t_mummadiPassed ? 'PASS' : 'FAIL'}</strong></p>
-                    <p>• Shared-Phone Separation (Prapul c/o Ravindra != Mulakala Ravindra): <strong className="text-emerald-400">{testResult.t_sharedPair1Passed ? 'PASS' : 'FAIL'}</strong></p>
-                    <p>• Multi-Chit Tokens Parsing (G.Ravi=4, PetrolBunk=9, Marlapati=5): <strong className="text-emerald-400">{testResult.t_multiChitPassed ? 'PASS' : 'FAIL'}</strong></p>
+                  <div className="text-[11px] text-[#B8C0BC] space-y-1 pt-1 border-t border-white/10 font-mono">
+                    <p>• Critical Case (Mummadi Ramu +3 = 4 holdings, 1 Member Doc): <strong className="text-[#EEF6F3]">{testResult.t_mummadiPassed ? 'PASS' : 'FAIL'}</strong></p>
+                    <p>• Shared-Phone Separation (Prapul c/o Ravindra != Mulakala Ravindra): <strong className="text-[#EEF6F3]">{testResult.t_sharedPair1Passed ? 'PASS' : 'FAIL'}</strong></p>
+                    <p>• Multi-Chit Tokens Parsing (G.Ravi=4, PetrolBunk=9, Marlapati=5): <strong className="text-[#EEF6F3]">{testResult.t_multiChitPassed ? 'PASS' : 'FAIL'}</strong></p>
                     <p>• Deduplicated test rows into {testResult.preview.uniqueMembersCount} unique member records ({testResult.preview.totalHoldings} total holdings).</p>
                   </div>
                 </div>
@@ -452,17 +452,17 @@ export default function SettingsPlaceholder() {
 
               {/* STEP 1: FILE SELECTION & CATEGORY */}
               <div className="space-y-4 font-sans">
-                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                <h4 className="text-xs font-bold text-[#111111] uppercase tracking-wider">
                   Step 1: Select Chit Category & Upload Excel File
                 </h4>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Chit Category Selector</label>
+                    <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">Chit Category Selector</label>
                     <select
                       value={selectedChitValue}
                       onChange={(e) => setSelectedChitValue(Number(e.target.value))}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-sky-500 text-xs cursor-pointer"
+                      className="w-full px-3.5 py-2.5 bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] font-bold focus:outline-none focus:ring-1 focus:ring-[#285F52] text-xs cursor-pointer"
                     >
                       <option value={100000}>1. ₹1,00,000 Chit Category</option>
                       <option value={200000}>2. ₹2,00,000 Chit Category</option>
@@ -473,24 +473,24 @@ export default function SettingsPlaceholder() {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Choose Excel File (.xlsx, .xls, .csv)</label>
+                    <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">Choose Excel File (.xlsx, .xls, .csv)</label>
                     <input
                       type="file"
                       accept=".xlsx, .xls, .csv"
                       onChange={handleFileChange}
-                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 text-xs file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-sky-100 file:text-sky-700 hover:file:bg-sky-200 cursor-pointer"
+                      className="w-full px-3 py-1.5 bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] text-xs file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#EEF6F3] file:text-[#285F52] hover:file:bg-[#285F52] hover:file:text-white cursor-pointer"
                     />
                   </div>
                 </div>
 
                 {selectedChitValue === 999999 && (
-                  <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-950 font-sans space-y-1">
-                    <p className="font-bold flex items-center gap-1.5 text-emerald-900">
-                      <Layers className="w-4 h-4 text-emerald-600" />
+                  <div className="p-3.5 bg-[#EEF6F3] border border-[#BFD8D0] rounded-2xl text-xs text-[#111111] font-sans space-y-1">
+                    <p className="font-bold flex items-center gap-1.5 text-[#285F52]">
+                      <Layers className="w-4 h-4 text-[#285F52]" />
                       Dedicated Multi-Chit Excel Migration Mode Active
                     </p>
-                    <p className="text-[11px] text-emerald-800 leading-relaxed">
-                      Parses multi-chit rows with comma-separated group tokens (e.g. <code className="bg-emerald-100 px-1.5 py-0.5 rounded font-mono text-emerald-950 font-bold">XIV, XVI, 2L-F, 5L-B</code> or <code className="bg-emerald-100 px-1.5 py-0.5 rounded font-mono text-emerald-950 font-bold">5L-B+2, 5L-A+1</code>), aggregating quantities and classifying imported members as <strong className="text-emerald-950">MULTIPLE</strong>.
+                    <p className="text-[11px] text-[#667085] leading-relaxed">
+                      Parses multi-chit rows with comma-separated group tokens (e.g. <code className="bg-white px-1.5 py-0.5 rounded font-mono text-[#111111] font-bold">XIV, XVI, 2L-F, 5L-B</code> or <code className="bg-white px-1.5 py-0.5 rounded font-mono text-[#111111] font-bold">5L-B+2, 5L-A+1</code>), aggregating quantities and classifying imported members as <strong className="text-[#111111]">MULTIPLE</strong>.
                     </p>
                   </div>
                 )}
@@ -498,9 +498,9 @@ export default function SettingsPlaceholder() {
                 {excelFile && (
                   <div className="flex justify-end pt-2">
                     <Button
-                      variant="gold"
+                      variant="primary"
                       size="sm"
-                      className="rounded-xl gap-1.5 font-bold"
+                      className="rounded-xl gap-1.5 font-bold bg-[#285F52] hover:bg-[#214D43] text-white cursor-pointer"
                       onClick={() => handleFileChange({ target: { files: [excelFile] } })}
                       disabled={isParsing}
                     >
@@ -513,50 +513,50 @@ export default function SettingsPlaceholder() {
 
               {/* STEP 2: PRE-WRITE PREVIEW DASHBOARD */}
               {isParsing && (
-                <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-2xl">
-                  <div className="w-8 h-8 border-4 border-sky-200 border-t-sky-600 rounded-full animate-spin mx-auto mb-3"></div>
-                  <p className="text-xs font-bold text-slate-700">Parsing Excel File & Analyzing Member Deduplication...</p>
+                <div className="p-8 text-center bg-[#F7F8F7] border border-[#E5E7EB] rounded-2xl">
+                  <div className="w-8 h-8 border-4 border-[#BFD8D0] border-t-[#285F52] rounded-full animate-spin mx-auto mb-3"></div>
+                  <p className="text-xs font-bold text-[#667085]">Parsing Excel File & Analyzing Member Deduplication...</p>
                 </div>
               )}
 
               {previewData && !isParsing && (
-                <div className="space-y-4 pt-4 border-t border-slate-100">
-                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center justify-between">
+                <div className="space-y-4 pt-4 border-t border-[#E5E7EB]">
+                  <h4 className="text-xs font-bold text-[#111111] uppercase tracking-wider flex items-center justify-between">
                     <span>Step 2: Pre-Write Import Summary (No Firestore Write Yet)</span>
                     <Badge variant="neutral">{previewData.totalExcelRows} Source Rows</Badge>
                   </h4>
 
                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-center">
-                    <div className="p-3 bg-sky-50 border border-sky-100 rounded-2xl">
-                      <p className="text-[10px] font-bold text-sky-700 uppercase">Unique Members</p>
-                      <p className="text-xl font-black text-sky-900 font-sans mt-0.5">{previewData.uniqueMembersCount}</p>
+                    <div className="p-3 bg-[#EEF6F3] border border-[#BFD8D0] rounded-2xl">
+                      <p className="text-[10px] font-bold text-[#285F52] uppercase">Unique Members</p>
+                      <p className="text-xl font-black text-[#285F52] font-sans mt-0.5">{previewData.uniqueMembersCount}</p>
                     </div>
-                    <div className="p-3 bg-teal-50 border border-teal-100 rounded-2xl">
-                      <p className="text-[10px] font-bold text-teal-700 uppercase">WhatsApp Phones</p>
-                      <p className="text-xl font-black text-teal-900 font-sans mt-0.5">{previewData.uniqueWhatsAppPhonesCount}</p>
+                    <div className="p-3 bg-[#EEF6F3] border border-[#BFD8D0] rounded-2xl">
+                      <p className="text-[10px] font-bold text-[#285F52] uppercase">WhatsApp Phones</p>
+                      <p className="text-xl font-black text-[#285F52] font-sans mt-0.5">{previewData.uniqueWhatsAppPhonesCount}</p>
                     </div>
-                    <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-2xl">
-                      <p className="text-[10px] font-bold text-emerald-700 uppercase">Total Holdings</p>
-                      <p className="text-xl font-black text-emerald-900 font-sans mt-0.5">{previewData.totalHoldings}</p>
+                    <div className="p-3 bg-[#EEF6F3] border border-[#BFD8D0] rounded-2xl">
+                      <p className="text-[10px] font-bold text-[#285F52] uppercase">Total Holdings</p>
+                      <p className="text-xl font-black text-[#285F52] font-sans mt-0.5">{previewData.totalHoldings}</p>
                     </div>
-                    <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-2xl">
-                      <p className="text-[10px] font-bold text-indigo-700 uppercase">Single Chit</p>
-                      <p className="text-xl font-black text-indigo-900 font-sans mt-0.5">{previewData.singleChitMembers}</p>
+                    <div className="p-3 bg-[#F7F8F7] border border-[#E5E7EB] rounded-2xl">
+                      <p className="text-[10px] font-bold text-[#667085] uppercase">Single Chit</p>
+                      <p className="text-xl font-black text-[#111111] font-sans mt-0.5">{previewData.singleChitMembers}</p>
                     </div>
-                    <div className="p-3 bg-purple-50 border border-purple-100 rounded-2xl">
-                      <p className="text-[10px] font-bold text-purple-700 uppercase">Multiple Chit</p>
-                      <p className="text-xl font-black text-purple-900 font-sans mt-0.5">{previewData.multipleChitMembers}</p>
+                    <div className="p-3 bg-[#F7F8F7] border border-[#E5E7EB] rounded-2xl">
+                      <p className="text-[10px] font-bold text-[#667085] uppercase">Multiple Chit</p>
+                      <p className="text-xl font-black text-[#111111] font-sans mt-0.5">{previewData.multipleChitMembers}</p>
                     </div>
                   </div>
 
-                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 text-xs">
-                    <div className="flex justify-between font-bold text-slate-800">
+                  <div className="p-4 bg-[#F7F8F7] border border-[#E5E7EB] rounded-2xl space-y-2 text-xs">
+                    <div className="flex justify-between font-bold text-[#111111]">
                       <span>Chit Value Breakdown:</span>
                       <span>
                         ₹1L: {previewData.categoryBreakdown.lakh1} | ₹2L: {previewData.categoryBreakdown.lakh2} | ₹5L: {previewData.categoryBreakdown.lakh5}
                       </span>
                     </div>
-                    <div className="flex flex-wrap justify-between text-slate-600 text-[11px] gap-2">
+                    <div className="flex flex-wrap justify-between text-[#667085] text-[11px] gap-2">
                       <span>Duplicate Rows Skipped: {previewData.duplicateRowsSkipped}</span>
                       <span>Shared Phone Members: {previewData.sharedPhoneMembersCount}</span>
                       <span>Conflicts/Warnings Detected: {previewData.conflictsDetected}</span>
@@ -564,10 +564,10 @@ export default function SettingsPlaceholder() {
                   </div>
 
                   {/* RAW PARSER DIAGNOSTIC PANEL */}
-                  <div className="p-4 bg-slate-950 text-white rounded-2xl space-y-3 font-mono text-xs shadow-md border border-slate-800">
-                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                      <span className="font-bold text-sky-400 font-sans flex items-center gap-2">
-                        <Layers className="w-4 h-4 text-sky-400" />
+                  <div className="p-4 bg-[#171918] text-white rounded-2xl space-y-3 font-mono text-xs shadow-md border border-white/10">
+                    <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                      <span className="font-bold text-[#BFD8D0] font-sans flex items-center gap-2">
+                        <Layers className="w-4 h-4 text-[#BFD8D0]" />
                         Raw Parser Diagnostic Panel (First 15 Records)
                       </span>
                       <Badge variant="neutral">{previewData.uniqueMembers.length} Unique Members • {previewData.uniqueWhatsAppPhonesCount} WhatsApp Phones</Badge>
@@ -575,24 +575,24 @@ export default function SettingsPlaceholder() {
 
                     <div className="max-h-60 overflow-y-auto space-y-1.5 text-[11px] pr-1">
                       {previewData.uniqueMembers.slice(0, 15).map((m, idx) => (
-                        <div key={m.id} className="p-2 bg-slate-900/90 border border-slate-800 rounded-xl flex flex-wrap items-center justify-between gap-2">
+                        <div key={m.id} className="p-2 bg-[#111111] border border-white/10 rounded-xl flex flex-wrap items-center justify-between gap-2">
                           <div>
-                            <span className="text-slate-400 font-bold mr-2">{idx + 1}.</span>
+                            <span className="text-[#98A2B3] font-bold mr-2">{idx + 1}.</span>
                             <strong className="text-white font-sans">{m.name}</strong>
-                            <span className="text-slate-400 text-[10px] ml-2">({m.phone})</span>
+                            <span className="text-[#98A2B3] text-[10px] ml-2">({m.phone})</span>
                             {m.sharedPhone && (
-                              <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800 text-[9px] font-bold">
+                              <span className="ml-2 px-1.5 py-0.5 rounded bg-[#FFF8E7] text-[#B7791F] border border-[#FDE68A] text-[9px] font-bold">
                                 Shared Phone
                               </span>
                             )}
                           </div>
                           <div className="flex items-center gap-2 text-[10px]">
                             {m.holdings.map((h, hIdx) => (
-                              <span key={hIdx} className="px-2 py-0.5 rounded bg-sky-950 text-sky-300 border border-sky-800 font-bold">
+                              <span key={hIdx} className="px-2 py-0.5 rounded bg-[#EEF6F3] text-[#285F52] border border-[#BFD8D0] font-bold">
                                 ₹{(h.totalChitValue / 100000).toFixed(0)}L • Group {h.groupId} ({h.quantity} hldg)
                               </span>
                             ))}
-                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${m.classification === 'MULTIPLE' ? 'bg-purple-950 text-purple-300 border border-purple-800' : 'bg-slate-800 text-slate-300'}`}>
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${m.classification === 'MULTIPLE' ? 'bg-[#EEF6F3] text-[#285F52] border border-[#BFD8D0]' : 'bg-[#F7F8F7] text-[#111111] border border-[#E5E7EB]'}`}>
                               {m.classification}
                             </span>
                           </div>
@@ -603,12 +603,12 @@ export default function SettingsPlaceholder() {
 
                   {/* CONFLICTS WARNING LIST IF ANY */}
                   {previewData.conflicts && previewData.conflicts.length > 0 && (
-                    <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs space-y-1.5">
-                      <p className="font-bold text-amber-900 flex items-center gap-1.5">
-                        <AlertTriangle className="w-4 h-4 text-amber-600" />
+                    <div className="p-3.5 bg-[#FFF8E7] border border-[#FDE68A] rounded-2xl text-xs space-y-1.5">
+                      <p className="font-bold text-[#B7791F] flex items-center gap-1.5">
+                        <AlertTriangle className="w-4 h-4 text-[#B7791F]" />
                         Row Discrepancy Warnings ({previewData.conflicts.length})
                       </p>
-                      <ul className="text-[11px] text-amber-800 space-y-1 max-h-28 overflow-y-auto pl-2 list-disc">
+                      <ul className="text-[11px] text-[#B7791F] space-y-1 max-h-28 overflow-y-auto pl-2 list-disc">
                         {previewData.conflicts.map((c, idx) => (
                           <li key={idx}>
                             Row {c.row}: {c.reason}
@@ -619,32 +619,32 @@ export default function SettingsPlaceholder() {
                   )}
 
                   {/* STEP 3: CONFIRM & EXECUTE WRITE */}
-                  <div className="p-4 bg-slate-900 text-white rounded-2xl space-y-3">
-                    <h5 className="text-xs font-bold text-sky-300 uppercase tracking-wider">
+                  <div className="p-4 bg-[#171918] text-white rounded-2xl space-y-3">
+                    <h5 className="text-xs font-bold text-[#BFD8D0] uppercase tracking-wider">
                       Step 3: Admin Gated Write Confirmation
                     </h5>
 
-                    <label className="flex items-start gap-2.5 text-xs text-slate-200 cursor-pointer">
+                    <label className="flex items-start gap-2.5 text-xs text-[#B8C0BC] cursor-pointer">
                       <input
                         type="checkbox"
                         checked={confirmWrite}
                         onChange={(e) => setConfirmWrite(e.target.checked)}
-                        className="w-4 h-4 mt-0.5 accent-sky-500 rounded cursor-pointer"
+                        className="w-4 h-4 mt-0.5 text-[#285F52] focus:ring-[#285F52] rounded cursor-pointer"
                       />
                       <span>
-                        I confirm that the complete Excel dataset has been reviewed and I want to import ALL valid records into Firestore (<code className="text-sky-300 font-mono">raghavendra-chitts-c0822</code>).
+                        I confirm that the complete Excel dataset has been reviewed and I want to import ALL valid records into Firestore (<code className="text-[#BFD8D0] font-mono">raghavendra-chitts-c0822</code>).
                       </span>
                     </label>
 
                     {isImporting && (
                       <div className="space-y-1.5 pt-2">
-                        <div className="flex justify-between text-xs font-bold text-sky-300 font-mono">
+                        <div className="flex justify-between text-xs font-bold text-[#BFD8D0] font-mono">
                           <span>Importing to Firestore...</span>
                           <span>Imported {importProgress.current} / {importProgress.total} records</span>
                         </div>
-                        <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                        <div className="w-full bg-[#111111] rounded-full h-2 overflow-hidden">
                           <div
-                            className="bg-sky-500 h-2 transition-all duration-300"
+                            className="bg-[#285F52] h-2 transition-all duration-300"
                             style={{ width: `${(importProgress.current / Math.max(importProgress.total, 1)) * 100}%` }}
                           ></div>
                         </div>
@@ -653,11 +653,11 @@ export default function SettingsPlaceholder() {
 
                     <div className="flex justify-end pt-1">
                       <Button
-                        variant="gold"
+                        variant="primary"
                         size="sm"
                         disabled={!confirmWrite || isImporting}
                         onClick={handleExecuteImportToFirestore}
-                        className="rounded-xl gap-2 font-bold"
+                        className="rounded-xl gap-2 font-bold bg-[#285F52] hover:bg-[#214D43] text-white cursor-pointer"
                       >
                         <Check className="w-4 h-4" />
                         {isImporting ? 'Writing to Firestore...' : 'IMPORT TO FIRESTORE'}
@@ -669,35 +669,35 @@ export default function SettingsPlaceholder() {
 
               {/* POST-IMPORT REPORT SUMMARY */}
               {importReport && (
-                <div className="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-3 text-xs">
+                <div className="p-5 bg-[#EEF6F3] border border-[#BFD8D0] rounded-2xl space-y-3 text-xs">
                   <div className="flex items-center justify-between">
-                    <h4 className="font-black text-emerald-900 text-sm flex items-center gap-2">
-                      <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                    <h4 className="font-black text-[#285F52] text-sm flex items-center gap-2">
+                      <CheckCircle2 className="w-5 h-5 text-[#285F52]" />
                       Firestore Production Import & Verification Report
                     </h4>
                     <Badge variant="success">COMMITTED & VERIFIED ✅</Badge>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-emerald-950 font-bold font-sans">
-                    <div className="p-2 bg-emerald-100/70 rounded-xl">
-                      <p className="text-[10px] text-emerald-800 font-bold uppercase">Project ID</p>
-                      <p className="text-xs font-black text-emerald-900 mt-0.5">{importReport.firebaseProject}</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-[#111111] font-bold font-sans">
+                    <div className="p-2 bg-white/80 rounded-xl border border-[#BFD8D0]">
+                      <p className="text-[10px] text-[#285F52] font-bold uppercase">Project ID</p>
+                      <p className="text-xs font-black text-[#111111] mt-0.5">{importReport.firebaseProject}</p>
                     </div>
-                    <div className="p-2 bg-emerald-100/70 rounded-xl">
-                      <p className="text-[10px] text-emerald-800 font-bold uppercase">Members Written</p>
-                      <p className="text-base font-black text-emerald-900">{importReport.membersWritten}</p>
+                    <div className="p-2 bg-white/80 rounded-xl border border-[#BFD8D0]">
+                      <p className="text-[10px] text-[#285F52] font-bold uppercase">Members Written</p>
+                      <p className="text-base font-black text-[#111111]">{importReport.membersWritten}</p>
                     </div>
-                    <div className="p-2 bg-emerald-100/70 rounded-xl">
-                      <p className="text-[10px] text-emerald-800 font-bold uppercase">Members Verified</p>
-                      <p className="text-base font-black text-emerald-900">{importReport.membersVerified}</p>
+                    <div className="p-2 bg-white/80 rounded-xl border border-[#BFD8D0]">
+                      <p className="text-[10px] text-[#285F52] font-bold uppercase">Members Verified</p>
+                      <p className="text-base font-black text-[#111111]">{importReport.membersVerified}</p>
                     </div>
-                    <div className="p-2 bg-emerald-100/70 rounded-xl">
-                      <p className="text-[10px] text-emerald-800 font-bold uppercase">Holdings Written</p>
-                      <p className="text-base font-black text-emerald-900">{importReport.holdingsWritten}</p>
+                    <div className="p-2 bg-white/80 rounded-xl border border-[#BFD8D0]">
+                      <p className="text-[10px] text-[#285F52] font-bold uppercase">Holdings Written</p>
+                      <p className="text-base font-black text-[#111111]">{importReport.holdingsWritten}</p>
                     </div>
-                    <div className="p-2 bg-emerald-100/70 rounded-xl">
-                      <p className="text-[10px] text-emerald-800 font-bold uppercase">Errors / Failures</p>
-                      <p className="text-base font-black text-red-600">{importReport.errors ? importReport.errors.length : 0}</p>
+                    <div className="p-2 bg-white/80 rounded-xl border border-[#BFD8D0]">
+                      <p className="text-[10px] text-[#285F52] font-bold uppercase">Errors / Failures</p>
+                      <p className="text-base font-black text-[#B42318]">{importReport.errors ? importReport.errors.length : 0}</p>
                     </div>
                   </div>
                 </div>
@@ -705,88 +705,88 @@ export default function SettingsPlaceholder() {
             </Card>
           )}
           {activeTab === 'general' && (
-            <Card className="border border-slate-200 bg-white rounded-3xl p-6 shadow-xs">
-              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4">
+            <Card className="border border-[#E5E7EB] bg-white rounded-3xl p-6 shadow-xs">
+              <h3 className="text-sm font-bold text-[#111111] uppercase tracking-wider mb-4">
                 General System Configurations
               </h3>
 
               <form onSubmit={handleSaveGeneral} className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Chit Agency Name</label>
+                    <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">Chit Agency Name</label>
                     <input
                       type="text"
                       value={agencyName}
                       onChange={(e) => setAgencyName(e.target.value)}
-                      className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-sky-500"
+                      className="w-full px-3.5 py-2.5 text-xs bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] font-bold focus:outline-none focus:ring-1 focus:ring-[#285F52]"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Primary Admin Phone</label>
+                    <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">Primary Admin Phone</label>
                     <input
                       type="text"
                       value={adminPhone}
                       onChange={(e) => setAdminPhone(e.target.value)}
-                      className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-bold font-mono focus:outline-none focus:ring-2 focus:ring-sky-500"
+                      className="w-full px-3.5 py-2.5 text-xs bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] font-bold font-mono focus:outline-none focus:ring-1 focus:ring-[#285F52]"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Primary Language Mode</label>
+                  <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">Primary Language Mode</label>
                   <input
                     type="text"
                     value={primaryLang}
                     onChange={(e) => setPrimaryLang(e.target.value)}
-                    className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    className="w-full px-3.5 py-2.5 text-xs bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] font-bold focus:outline-none focus:ring-1 focus:ring-[#285F52]"
                   />
                 </div>
 
-                <div className="p-4 bg-slate-900 text-white rounded-2xl space-y-3 font-sans border border-slate-800">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                    <h4 className="text-xs font-bold text-sky-400 uppercase tracking-wider">Administrator UPI Payment Configuration</h4>
-                    <span className="text-[10px] text-emerald-400 font-mono font-bold">UPI INTENT READY</span>
+                <div className="p-4 bg-[#171918] text-white rounded-2xl space-y-3 font-sans border border-white/10">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                    <h4 className="text-xs font-bold text-[#BFD8D0] uppercase tracking-wider">Administrator UPI Payment Configuration</h4>
+                    <span className="text-[10px] text-[#285F52] font-mono font-bold bg-[#EEF6F3] px-2 py-0.5 rounded">UPI INTENT READY</span>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Admin UPI ID (VPA) *</label>
+                      <label className="text-[10px] font-bold text-[#98A2B3] uppercase tracking-wider block">Admin UPI ID (VPA) *</label>
                       <input
                         type="text"
                         placeholder="e.g. raghavendrachitts@upi"
                         value={adminUpiId}
                         onChange={(e) => setAdminUpiId(e.target.value)}
-                        className="w-full px-3.5 py-2.5 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white font-mono font-bold focus:outline-none focus:ring-2 focus:ring-sky-500"
+                        className="w-full px-3.5 py-2.5 text-xs bg-[#111111] border border-white/10 rounded-xl text-white font-mono font-bold focus:outline-none focus:ring-1 focus:ring-[#285F52]"
                       />
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Admin / Business Payee Name</label>
+                      <label className="text-[10px] font-bold text-[#98A2B3] uppercase tracking-wider block">Admin / Business Payee Name</label>
                       <input
                         type="text"
                         placeholder="Raghavendra Chitts"
                         value={adminPayeeName}
                         onChange={(e) => setAdminPayeeName(e.target.value)}
-                        className="w-full px-3.5 py-2.5 text-xs bg-slate-950 border border-slate-800 rounded-xl text-white font-bold focus:outline-none focus:ring-2 focus:ring-sky-500"
+                        className="w-full px-3.5 py-2.5 text-xs bg-[#111111] border border-white/10 rounded-xl text-white font-bold focus:outline-none focus:ring-1 focus:ring-[#285F52]"
                       />
                     </div>
                   </div>
-                  <p className="text-[11px] text-slate-400">
-                    This UPI ID receives member payment intents generated from WhatsApp payment reminders (<code className="text-sky-300 font-mono">upi://pay?pa=...</code>).
+                  <p className="text-[11px] text-[#98A2B3]">
+                    This UPI ID receives member payment intents generated from WhatsApp payment reminders (<code className="text-[#BFD8D0] font-mono">upi://pay?pa=...</code>).
                   </p>
                 </div>
 
-                <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+                <div className="pt-4 border-t border-[#E5E7EB] flex items-center justify-between">
                   <div>
-                    <h4 className="text-xs font-bold text-slate-900">Database Engine</h4>
-                    <p className="text-[11px] text-slate-500 mt-0.5">Firebase / Local Storage JSON database operational.</p>
+                    <h4 className="text-xs font-bold text-[#111111]">Database Engine</h4>
+                    <p className="text-[11px] text-[#667085] mt-0.5">Firebase / Local Storage JSON database operational.</p>
                   </div>
                   <Badge variant="success">Online</Badge>
                 </div>
 
                 <div className="flex justify-end pt-3">
-                  <Button type="submit" variant="gold" size="sm" className="gap-1.5 rounded-xl">
+                  <Button type="submit" variant="primary" size="sm" className="gap-1.5 rounded-xl bg-[#285F52] hover:bg-[#214D43] text-white">
                     <Save className="w-3.5 h-3.5" />
                     Save General Settings
                   </Button>
@@ -796,22 +796,22 @@ export default function SettingsPlaceholder() {
           )}
 
           {activeTab === 'access' && (
-            <Card className="border border-slate-200 bg-white rounded-3xl p-6 shadow-xs space-y-5">
+            <Card className="border border-[#E5E7EB] bg-white rounded-3xl p-6 shadow-xs space-y-5 font-sans">
               <div>
-                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+                <h3 className="text-sm font-bold text-[#111111] uppercase tracking-wider">
                   Operator Access Rules & Permissions
                 </h3>
-                <p className="text-xs text-slate-500 mt-1">Manage system operators and role assignment rules.</p>
+                <p className="text-xs text-[#667085] mt-1">Manage system operators and role assignment rules.</p>
               </div>
 
               <div className="space-y-3">
                 {operators.map((op) => (
-                  <div key={op.id} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between text-xs">
+                  <div key={op.id} className="p-4 bg-[#F7F8F7] border border-[#E5E7EB] rounded-2xl flex items-center justify-between text-xs">
                     <div>
-                      <p className="font-bold text-slate-900 text-sm">{op.name}</p>
-                      <p className="text-slate-500 mt-0.5">{op.role} • <strong className="text-sky-700">{op.permissions}</strong></p>
+                      <p className="font-bold text-[#111111] text-sm">{op.name}</p>
+                      <p className="text-[#667085] mt-0.5">{op.role} • <strong className="text-[#285F52]">{op.permissions}</strong></p>
                     </div>
-                    <Badge variant={op.active ? 'success' : 'secondary'}>
+                    <Badge variant={op.active ? 'success' : 'neutral'}>
                       {op.active ? 'Active Operator' : 'Disabled'}
                     </Badge>
                   </div>
@@ -819,7 +819,7 @@ export default function SettingsPlaceholder() {
               </div>
 
               <div className="flex justify-end pt-3">
-                <Button variant="secondary" size="sm" className="rounded-xl" onClick={() => showToast('Operator rules validated!')}>
+                <Button variant="secondary" size="sm" className="rounded-xl border-[#E5E7EB] bg-white text-[#111111]" onClick={() => showToast('Operator rules validated!')}>
                   Refresh Operator Permissions
                 </Button>
               </div>
@@ -827,25 +827,25 @@ export default function SettingsPlaceholder() {
           )}
 
           {activeTab === 'backup' && (
-            <Card className="border border-slate-200 bg-white rounded-3xl p-6 shadow-xs space-y-5">
+            <Card className="border border-[#E5E7EB] bg-white rounded-3xl p-6 shadow-xs space-y-5 font-sans">
               <div>
-                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+                <h3 className="text-sm font-bold text-[#111111] uppercase tracking-wider">
                   System Ledgers & Data Backup
                 </h3>
-                <p className="text-xs text-slate-500 mt-1">Export complete database JSON backups or restore past system snapshots.</p>
+                <p className="text-xs text-[#667085] mt-1">Export complete database JSON backups or restore past system snapshots.</p>
               </div>
 
-              <div className="p-5 bg-sky-50 border border-sky-200 rounded-2xl space-y-3 text-xs">
-                <h4 className="font-bold text-sky-900 text-sm flex items-center gap-2">
-                  <HardDrive className="w-4 h-4 text-sky-700" />
+              <div className="p-5 bg-[#EEF6F3] border border-[#BFD8D0] rounded-2xl space-y-3 text-xs">
+                <h4 className="font-bold text-[#285F52] text-sm flex items-center gap-2">
+                  <HardDrive className="w-4 h-4 text-[#285F52]" />
                   Full Database Snapshot
                 </h4>
-                <p className="text-slate-600">
+                <p className="text-[#667085]">
                   Export all member accounts, chit group records, transaction histories, and bilingual templates into a single JSON file.
                 </p>
 
                 <div className="flex flex-wrap gap-2 pt-2">
-                  <Button variant="gold" size="sm" className="rounded-xl gap-1.5" onClick={handleBackupExport}>
+                  <Button variant="primary" size="sm" className="rounded-xl gap-1.5 bg-[#285F52] hover:bg-[#214D43] text-white" onClick={handleBackupExport}>
                     <Download className="w-3.5 h-3.5" />
                     Download JSON Backup
                   </Button>
@@ -855,79 +855,79 @@ export default function SettingsPlaceholder() {
           )}
 
           {(activeTab === 'notifications' || activeTab === 'whatsapp_gateway') && (
-            <div className="space-y-6">
+            <div className="space-y-6 font-sans">
               {/* ACTIVE WHATSAPP ENGINE CARD */}
-              <Card className="border border-slate-200 bg-white rounded-3xl p-6 shadow-xs space-y-5">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+              <Card className="border border-[#E5E7EB] bg-white rounded-3xl p-6 shadow-xs space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#E5E7EB]">
                   <div>
-                    <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-600 block">System Gateway</span>
-                    <h3 className="text-lg font-black text-slate-900 mt-0.5">ACTIVE WHATSAPP ENGINE</h3>
+                    <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#285F52] block">System Gateway</span>
+                    <h3 className="text-lg font-black text-[#111111] mt-0.5">ACTIVE WHATSAPP ENGINE</h3>
                   </div>
 
                   <div className="flex items-center gap-2">
                     <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
-                      waConfig.connected ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
+                      waConfig.connected ? 'bg-[#EEF6F3] text-[#285F52] border border-[#BFD8D0]' : 'bg-[#FEF3F2] text-[#B42318] border border-[#FECACA]'
                     }`}>
-                      <span className={`w-2 h-2 rounded-full ${waConfig.connected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}></span>
-                      {waConfig.connected ? '🟢 Connected' : '🔴 Not Connected'}
+                      <span className={`w-2 h-2 rounded-full ${waConfig.connected ? 'bg-[#285F52] animate-pulse' : 'bg-[#B42318]'}`}></span>
+                      {waConfig.connected ? '● Connected' : '○ Not Connected'}
                     </span>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs font-sans">
-                  <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">WhatsApp Phone Number</span>
-                    <p className="font-mono font-bold text-slate-900 mt-1 flex items-center gap-1.5">
-                      <PhoneCall className="w-3.5 h-3.5 text-emerald-600" />
+                  <div className="p-3.5 bg-[#F7F8F7] border border-[#E5E7EB] rounded-2xl">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#98A2B3] block">WhatsApp Phone Number</span>
+                    <p className="font-mono font-bold text-[#111111] mt-1 flex items-center gap-1.5">
+                      <PhoneCall className="w-3.5 h-3.5 text-[#285F52]" />
                       {formatDisplayPhoneNumber(waConfig.businessPhoneNumber)}
                     </p>
                   </div>
 
-                  <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Phone Number ID</span>
-                    <p className="font-mono font-bold text-slate-900 mt-1 truncate">{waConfig.phoneNumberIdDisplay}</p>
+                  <div className="p-3.5 bg-[#F7F8F7] border border-[#E5E7EB] rounded-2xl">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#98A2B3] block">Phone Number ID</span>
+                    <p className="font-mono font-bold text-[#111111] mt-1 truncate">{waConfig.phoneNumberIdDisplay}</p>
                   </div>
 
-                  <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Business Account ID</span>
-                    <p className="font-mono font-bold text-slate-900 mt-1 truncate">{waConfig.businessAccountIdDisplay}</p>
+                  <div className="p-3.5 bg-[#F7F8F7] border border-[#E5E7EB] rounded-2xl">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#98A2B3] block">Business Account ID</span>
+                    <p className="font-mono font-bold text-[#111111] mt-1 truncate">{waConfig.businessAccountIdDisplay}</p>
                   </div>
 
-                  <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Last Check</span>
-                    <p className="font-mono font-bold text-slate-700 mt-1">{waConfig.lastChecked}</p>
+                  <div className="p-3.5 bg-[#F7F8F7] border border-[#E5E7EB] rounded-2xl">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#98A2B3] block">Last Check</span>
+                    <p className="font-mono font-bold text-[#667085] mt-1">{waConfig.lastChecked}</p>
                   </div>
                 </div>
 
-                <p className="text-[11px] text-slate-500 italic">
+                <p className="text-[11px] text-[#667085] italic">
                   🔒 WhatsApp Web Direct Integration: Messages are pre-filled directly in WhatsApp Web without requiring external server API keys or Meta credentials.
                 </p>
               </Card>
 
               {/* CONNECTION OPTIONS SELECTION */}
-              <Card className="border border-slate-200 bg-white rounded-3xl p-6 shadow-xs space-y-4">
+              <Card className="border border-[#E5E7EB] bg-white rounded-3xl p-6 shadow-xs space-y-4">
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+                  <h3 className="text-sm font-bold text-[#111111] uppercase tracking-wider">
                     WhatsApp Gateway Integration Options
                   </h3>
-                  <p className="text-xs text-slate-500 mt-1">Select the active API protocol for message dispatch.</p>
+                  <p className="text-xs text-[#667085] mt-1">Select the active API protocol for message dispatch.</p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div
                     onClick={() => setSelectedGateway('meta_cloud_api')}
                     className={`p-4 rounded-2xl border-2 transition-all cursor-pointer space-y-2 ${
-                      selectedGateway === 'meta_cloud_api' ? 'border-emerald-500 bg-emerald-50/50 shadow-xs' : 'border-slate-200 bg-white hover:border-slate-300'
+                      selectedGateway === 'meta_cloud_api' ? 'border-[#285F52] bg-[#EEF6F3] shadow-xs' : 'border-[#E5E7EB] bg-white hover:border-[#BFD8D0]'
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                      <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#285F52] bg-white px-2 py-0.5 rounded-full border border-[#BFD8D0]">
                         RECOMMENDED — OFFICIAL META WHATSAPP BUSINESS PLATFORM
                       </span>
-                      {selectedGateway === 'meta_cloud_api' && <Check className="w-4 h-4 text-emerald-600 stroke-[3]" />}
+                      {selectedGateway === 'meta_cloud_api' && <Check className="w-4 h-4 text-[#285F52] stroke-[3]" />}
                     </div>
-                    <p className="text-xs font-bold text-slate-900">Meta Official Cloud API</p>
-                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                    <p className="text-xs font-bold text-[#111111]">Meta Official Cloud API</p>
+                    <p className="text-[11px] text-[#667085] leading-relaxed">
                       Official Meta REST API via Facebook Graph API v20.0. Fully compliant with WhatsApp Business policies and server-side secret management.
                     </p>
                   </div>
@@ -935,17 +935,17 @@ export default function SettingsPlaceholder() {
                   <div
                     onClick={() => setSelectedGateway('twilio')}
                     className={`p-4 rounded-2xl border-2 transition-all cursor-pointer space-y-2 ${
-                      selectedGateway === 'twilio' ? 'border-sky-500 bg-sky-50/50 shadow-xs' : 'border-slate-200 bg-white hover:border-slate-300'
+                      selectedGateway === 'twilio' ? 'border-[#285F52] bg-[#EEF6F3] shadow-xs' : 'border-[#E5E7EB] bg-white hover:border-[#BFD8D0]'
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-extrabold uppercase tracking-widest text-sky-700 bg-sky-100 px-2 py-0.5 rounded-full">
+                      <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#667085] bg-white px-2 py-0.5 rounded-full border border-[#E5E7EB]">
                         SECONDARY OPTION
                       </span>
-                      {selectedGateway === 'twilio' && <Check className="w-4 h-4 text-sky-600 stroke-[3]" />}
+                      {selectedGateway === 'twilio' && <Check className="w-4 h-4 text-[#285F52] stroke-[3]" />}
                     </div>
-                    <p className="text-xs font-bold text-slate-900">Twilio API for WhatsApp</p>
-                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                    <p className="text-xs font-bold text-[#111111]">Twilio API for WhatsApp</p>
+                    <p className="text-[11px] text-[#667085] leading-relaxed">
                       Twilio Programmable Messaging adapter. Requires TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in server configuration.
                     </p>
                   </div>
@@ -953,44 +953,44 @@ export default function SettingsPlaceholder() {
               </Card>
 
               {/* SEND INSTANT LIVE TEST MESSAGE CARD */}
-              <Card className="border border-slate-200 bg-white rounded-3xl p-6 shadow-xs space-y-4 font-sans">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <Card className="border border-[#E5E7EB] bg-white rounded-3xl p-6 shadow-xs space-y-4 font-sans">
+                <div className="flex items-center justify-between pb-3 border-b border-[#E5E7EB]">
                   <div>
-                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                      <Send className="w-4 h-4 text-emerald-600" />
+                    <h3 className="text-sm font-black text-[#111111] uppercase tracking-wider flex items-center gap-2">
+                      <Send className="w-4 h-4 text-[#285F52]" />
                       SEND INSTANT LIVE TEST MESSAGE
                     </h3>
-                    <p className="text-xs text-slate-500 mt-0.5">Verify your WhatsApp Cloud API connection by sending an immediate test message.</p>
+                    <p className="text-xs text-[#667085] mt-0.5">Verify your WhatsApp Cloud API connection by sending an immediate test message.</p>
                   </div>
                 </div>
 
                 <form onSubmit={handleSendTestMessage} className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="space-y-1 sm:col-span-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Mobile Number *</label>
+                      <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">Mobile Number *</label>
                       <input
                         type="text"
                         placeholder="e.g. 9876543210"
                         value={testPhone}
                         onChange={(e) => setTestPhone(e.target.value)}
-                        className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-bold font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        className="w-full px-3.5 py-2 text-xs bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] font-bold font-mono focus:outline-none focus:ring-1 focus:ring-[#285F52]"
                       />
                     </div>
 
                     <div className="space-y-1 sm:col-span-2">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Test Message Content</label>
+                      <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">Test Message Content</label>
                       <input
                         type="text"
                         value={testMessageText}
                         onChange={(e) => setTestMessageText(e.target.value)}
-                        className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        className="w-full px-3.5 py-2 text-xs bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] focus:outline-none focus:ring-1 focus:ring-[#285F52]"
                       />
                     </div>
                   </div>
 
                   {testResultMsg && (
                     <div className={`p-3 rounded-xl text-xs font-bold ${
-                      testResultMsg.success ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-800 border border-red-200'
+                      testResultMsg.success ? 'bg-[#EEF6F3] text-[#285F52] border border-[#BFD8D0]' : 'bg-[#FEF3F2] text-[#B42318] border border-[#FECACA]'
                     }`}>
                       {testResultMsg.text}
                     </div>
@@ -999,10 +999,10 @@ export default function SettingsPlaceholder() {
                   <div className="flex justify-end pt-1">
                     <Button
                       type="submit"
-                      variant="gold"
+                      variant="primary"
                       size="sm"
                       disabled={isSendingTest}
-                      className="rounded-xl gap-2 font-bold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                      className="rounded-xl gap-2 font-bold bg-[#285F52] hover:bg-[#214D43] text-white cursor-pointer"
                     >
                       <Send className="w-3.5 h-3.5" />
                       {isSendingTest ? 'Sending Test...' : 'SEND TEST MESSAGE'}
@@ -1012,34 +1012,34 @@ export default function SettingsPlaceholder() {
               </Card>
 
               {/* WHATSAPP NOTIFICATION RULES FORM */}
-              <Card className="border border-slate-200 bg-white rounded-3xl p-6 shadow-xs space-y-5">
+              <Card className="border border-[#E5E7EB] bg-white rounded-3xl p-6 shadow-xs space-y-5">
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+                  <h3 className="text-sm font-bold text-[#111111] uppercase tracking-wider">
                     Automated Monthly Reminder Schedule
                   </h3>
-                  <p className="text-xs text-slate-500 mt-1">Configure default date triggers for monthly payment reminders.</p>
+                  <p className="text-xs text-[#667085] mt-1">Configure default date triggers for monthly payment reminders.</p>
                 </div>
 
                 <form onSubmit={handleSaveNotifications} className="space-y-4 text-xs">
-                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between">
+                  <div className="p-4 bg-[#F7F8F7] border border-[#E5E7EB] rounded-2xl flex items-center justify-between">
                     <div>
-                      <p className="font-bold text-slate-900">WhatsApp Dispatch Engine</p>
-                      <p className="text-slate-500 text-[11px]">Enable automated WhatsApp billing text generation.</p>
+                      <p className="font-bold text-[#111111]">WhatsApp Dispatch Engine</p>
+                      <p className="text-[#667085] text-[11px]">Enable automated WhatsApp billing text generation.</p>
                     </div>
                     <input
                       type="checkbox"
                       checked={enableWhatsapp}
                       onChange={(e) => setEnableWhatsapp(e.target.checked)}
-                      className="w-5 h-5 accent-emerald-600 rounded-lg cursor-pointer"
+                      className="w-5 h-5 text-[#285F52] focus:ring-[#285F52] rounded-lg cursor-pointer"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Default Reminder Date Trigger</label>
+                    <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">Default Reminder Date Trigger</label>
                     <select
                       value={autoReminderDate}
                       onChange={(e) => setAutoReminderDate(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                      className="w-full px-3.5 py-2.5 bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] font-bold focus:outline-none focus:ring-1 focus:ring-[#285F52] cursor-pointer"
                     >
                       <option value="1st of month">1st of each month</option>
                       <option value="5th of month">5th of each month</option>
@@ -1049,7 +1049,7 @@ export default function SettingsPlaceholder() {
                   </div>
 
                   <div className="flex justify-end pt-3">
-                    <Button type="submit" variant="gold" size="sm" className="gap-1.5 rounded-xl">
+                    <Button type="submit" variant="primary" size="sm" className="gap-1.5 rounded-xl bg-[#285F52] hover:bg-[#214D43] text-white">
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       Save Notification Rules
                     </Button>
@@ -1062,12 +1062,12 @@ export default function SettingsPlaceholder() {
           {/* ─── SAFE DATA CLEANUP & AUDIT TAB ──────────────────────────────────── */}
           {activeTab === 'cleanup' && (
             <div className="space-y-6 font-sans">
-              <Card className="border border-slate-200 bg-white rounded-3xl p-6 shadow-xs space-y-5">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
+              <Card className="border border-[#E5E7EB] bg-white rounded-3xl p-6 shadow-xs space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#E5E7EB]">
                   <div>
-                    <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest block">Safe Database Maintenance</span>
-                    <h2 className="text-lg font-black text-slate-900">Firestore Data Cleanup & Audit</h2>
-                    <p className="text-xs text-slate-500 mt-0.5">
+                    <span className="text-[10px] font-black text-[#B7791F] uppercase tracking-widest block">Safe Database Maintenance</span>
+                    <h2 className="text-lg font-black text-[#111111]">Firestore Data Cleanup & Audit</h2>
+                    <p className="text-xs text-[#667085] mt-0.5">
                       Inspect and remove test members (Ahmad, Sandeep), duplicate records, and test logs without deleting production history.
                     </p>
                   </div>
@@ -1078,9 +1078,9 @@ export default function SettingsPlaceholder() {
                       size="sm"
                       onClick={handleGenerateCleanupPreview}
                       disabled={isInspecting}
-                      className="rounded-xl text-xs font-bold border-slate-300 text-slate-700 hover:bg-slate-50 cursor-pointer gap-1.5"
+                      className="rounded-xl text-xs font-bold border-[#E5E7EB] text-[#111111] hover:bg-[#F7F8F7] cursor-pointer gap-1.5"
                     >
-                      <RefreshCw className={`w-3.5 h-3.5 ${isInspecting ? 'animate-spin text-amber-600' : ''}`} />
+                      <RefreshCw className={`w-3.5 h-3.5 ${isInspecting ? 'animate-spin text-[#285F52]' : ''}`} />
                       {isInspecting ? 'Inspecting Database...' : 'Run Inspection & Generate Preview'}
                     </Button>
 
@@ -1090,7 +1090,7 @@ export default function SettingsPlaceholder() {
                         size="sm"
                         onClick={handleRunSafeCleanup}
                         disabled={isExecutingCleanup}
-                        className="rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white cursor-pointer gap-1.5"
+                        className="rounded-xl text-xs font-bold bg-[#B7791F] hover:bg-[#966318] text-white cursor-pointer gap-1.5"
                       >
                         <CheckCircle2 className="w-3.5 h-3.5" />
                         {isExecutingCleanup ? 'Executing Cleanup...' : 'Execute Safe Cleanup'}
@@ -1102,30 +1102,30 @@ export default function SettingsPlaceholder() {
                 {/* CLEANUP PREVIEW REPORT SUMMARY */}
                 {cleanupPreview ? (
                   <div className="space-y-5 text-xs">
-                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                      <h3 className="font-extrabold text-slate-900 text-sm flex items-center justify-between">
+                    <div className="p-4 bg-[#F7F8F7] border border-[#E5E7EB] rounded-2xl space-y-3">
+                      <h3 className="font-extrabold text-[#111111] text-sm flex items-center justify-between">
                         <span>Cleanup Preview Report</span>
-                        <span className="text-[10px] font-mono bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-300">
+                        <span className="text-[10px] font-mono bg-[#EEF6F3] text-[#285F52] px-2 py-0.5 rounded-full border border-[#BFD8D0]">
                           Safe Archive Mode Active
                         </span>
                       </h3>
 
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono">
-                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
-                          <span className="text-[10px] font-bold text-amber-800 uppercase block">Test Members</span>
-                          <span className="text-xl font-black text-amber-900">{cleanupPreview.summary.testingMembersFound}</span>
+                        <div className="p-3 bg-[#FFF8E7] border border-[#FDE68A] rounded-xl">
+                          <span className="text-[10px] font-bold text-[#B7791F] uppercase block">Test Members</span>
+                          <span className="text-xl font-black text-[#B7791F]">{cleanupPreview.summary.testingMembersFound}</span>
                         </div>
-                        <div className="p-3 bg-orange-50 border border-orange-200 rounded-xl">
-                          <span className="text-[10px] font-bold text-orange-800 uppercase block">Duplicate Members</span>
-                          <span className="text-xl font-black text-orange-900">{cleanupPreview.summary.duplicateMembersFound}</span>
+                        <div className="p-3 bg-[#FFF8E7] border border-[#FDE68A] rounded-xl">
+                          <span className="text-[10px] font-bold text-[#B7791F] uppercase block">Duplicate Members</span>
+                          <span className="text-xl font-black text-[#B7791F]">{cleanupPreview.summary.duplicateMembersFound}</span>
                         </div>
-                        <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl">
-                          <span className="text-[10px] font-bold text-sky-800 uppercase block">Test Messages</span>
-                          <span className="text-xl font-black text-sky-900">{cleanupPreview.summary.testMessageRecordsFound}</span>
+                        <div className="p-3 bg-[#EEF6F3] border border-[#BFD8D0] rounded-xl">
+                          <span className="text-[10px] font-bold text-[#285F52] uppercase block">Test Messages</span>
+                          <span className="text-xl font-black text-[#285F52]">{cleanupPreview.summary.testMessageRecordsFound}</span>
                         </div>
-                        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
-                          <span className="text-[10px] font-bold text-emerald-800 uppercase block">Production Members Preserved</span>
-                          <span className="text-xl font-black text-emerald-900">{cleanupPreview.summary.legitimateMembersPreserved}</span>
+                        <div className="p-3 bg-[#EEF6F3] border border-[#BFD8D0] rounded-xl">
+                          <span className="text-[10px] font-bold text-[#285F52] uppercase block">Production Members Preserved</span>
+                          <span className="text-xl font-black text-[#285F52]">{cleanupPreview.summary.legitimateMembersPreserved}</span>
                         </div>
                       </div>
                     </div>
@@ -1133,10 +1133,10 @@ export default function SettingsPlaceholder() {
                     {/* DETAILED TABLES FOR TEST & DUPLICATE RECORDS */}
                     {cleanupPreview.testMembers.length > 0 && (
                       <div className="space-y-2">
-                        <h4 className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">Testing Members to Archive:</h4>
-                        <div className="border border-slate-200 rounded-xl overflow-hidden">
+                        <h4 className="font-bold text-[#111111] uppercase tracking-wider text-[11px]">Testing Members to Archive:</h4>
+                        <div className="border border-[#E5E7EB] rounded-xl overflow-hidden">
                           <table className="w-full text-left text-xs">
-                            <thead className="bg-slate-100 text-slate-600 font-bold uppercase text-[10px]">
+                            <thead className="bg-[#F7F8F7] text-[#667085] font-bold uppercase text-[10px]">
                               <tr>
                                 <th className="p-2.5">Name</th>
                                 <th className="p-2.5">Phone</th>
@@ -1144,13 +1144,13 @@ export default function SettingsPlaceholder() {
                                 <th className="p-2.5">Details</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-200">
+                            <tbody className="divide-y divide-[#E5E7EB]">
                               {cleanupPreview.testMembers.map((m) => (
-                                <tr key={m.id} className="bg-amber-50/50">
-                                  <td className="p-2.5 font-bold text-slate-900">{m.name}</td>
-                                  <td className="p-2.5 font-mono text-slate-600">+{m.phone}</td>
-                                  <td className="p-2.5 font-bold text-amber-800 text-[10px]">{m.reason}</td>
-                                  <td className="p-2.5 text-slate-600">{m.details}</td>
+                                <tr key={m.id} className="bg-[#FFF8E7]/50">
+                                  <td className="p-2.5 font-bold text-[#111111]">{m.name}</td>
+                                  <td className="p-2.5 font-mono text-[#667085]">+{m.phone}</td>
+                                  <td className="p-2.5 font-bold text-[#B7791F] text-[10px]">{m.reason}</td>
+                                  <td className="p-2.5 text-[#667085]">{m.details}</td>
                                 </tr>
                               ))}
                             </tbody>
@@ -1161,22 +1161,22 @@ export default function SettingsPlaceholder() {
 
                     {cleanupPreview.duplicateMembers.length > 0 && (
                       <div className="space-y-2">
-                        <h4 className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">Duplicate Member Records to Archive:</h4>
-                        <div className="border border-slate-200 rounded-xl overflow-hidden">
+                        <h4 className="font-bold text-[#111111] uppercase tracking-wider text-[11px]">Duplicate Member Records to Archive:</h4>
+                        <div className="border border-[#E5E7EB] rounded-xl overflow-hidden">
                           <table className="w-full text-left text-xs">
-                            <thead className="bg-slate-100 text-slate-600 font-bold uppercase text-[10px]">
+                            <thead className="bg-[#F7F8F7] text-[#667085] font-bold uppercase text-[10px]">
                               <tr>
                                 <th className="p-2.5">Duplicate Record</th>
                                 <th className="p-2.5">Canonical Master Record</th>
                                 <th className="p-2.5">Reason</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-200">
+                            <tbody className="divide-y divide-[#E5E7EB]">
                               {cleanupPreview.duplicateMembers.map((m) => (
-                                <tr key={m.id} className="bg-orange-50/50">
-                                  <td className="p-2.5 font-bold text-slate-900">{m.name} ({m.id})</td>
-                                  <td className="p-2.5 font-bold text-emerald-800">{m.canonicalName} ({m.canonicalId})</td>
-                                  <td className="p-2.5 text-slate-600">{m.details}</td>
+                                <tr key={m.id} className="bg-[#FFF8E7]/50">
+                                  <td className="p-2.5 font-bold text-[#111111]">{m.name} ({m.id})</td>
+                                  <td className="p-2.5 font-bold text-[#285F52]">{m.canonicalName} ({m.canonicalId})</td>
+                                  <td className="p-2.5 text-[#667085]">{m.details}</td>
                                 </tr>
                               ))}
                             </tbody>
@@ -1187,13 +1187,13 @@ export default function SettingsPlaceholder() {
 
                     {cleanupPreview.testMessageRecords.length > 0 && (
                       <div className="space-y-2">
-                        <h4 className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">Test & Debugging Message Logs:</h4>
-                        <p className="text-slate-500 text-[11px]">{cleanupPreview.testMessageRecords.length} message records identified for archiving.</p>
+                        <h4 className="font-bold text-[#111111] uppercase tracking-wider text-[11px]">Test & Debugging Message Logs:</h4>
+                        <p className="text-[#667085] text-[11px]">{cleanupPreview.testMessageRecords.length} message records identified for archiving.</p>
                       </div>
                     )}
 
                     {cleanupResult && (
-                      <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-2xl space-y-1 font-mono">
+                      <div className="p-4 bg-[#EEF6F3] border border-[#BFD8D0] text-[#285F52] rounded-2xl space-y-1 font-mono">
                         <p className="font-extrabold text-sm">✓ Safe Cleanup Successfully Executed!</p>
                         <p className="text-xs">
                           Archived {cleanupResult.archivedMemberCount} test/duplicate member docs and {cleanupResult.archivedMessageCount} message history docs.
@@ -1203,10 +1203,10 @@ export default function SettingsPlaceholder() {
                     )}
                   </div>
                 ) : (
-                  <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                    <AlertTriangle className="w-8 h-8 mx-auto text-amber-500" />
-                    <h3 className="font-bold text-slate-900 text-sm">No Active Inspection Loaded</h3>
-                    <p className="text-xs text-slate-500 max-w-md mx-auto">
+                  <div className="p-8 text-center bg-[#F7F8F7] border border-[#E5E7EB] rounded-2xl space-y-3">
+                    <AlertTriangle className="w-8 h-8 mx-auto text-[#B7791F]" />
+                    <h3 className="font-bold text-[#111111] text-sm">No Active Inspection Loaded</h3>
+                    <p className="text-xs text-[#667085] max-w-md mx-auto">
                       Click "Run Inspection & Generate Preview" to safely analyze Firestore collections for test members (Ahmad, Sandeep), duplicates, and test logs.
                     </p>
                   </div>

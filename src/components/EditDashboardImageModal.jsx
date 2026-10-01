@@ -55,14 +55,14 @@ export default function EditDashboardImageModal({ isOpen, onClose, imageDoc, onI
     >
       <form onSubmit={handleSubmit} className="space-y-4 font-sans text-xs">
         {error && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-red-700 font-semibold text-xs">
-            <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+          <div className="p-3 bg-[#FEF3F2] border border-[#FECACA] rounded-xl flex items-center gap-2 text-[#B42318] font-semibold text-xs">
+            <AlertCircle className="w-4 h-4 text-[#B42318] shrink-0" />
             <span className="flex-1">{error}</span>
           </div>
         )}
 
         <div>
-          <label className="block text-[11px] font-bold text-[#1C1C1A] uppercase tracking-wider mb-1">
+          <label className="block text-[11px] font-bold text-[#111111] uppercase tracking-wider mb-1">
             Image Title
           </label>
           <input
@@ -71,12 +71,12 @@ export default function EditDashboardImageModal({ isOpen, onClose, imageDoc, onI
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             disabled={isSaving}
-            className="w-full px-3.5 py-2.5 rounded-xl border border-[#E5E5E1] bg-white text-xs text-[#1C1C1A] focus:outline-hidden focus:border-[#2F5D50] focus:ring-1 focus:ring-[#2F5D50] transition-colors"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-[#E5E7EB] bg-white text-xs text-[#111111] focus:outline-hidden focus:border-[#285F52] focus:ring-1 focus:ring-[#285F52] transition-colors"
           />
         </div>
 
         <div>
-          <label className="block text-[11px] font-bold text-[#1C1C1A] uppercase tracking-wider mb-1">
+          <label className="block text-[11px] font-bold text-[#111111] uppercase tracking-wider mb-1">
             Description / Notes
           </label>
           <textarea
@@ -85,18 +85,18 @@ export default function EditDashboardImageModal({ isOpen, onClose, imageDoc, onI
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             disabled={isSaving}
-            className="w-full px-3.5 py-2 rounded-xl border border-[#E5E5E1] bg-white text-xs text-[#1C1C1A] focus:outline-hidden focus:border-[#2F5D50] focus:ring-1 focus:ring-[#2F5D50] transition-colors resize-none"
+            className="w-full px-3.5 py-2 rounded-xl border border-[#E5E7EB] bg-white text-xs text-[#111111] focus:outline-hidden focus:border-[#285F52] focus:ring-1 focus:ring-[#285F52] transition-colors resize-none"
           />
         </div>
 
-        <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#E5E5E1]">
+        <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#E5E7EB]">
           <Button
             type="button"
             variant="outline"
             size="sm"
             onClick={onClose}
             disabled={isSaving}
-            className="rounded-xl border-[#E5E5E1] bg-[#F7F7F5] text-[#1C1C1A] hover:bg-[#E5E5E1]"
+            className="rounded-xl border-[#E5E7EB] bg-[#F7F8F7] text-[#111111] hover:bg-[#E5E7EB]"
           >
             Cancel
           </Button>
@@ -106,7 +106,7 @@ export default function EditDashboardImageModal({ isOpen, onClose, imageDoc, onI
             variant="primary"
             size="sm"
             disabled={isSaving}
-            className="gap-1.5 rounded-xl bg-[#2F5D50] hover:bg-[#24493F] text-white font-bold shadow-xs cursor-pointer"
+            className="gap-1.5 rounded-xl bg-[#285F52] hover:bg-[#214D43] text-white font-bold shadow-xs cursor-pointer"
           >
             {isSaving ? (
               <>

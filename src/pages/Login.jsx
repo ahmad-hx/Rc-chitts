@@ -151,7 +151,7 @@ export default function Login({ onLogin }) {
   };
 
   return (
-    <div className="min-h-screen bg-[#1C1C1A] relative overflow-hidden px-4 py-8 sm:px-6 flex items-center justify-center font-sans">
+    <div className="min-h-screen bg-[#F7F8F7] relative overflow-hidden px-4 py-8 sm:px-6 flex items-center justify-center font-sans">
       <div className="relative z-10 mx-auto w-full max-w-md">
         <div
           className={`w-full transition-all duration-700 ease-out ${
@@ -163,40 +163,40 @@ export default function Login({ onLogin }) {
               <Logo size="lg" showText={false} />
             </div>
 
-            <div className="flex items-center justify-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.25em] text-[#D8D8D3]">
-              <ShieldCheck className="h-4 w-4 text-[#2F6B4F]" />
+            <div className="flex items-center justify-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.25em] text-[#667085]">
+              <ShieldCheck className="h-4 w-4 text-[#285F52]" />
               Private Admin Portal
             </div>
           </div>
 
-          <div className="bg-white border border-[#E5E5E1] rounded-2xl p-6 sm:p-8 shadow-xl">
+          <div className="bg-white border border-[#E5E7EB] rounded-2xl p-6 sm:p-8 shadow-xs">
             <div className="mb-6 text-center">
-              <h1 className="text-2xl font-black tracking-tight text-[#1C1C1A]">Raghavendra Chitts</h1>
-              <p className="text-xs text-[#6B6B67] mt-1">Enterprise Admin Authentication</p>
+              <h1 className="text-2xl font-black tracking-tight text-[#111111]">Raghavendra Chitts</h1>
+              <p className="text-xs text-[#667085] mt-1">Enterprise Admin Authentication</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
-                <div className="flex items-start gap-2 rounded-xl border border-[#F2D4D4] bg-[#FCEEEE] p-3 text-xs font-bold text-[#A33A3A]">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#A33A3A]" />
+                <div className="flex items-start gap-2 rounded-xl border border-[#FECACA] bg-[#FEF3F2] p-3 text-xs font-bold text-[#B42318]">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#B42318]" />
                   <span>{error}</span>
                 </div>
               )}
 
               {resetSuccess && (
-                <div className="flex items-start gap-2 rounded-xl border border-[#C6F6D5] bg-[#EDF7F0] p-3 text-xs font-bold text-[#2F5D50]">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#2F5D50]" />
+                <div className="flex items-start gap-2 rounded-xl border border-[#BFD8D0] bg-[#EEF6F3] p-3 text-xs font-bold text-[#285F52]">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#285F52]" />
                   <span>{resetSuccess}</span>
                 </div>
               )}
 
               <div className="space-y-1.5">
-                <label htmlFor="username" className="block text-[10px] font-extrabold uppercase tracking-wider text-[#6B6B67]">
+                <label htmlFor="username" className="block text-[10px] font-extrabold uppercase tracking-wider text-[#667085]">
                   Admin Email
                 </label>
 
                 <div className="relative">
-                  <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-[#959590]">
+                  <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-[#98A2B3]">
                     <User className="h-4 w-4" />
                   </span>
 
@@ -212,18 +212,18 @@ export default function Login({ onLogin }) {
                       setError('');
                       setResetSuccess('');
                     }}
-                    className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] py-2.5 pl-10 pr-4 text-xs font-bold text-[#1C1C1A] placeholder:text-[#959590] outline-none transition-all focus:border-[#2F5D50] focus:bg-white focus:ring-1 focus:ring-[#2F5D50]"
+                    className="w-full rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] py-2.5 pl-10 pr-4 text-xs font-bold text-[#111111] placeholder:text-[#98A2B3] outline-none transition-all focus:border-[#285F52] focus:bg-white focus:ring-1 focus:ring-[#285F52]"
                   />
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <label htmlFor="password" className="block text-[10px] font-extrabold uppercase tracking-wider text-[#6B6B67]">
+                <label htmlFor="password" className="block text-[10px] font-extrabold uppercase tracking-wider text-[#667085]">
                   Password
                 </label>
 
                 <div className="relative">
-                  <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-[#959590]">
+                  <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-[#98A2B3]">
                     <Lock className="h-4 w-4" />
                   </span>
 
@@ -239,13 +239,13 @@ export default function Login({ onLogin }) {
                       setError('');
                       setResetSuccess('');
                     }}
-                    className="w-full rounded-xl border border-[#E5E5E1] bg-[#F7F7F5] py-2.5 pl-10 pr-11 text-xs font-bold text-[#1C1C1A] placeholder:text-[#959590] outline-none transition-all focus:border-[#2F5D50] focus:bg-white focus:ring-1 focus:ring-[#2F5D50]"
+                    className="w-full rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] py-2.5 pl-10 pr-11 text-xs font-bold text-[#111111] placeholder:text-[#98A2B3] outline-none transition-all focus:border-[#285F52] focus:bg-white focus:ring-1 focus:ring-[#285F52]"
                   />
 
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-[#959590] hover:text-[#1C1C1A] focus:outline-none cursor-pointer"
+                    className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-[#98A2B3] hover:text-[#111111] focus:outline-none cursor-pointer"
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -254,13 +254,13 @@ export default function Login({ onLogin }) {
               </div>
 
               <div className="flex items-center justify-between gap-3 pt-1">
-                <label htmlFor="remember-me" className="flex cursor-pointer items-center gap-2 text-xs font-bold text-[#1C1C1A]">
+                <label htmlFor="remember-me" className="flex cursor-pointer items-center gap-2 text-xs font-bold text-[#111111]">
                   <input
                     id="remember-me"
                     type="checkbox"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
-                    className="h-4 w-4 rounded border-[#E5E5E1] text-[#2F5D50] focus:ring-[#2F5D50] cursor-pointer"
+                    className="h-4 w-4 rounded border-[#E5E7EB] text-[#285F52] focus:ring-[#285F52] cursor-pointer"
                   />
                   Remember me
                 </label>
@@ -269,7 +269,7 @@ export default function Login({ onLogin }) {
                   type="button"
                   onClick={handleForgotPassword}
                   disabled={resetLoading || loading}
-                  className="text-xs font-bold text-[#2F5D50] hover:text-[#24493F] hover:underline focus:outline-none focus:ring-1 focus:ring-[#2F5D50] rounded px-1 py-0.5 transition-colors disabled:opacity-50 cursor-pointer"
+                  className="text-xs font-bold text-[#285F52] hover:text-[#214D43] hover:underline focus:outline-none focus:ring-1 focus:ring-[#285F52] rounded px-1 py-0.5 transition-colors disabled:opacity-50 cursor-pointer"
                 >
                   {resetLoading ? 'Sending link...' : 'Forgot Password?'}
                 </button>
@@ -278,7 +278,7 @@ export default function Login({ onLogin }) {
               <Button
                 type="submit"
                 variant="primary"
-                className="w-full rounded-xl bg-[#2F5D50] hover:bg-[#24493F] px-5 py-3 text-sm font-bold text-white transition-all cursor-pointer disabled:opacity-40"
+                className="w-full rounded-xl bg-[#285F52] hover:bg-[#214D43] px-5 py-3 text-sm font-bold text-white transition-all cursor-pointer disabled:opacity-40"
                 disabled={loading}
               >
                 {loading ? 'Signing In...' : 'Sign In'}
@@ -287,7 +287,7 @@ export default function Login({ onLogin }) {
           </div>
 
           <div className="mt-6 text-center">
-            <p className="text-[10px] font-semibold text-[#959590]">
+            <p className="text-[10px] font-semibold text-[#98A2B3]">
               Authorized Personnel Only • Secure Admin System
             </p>
           </div>
