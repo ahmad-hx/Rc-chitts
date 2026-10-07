@@ -21,10 +21,24 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase.js';
-import { memberService } from './dbService.js';
-import { formatCurrency, formatLockedWhatsAppMessage } from './messageFormatter.js';
+import { memberService, whatsappTemplateService } from './dbService.js';
+import { formatCurrency, formatLockedWhatsAppMessage, formatWhatsAppTemplate } from './messageFormatter.js';
 import { getEffectiveMonthlyAmount } from '../utils/amountUtils.js';
 import { getChitMonthForGroup } from '../utils/chitMonthUtils.js';
+
+export async function fetchSavedMessageTemplates() {
+  try {
+    const saved = await whatsappTemplateService.getWhatsAppTemplates();
+    return saved || {};
+  } catch (err) {
+    console.warn('[MessagingService] fetchSavedMessageTemplates notice:', err.message);
+    return {};
+  }
+}
+
+export async function saveMessageTemplate(templateData) {
+  return whatsappTemplateService.saveWhatsAppTemplate(templateData);
+}
 
 // ─── Default Message Templates ────────────────────────────────────────────────
 export const MESSAGE_TEMPLATES = {
@@ -257,6 +271,8 @@ export function generatePersonalizedMessage(
     payments = [],
   } = {}
 ) {
+  if (!member) return '';
+
   const groupsToUse = Array.isArray(allGroupsList) && allGroupsList.length > 0
     ? allGroupsList
     : (Array.isArray(chitsList) && chitsList.length > 0 ? chitsList : []);
@@ -264,6 +280,46 @@ export function generatePersonalizedMessage(
   const pList = Array.isArray(paymentsList) && paymentsList.length > 0
     ? paymentsList
     : (Array.isArray(payments) && payments.length > 0 ? payments : []);
+
+  // If custom template text is provided and contains placeholders or modifications
+  if (templateText && typeof templateText === 'string' && templateText.trim()) {
+    const activeChits = getActiveChits(member);
+    const targetChit = activeChits[0] || (member?.groupId || member?.group || member?.chitGroup ? {
+      groupId: member.groupId || member.group || member.chitGroup,
+      totalChitValue: member.calculatedTotalChitValue || member.totalChitValue || 100000,
+      pending: member.pending || 0,
+      balance: member.balance || 0,
+      quantity: 1,
+    } : {});
+
+    const chitMonthData = getChitMonthForGroup(targetChit, billingMonth, groupsToUse);
+    const chitMonthStr = chitMonthData.display || `${chitMonthData.currentMonth || 1}/${chitMonthData.totalMonths || 20}`;
+
+    const baseMonthly = getEffectiveMonthlyAmount(member, targetChit, groupPaymentSettings);
+    const quantity = Number(targetChit.quantity || 1);
+    const fullMonthlyAmount = baseMonthly * quantity;
+
+    const resolvedChitAmt = chitAmount !== null && chitAmount !== undefined ? chitAmount : fullMonthlyAmount;
+    const resolvedPending = pendingAmount !== null && pendingAmount !== undefined ? pendingAmount : Number(targetChit.pending ?? member.pending ?? 0);
+    const resolvedBalance = balanceAmount !== null && balanceAmount !== undefined ? balanceAmount : Number(targetChit.balance ?? member.balance ?? 0);
+    const resolvedTotal = totalAmount !== null && totalAmount !== undefined ? totalAmount : (Number(resolvedChitAmt) + Number(resolvedPending));
+    const resolvedFinal = finalAmount !== null && finalAmount !== undefined ? finalAmount : Math.max(Number(resolvedTotal) - Number(resolvedBalance), 0);
+
+    return formatWhatsAppTemplate({
+      templateText,
+      memberName: member.name || 'Member',
+      phone: member.whatsapp || member.phone || '',
+      groupName: targetChit.groupId || groupId || 'Chit Group',
+      chitMonth: chitMonthStr,
+      chitAmount: resolvedChitAmt,
+      pendingAmount: resolvedPending,
+      balanceAmount: resolvedBalance,
+      totalAmount: resolvedTotal,
+      finalAmount: resolvedFinal,
+      billingMonth,
+      dueDate,
+    });
+  }
 
   return formatLockedWhatsAppMessage(member, {
     groupPaymentSettings,

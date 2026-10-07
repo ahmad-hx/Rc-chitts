@@ -1173,3 +1173,58 @@ export const auctionService = {
   },
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// WHATSAPP TEMPLATE SERVICE (Separate collection: whatsappTemplates)
+// Preserves editable WhatsApp message templates in Firestore
+// ─────────────────────────────────────────────────────────────────────────────
+export const whatsappTemplateService = {
+  async getWhatsAppTemplates() {
+    await ensureAuthReady();
+    try {
+      const qSnap = await getDocs(collection(db, 'whatsappTemplates'));
+      const templatesMap = {};
+      qSnap.forEach((docSnap) => {
+        const data = docSnap.data() || {};
+        if (docSnap.id) {
+          templatesMap[docSnap.id] = {
+            id: docSnap.id,
+            ...data,
+          };
+        }
+      });
+      return templatesMap;
+    } catch (err) {
+      console.warn('Firestore getWhatsAppTemplates notice:', err.message);
+      return {};
+    }
+  },
+
+  async saveWhatsAppTemplate(templateData) {
+    await ensureAuthReady();
+    const { id, title, englishText, teluguText, customText } = templateData;
+    if (!id) {
+      throw new Error('Template ID is required.');
+    }
+
+    const docRef = doc(db, 'whatsappTemplates', id);
+    const payload = sanitizeForFirestore({
+      id,
+      title: title || id,
+      englishText: englishText !== undefined ? englishText : '',
+      teluguText: teluguText !== undefined ? teluguText : '',
+      customText: customText !== undefined ? customText : '',
+      updatedAt: serverTimestamp(),
+      updatedBy: auth.currentUser?.email || 'Admin',
+    });
+
+    try {
+      await setDoc(docRef, payload, { merge: true });
+      return { id, ...payload };
+    } catch (err) {
+      console.error('Firestore saveWhatsAppTemplate error:', err.message);
+      throw new Error(`Failed to save template to Firebase: ${err.message}`);
+    }
+  },
+};
+
+

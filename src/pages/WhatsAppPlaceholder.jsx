@@ -9,6 +9,7 @@ import {
   QrCode,
   Smartphone,
   Unlink,
+  Save,
 } from 'lucide-react';
 import Card from '../components/Card';
 import Button from '../components/Button';
@@ -23,6 +24,8 @@ import {
   createMessageHistoryDoc,
   fetchMessageHistory,
   getActiveChits,
+  fetchSavedMessageTemplates,
+  saveMessageTemplate,
 } from '../services/messagingService';
 import {
   sendSingleWhatsAppMessage,
@@ -97,6 +100,8 @@ export default function WhatsAppPlaceholder() {
   const [selectedTemplateId, setSelectedTemplateId] = useState('PAYMENT_REMINDER');
   const [language, setLanguage] = useState('english');
   const [customTemplateText, setCustomTemplateText] = useState(MESSAGE_TEMPLATES.PAYMENT_REMINDER.englishText);
+  const [savedTemplates, setSavedTemplates] = useState({});
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
 
   // 4. Parameter Inputs
   const [selectedGroupId, setSelectedGroupId] = useState('all');
@@ -115,6 +120,7 @@ export default function WhatsAppPlaceholder() {
   // 6. Selection States
   const [selectedMemberIds, setSelectedMemberIds] = useState([]);
   const [selectedPreviewMember, setSelectedPreviewMember] = useState(null);
+  const [hasInitializedSelection, setHasInitializedSelection] = useState(false);
 
   // 7. Sending States
   const [isSendingSingle, setIsSendingSingle] = useState(false);
@@ -400,15 +406,16 @@ export default function WhatsAppPlaceholder() {
     }
   };
 
-  // Load Firestore Data on Mount
+  // Load Firestore Data on Mount (Members, Chits, Settings, Templates)
   useEffect(() => {
     let mounted = true;
     async function loadData() {
       try {
-        const [fetchedMembers, fetchedChits, settingsRes] = await Promise.all([
+        const [fetchedMembers, fetchedChits, settingsRes, fetchedTemplates] = await Promise.all([
           memberService.getMembers().catch(() => []),
           chitService.getChits().catch(() => []),
           groupPaymentSettingsService.getGroupPaymentSettings().catch(() => ({ settingsMap: {} })),
+          fetchSavedMessageTemplates().catch(() => ({})),
         ]);
 
         if (mounted) {
@@ -417,6 +424,7 @@ export default function WhatsAppPlaceholder() {
           setMembers(list);
           setChits(chitsList);
           setGroupPaymentSettings(settingsRes?.settingsMap || {});
+          setSavedTemplates(fetchedTemplates || {});
 
           // Extract groups for diagnostic logging
           const groupsSet = new Set();
@@ -436,7 +444,7 @@ export default function WhatsAppPlaceholder() {
         }
       } catch (err) {
         if (mounted) {
-          showToast('Failed to load member records from Firebase.', 'error');
+          showToast('Failed to load records from Firebase.', 'error');
         }
       }
     }
@@ -463,17 +471,72 @@ export default function WhatsAppPlaceholder() {
     refreshHistoryLogs();
   }, [refreshHistoryLogs]);
 
-  // Sync Template Text on Template or Language Change
+  // Sync Template Text on Template, Language, or Saved Templates Change
   useEffect(() => {
-    const tmpl = MESSAGE_TEMPLATES[selectedTemplateId] || MESSAGE_TEMPLATES.PAYMENT_REMINDER;
-    if (language === 'english') {
-      setCustomTemplateText(tmpl.englishText);
-    } else if (language === 'telugu') {
-      setCustomTemplateText(tmpl.teluguText);
+    const savedTmpl = savedTemplates[selectedTemplateId];
+    const defaultTmpl = MESSAGE_TEMPLATES[selectedTemplateId] || MESSAGE_TEMPLATES.PAYMENT_REMINDER;
+
+    let textToUse = '';
+    if (savedTmpl) {
+      if (language === 'english') {
+        textToUse = savedTmpl.englishText || savedTmpl.customText || defaultTmpl.englishText;
+      } else if (language === 'telugu') {
+        textToUse = savedTmpl.teluguText || savedTmpl.customText || defaultTmpl.teluguText;
+      } else {
+        textToUse = savedTmpl.customText || `${savedTmpl.englishText || defaultTmpl.englishText}\n\n-------------------\n\n${savedTmpl.teluguText || defaultTmpl.teluguText}`;
+      }
     } else {
-      setCustomTemplateText(`${tmpl.englishText}\n\n-------------------\n\n${tmpl.teluguText}`);
+      if (language === 'english') {
+        textToUse = defaultTmpl.englishText;
+      } else if (language === 'telugu') {
+        textToUse = defaultTmpl.teluguText;
+      } else {
+        textToUse = `${defaultTmpl.englishText}\n\n-------------------\n\n${defaultTmpl.teluguText}`;
+      }
     }
-  }, [selectedTemplateId, language]);
+
+    setCustomTemplateText(textToUse);
+  }, [selectedTemplateId, language, savedTemplates]);
+
+  // Save Custom Template to Firebase/Firestore
+  const handleSaveTemplate = async () => {
+    setIsSavingTemplate(true);
+    try {
+      const currentSaved = savedTemplates[selectedTemplateId] || {};
+      const tmplToSave = {
+        id: selectedTemplateId,
+        title: MESSAGE_TEMPLATES[selectedTemplateId]?.title || selectedTemplateId,
+        englishText: language === 'english' ? customTemplateText : (currentSaved.englishText || MESSAGE_TEMPLATES[selectedTemplateId]?.englishText || ''),
+        teluguText: language === 'telugu' ? customTemplateText : (currentSaved.teluguText || MESSAGE_TEMPLATES[selectedTemplateId]?.teluguText || ''),
+        customText: customTemplateText,
+      };
+
+      await saveMessageTemplate(tmplToSave);
+
+      setSavedTemplates((prev) => ({
+        ...prev,
+        [selectedTemplateId]: tmplToSave,
+      }));
+
+      showToast(`✓ Message template for "${tmplToSave.title}" saved to Firebase!`, 'success');
+    } catch (err) {
+      showToast(`Failed to save template to Firebase: ${err.message}`, 'error');
+    } finally {
+      setIsSavingTemplate(false);
+    }
+  };
+
+  // Reset Template to Default Format
+  const handleResetTemplate = () => {
+    const defaultTmpl = MESSAGE_TEMPLATES[selectedTemplateId] || MESSAGE_TEMPLATES.PAYMENT_REMINDER;
+    let defaultText = '';
+    if (language === 'english') defaultText = defaultTmpl.englishText;
+    else if (language === 'telugu') defaultText = defaultTmpl.teluguText;
+    else defaultText = `${defaultTmpl.englishText}\n\n-------------------\n\n${defaultTmpl.teluguText}`;
+
+    setCustomTemplateText(defaultText);
+    showToast(`Template reset to default format. Click "Save Template to Firebase" to save edits.`, 'info');
+  };
 
   // Filtered Recipients List
   const filteredRecipients = useMemo(() => {
@@ -486,17 +549,23 @@ export default function WhatsAppPlaceholder() {
     });
   }, [members, searchQuery, categoryFilter, groupFilter, selectedGroupId, statusFilter]);
 
-  // Auto-Select Filtered Members
+  // Initial Member Selection Setup (Preserves selections across filter & category changes)
   useEffect(() => {
-    setSelectedMemberIds(filteredRecipients.map((m) => m.id));
-  }, [filteredRecipients]);
+    if (members.length > 0 && !hasInitializedSelection) {
+      setSelectedMemberIds(members.map((m) => m.id));
+      setHasInitializedSelection(true);
+    }
+  }, [members, hasInitializedSelection]);
 
-  // Selection Handlers
+  // Selection Handlers (Maintains selections independently per member across filters)
   const handleSelectAll = () => {
-    if (selectedMemberIds.length === filteredRecipients.length) {
-      setSelectedMemberIds([]);
+    const filteredIds = filteredRecipients.map((m) => m.id);
+    const allFilteredSelected = filteredIds.length > 0 && filteredIds.every((id) => selectedMemberIds.includes(id));
+
+    if (allFilteredSelected) {
+      setSelectedMemberIds((prev) => prev.filter((id) => !filteredIds.includes(id)));
     } else {
-      setSelectedMemberIds(filteredRecipients.map((m) => m.id));
+      setSelectedMemberIds((prev) => Array.from(new Set([...prev, ...filteredIds])));
     }
   };
 
@@ -521,10 +590,10 @@ export default function WhatsAppPlaceholder() {
     });
   };
 
-  // Selected Members Roster
+  // Selected Members Roster (Preserved across all category / message type filter changes)
   const selectedMembersList = useMemo(() => {
-    return filteredRecipients.filter((m) => selectedMemberIds.includes(m.id));
-  }, [filteredRecipients, selectedMemberIds]);
+    return members.filter((m) => selectedMemberIds.includes(m.id));
+  }, [members, selectedMemberIds]);
 
   // Single Member Direct Backend Send Handler
   const handleSendSingleMessage = async (member) => {
@@ -1214,18 +1283,51 @@ export default function WhatsAppPlaceholder() {
               </select>
             </div>
 
-            {/* TEXTAREA WITH CHAR COUNTER */}
-            <div className="space-y-1">
+            {/* TEXTAREA WITH CHAR COUNTER & SAVE ACTIONS */}
+            <div className="space-y-2">
               <div className="flex justify-between items-center text-[10px] font-bold text-[#667085]">
-                <span>EDITABLE MESSAGE CONTENT</span>
+                <div className="flex items-center gap-2">
+                  <span>EDITABLE MESSAGE CONTENT</span>
+                  {savedTemplates[selectedTemplateId] ? (
+                    <span className="bg-[#EEF6F3] text-[#285F52] px-2 py-0.5 rounded-full font-sans font-extrabold text-[9px] border border-[#BFD8D0]">
+                      SAVED IN FIRESTORE ✓
+                    </span>
+                  ) : (
+                    <span className="bg-[#FFF8E7] text-[#B7791F] px-2 py-0.5 rounded-full font-sans font-extrabold text-[9px] border border-[#FDE68A]">
+                      DEFAULT TEMPLATE
+                    </span>
+                  )}
+                </div>
                 <span className="font-mono">{charCount} characters</span>
               </div>
+
               <textarea
                 rows={7}
                 value={customTemplateText}
                 onChange={(e) => setCustomTemplateText(e.target.value)}
                 className="w-full p-3 text-xs font-mono bg-[#111111] text-[#EEF6F3] border border-[#E5E7EB] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#285F52] leading-relaxed"
               ></textarea>
+
+              <div className="flex items-center justify-between pt-1">
+                <button
+                  type="button"
+                  onClick={handleResetTemplate}
+                  className="text-[11px] font-bold text-[#667085] hover:text-[#111111] underline cursor-pointer"
+                >
+                  Reset to Default
+                </button>
+
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleSaveTemplate}
+                  disabled={isSavingTemplate}
+                  className="rounded-xl text-xs font-bold gap-1.5 bg-[#285F52] hover:bg-[#214D43] text-white cursor-pointer shadow-xs"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{isSavingTemplate ? 'Saving to Firestore...' : 'Save Template to Firebase'}</span>
+                </Button>
+              </div>
             </div>
           </Card>
 
@@ -1235,12 +1337,30 @@ export default function WhatsAppPlaceholder() {
               <h2 className="text-xs font-extrabold text-[#111111] uppercase tracking-wider">
                 3. Live Message Preview
               </h2>
-              {selectedPreviewMember && (
+              {selectedMembersList.length > 0 ? (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-[#667085] font-bold">Preview:</span>
+                  <select
+                    value={selectedPreviewMember?.id || ''}
+                    onChange={(e) => {
+                      const m = members.find((item) => item.id === e.target.value);
+                      if (m) setSelectedPreviewMember(m);
+                    }}
+                    className="text-xs font-bold bg-[#F7F8F7] border border-[#E5E7EB] rounded-lg px-2 py-1 text-[#111111] focus:outline-none cursor-pointer max-w-[180px] truncate"
+                  >
+                    {selectedMembersList.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} ({m.classification || 'SINGLE'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : selectedPreviewMember ? (
                 <Badge variant="neutral">{selectedPreviewMember.name}</Badge>
-              )}
+              ) : null}
             </div>
 
-            <div className="bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl p-4 font-sans text-xs leading-relaxed text-[#111111] whitespace-pre-wrap max-h-48 overflow-y-auto">
+            <div className="bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl p-4 font-sans text-xs leading-relaxed text-[#111111] whitespace-pre-wrap max-h-48 overflow-y-auto font-mono">
               {selectedPreviewMember
                 ? getCompiledMessageForMember(selectedPreviewMember)
                 : 'Select a member from the roster to preview message.'}
