@@ -281,9 +281,21 @@ export function generatePersonalizedMessage(
     ? paymentsList
     : (Array.isArray(payments) && payments.length > 0 ? payments : []);
 
-  // If custom template text is provided and contains placeholders or modifications
+  const activeChits = getActiveChits(member);
+
+  // If member has multiple active chits, MUST format using Multiple Chit combined message logic
+  if (activeChits.length > 1) {
+    return formatLockedWhatsAppMessage(member, {
+      groupPaymentSettings,
+      billingMonth,
+      dueDate,
+      allGroupsList: groupsToUse,
+      paymentsList: pList,
+    });
+  }
+
+  // Single Chit format
   if (templateText && typeof templateText === 'string' && templateText.trim()) {
-    const activeChits = getActiveChits(member);
     const targetChit = activeChits[0] || (member?.groupId || member?.group || member?.chitGroup ? {
       groupId: member.groupId || member.group || member.chitGroup,
       totalChitValue: member.calculatedTotalChitValue || member.totalChitValue || 100000,

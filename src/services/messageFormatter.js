@@ -292,26 +292,34 @@ export function formatLockedWhatsAppMessage(
     const chitMonthStr = chitMonthData.display || `${chitMonthData.currentMonth || 1}/${chitMonthData.totalMonths || 20}`;
 
     const baseMonthly = getEffectiveMonthlyAmount(member, c, groupPaymentSettings);
-    const quantity = Number(c.quantity || 1);
-    const fullMonthlyAmount = baseMonthly * quantity;
-    const paidSoFar = getPaidAmountForChit(member, c, billingMonth, paymentsList);
-    const remainingMonthly = Math.max(fullMonthlyAmount - paidSoFar, 0);
+    const quantity = Number(c?.quantity || 1);
+    const safeMonthly = isNaN(baseMonthly) || baseMonthly < 0 ? 0 : baseMonthly;
+    const safeQty = isNaN(quantity) || quantity < 1 ? 1 : quantity;
+    const fullMonthlyAmount = safeMonthly * safeQty;
 
-    const cPending = Number(c.pending || 0);
-    const cBalance = Number(c.balance || 0);
+    const paidSoFar = getPaidAmountForChit(member, c, billingMonth, paymentsList);
+    const safePaid = isNaN(paidSoFar) || paidSoFar < 0 ? 0 : paidSoFar;
+    const remainingMonthly = Math.max(fullMonthlyAmount - safePaid, 0);
+
+    const cPending = Number(c?.pending || 0);
+    const cBalance = Number(c?.balance || 0);
+    const safePending = isNaN(cPending) || cPending < 0 ? 0 : cPending;
+    const safeBalance = isNaN(cBalance) || cBalance < 0 ? 0 : cBalance;
 
     totalMonthlySum += remainingMonthly;
-    totalPendingSum += cPending;
-    totalBalanceSum += cBalance;
+    totalPendingSum += safePending;
+    totalBalanceSum += safeBalance;
 
     return `${chitMonthStr} : ${formatRawNumber(remainingMonthly)}`;
   });
 
-  if (totalPendingSum === 0 && member.pending) {
-    totalPendingSum = Number(member.pending || 0);
+  if (totalPendingSum === 0 && member?.pending) {
+    const mPending = Number(member.pending);
+    if (!isNaN(mPending) && mPending > 0) totalPendingSum = mPending;
   }
-  if (totalBalanceSum === 0 && member.balance) {
-    totalBalanceSum = Number(member.balance || 0);
+  if (totalBalanceSum === 0 && member?.balance) {
+    const mBalance = Number(member.balance);
+    if (!isNaN(mBalance) && mBalance > 0) totalBalanceSum = mBalance;
   }
 
   const combinedFinalPayable = Math.max(totalMonthlySum + totalPendingSum - totalBalanceSum, 0);

@@ -29,20 +29,6 @@ export function hasExplicitCustomMonthlyAmount(member = null, subscription = nul
     if (typeof subscription.customMonthlyAmount === 'number' && subscription.customMonthlyAmount > 0) {
       return true;
     }
-
-    // Check if the stored amount is different from the formula default Math.floor(val / 20)
-    const val = Number(subscription.totalChitValue ?? subscription.totalValue ?? subscription.chitValue ?? 100000);
-    const standardDefault = Math.floor(val / 20);
-    const storedAmount = Number(
-      subscription.monthlyAmount ??
-      subscription.amountToPay ??
-      subscription.chitAmount ??
-      subscription.monthlyBase
-    );
-
-    if (!isNaN(storedAmount) && storedAmount > 0 && storedAmount !== standardDefault) {
-      return true;
-    }
   }
 
   // Check explicit flags on root member object
@@ -55,14 +41,6 @@ export function hasExplicitCustomMonthlyAmount(member = null, subscription = nul
       return true;
     }
     if (typeof member.customMonthlyAmount === 'number' && member.customMonthlyAmount > 0) {
-      return true;
-    }
-
-    const val = Number(member.calculatedTotalChitValue ?? member.totalChitValue ?? 100000);
-    const standardDefault = Math.floor(val / 20);
-    const storedAmount = Number(member.monthlyAmount ?? member.amountToPay);
-
-    if (!isNaN(storedAmount) && storedAmount > 0 && storedAmount !== standardDefault) {
       return true;
     }
   }
@@ -105,7 +83,7 @@ export function getEffectiveMonthlyAmount(
     'I'
   ).trim().toUpperCase();
 
-  // 1. Explicit individual subscription custom amount
+  // 1. Explicit individual subscription custom amount (only if explicitly flagged as custom)
   if (subscription) {
     if (
       subscription.hasCustomMonthlyAmount === true ||
@@ -120,21 +98,9 @@ export function getEffectiveMonthlyAmount(
     if (typeof subscription.customMonthlyAmount === 'number' && subscription.customMonthlyAmount > 0) {
       return subscription.customMonthlyAmount;
     }
-
-    const standardDefault = Math.floor(val / 20);
-    const storedSubAmount = Number(
-      subscription.monthlyAmount ??
-      subscription.amountToPay ??
-      subscription.chitAmount ??
-      subscription.monthlyBase
-    );
-    // If stored value is explicitly different from standard formula default, treat as custom
-    if (!isNaN(storedSubAmount) && storedSubAmount > 0 && storedSubAmount !== standardDefault) {
-      return storedSubAmount;
-    }
   }
 
-  // 2. Explicit member custom amount
+  // 2. Explicit member custom amount (only if explicitly flagged as custom)
   if (member) {
     if (
       member.hasCustomMonthlyAmount === true ||
@@ -148,12 +114,6 @@ export function getEffectiveMonthlyAmount(
     }
     if (typeof member.customMonthlyAmount === 'number' && member.customMonthlyAmount > 0) {
       return member.customMonthlyAmount;
-    }
-
-    const standardDefault = Math.floor(val / 20);
-    const storedMemAmount = Number(member.monthlyAmount ?? member.amountToPay);
-    if (!isNaN(storedMemAmount) && storedMemAmount > 0 && storedMemAmount !== standardDefault) {
-      return storedMemAmount;
     }
   }
 

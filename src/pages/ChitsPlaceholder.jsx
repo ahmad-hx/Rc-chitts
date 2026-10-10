@@ -238,7 +238,7 @@ export default function ChitsPlaceholder() {
 
     setIsSavingMonthly(true);
     try {
-      await groupPaymentSettingsService.saveGroupPaymentSetting({
+      const res = await groupPaymentSettingsService.saveGroupPaymentSetting({
         chitValue: targetGroupForMonthly.chitValue,
         groupId: targetGroupForMonthly.groupId,
         monthlyAmount: parsedAmount,
@@ -247,7 +247,21 @@ export default function ChitsPlaceholder() {
       const key = `${targetGroupForMonthly.chitValue}_${targetGroupForMonthly.groupId}`;
       setGroupPaymentSettings((prev) => ({ ...prev, [key]: parsedAmount }));
       setIsEditMonthlyModalOpen(false);
-      showToast(`Monthly payment for Group ${targetGroupForMonthly.groupId} set to ₹${parsedAmount.toLocaleString('en-IN')}!`);
+
+      if (res?.failedCount && res.failedCount > 0) {
+        showToast(
+          `⚠️ Group setting saved, but ${res.failedCount} member update(s) failed (${res.succeededCount || 0} succeeded).`,
+          'warning'
+        );
+      } else {
+        showToast(`✓ Monthly payment for Group ${targetGroupForMonthly.groupId} set to ₹${parsedAmount.toLocaleString('en-IN')}!`);
+      }
+
+      // Refresh members from Firestore to ensure UI state is 100% up to date
+      const updatedMembers = await memberService.getMembers().catch(() => null);
+      if (Array.isArray(updatedMembers)) {
+        setMembers(updatedMembers);
+      }
     } catch (err) {
       showToast(`Failed to save: ${err.message}`, 'error');
     } finally {

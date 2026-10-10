@@ -783,7 +783,7 @@ export default function Members() {
 
     setIsSavingMonthlyAmount(true);
     try {
-      await groupPaymentSettingsService.saveGroupPaymentSetting({
+      const res = await groupPaymentSettingsService.saveGroupPaymentSetting({
         chitValue: targetGroupForMonthly.chitValue,
         groupId: targetGroupForMonthly.groupId,
         monthlyAmount: parsedAmount,
@@ -792,7 +792,21 @@ export default function Members() {
       const key = `${targetGroupForMonthly.chitValue}_${targetGroupForMonthly.groupId}`;
       setGroupPaymentSettings((prev) => ({ ...prev, [key]: parsedAmount }));
       setIsEditMonthlyModalOpen(false);
-      showToast(`Group ${targetGroupForMonthly.groupId} base monthly payment set to ₹${parsedAmount.toLocaleString('en-IN')}!`);
+
+      if (res?.failedCount && res.failedCount > 0) {
+        showToast(
+          `⚠️ Group payment updated, but ${res.failedCount} member update(s) failed (${res.succeededCount || 0} succeeded).`,
+          'warning'
+        );
+      } else {
+        showToast(`✓ Group ${targetGroupForMonthly.groupId} base monthly payment set to ₹${parsedAmount.toLocaleString('en-IN')}!`);
+      }
+
+      // Reload members list to ensure UI state reflects all updated subscription records
+      const refreshed = await memberService.getMembers().catch(() => null);
+      if (Array.isArray(refreshed)) {
+        setMembers(refreshed);
+      }
     } catch (err) {
       showToast(`Failed to save group monthly amount: ${err.message}`, 'error');
     } finally {

@@ -908,7 +908,7 @@ export const groupPaymentSettingsService = {
   async saveGroupPaymentSetting({ chitValue, groupId, monthlyAmount }) {
     await ensureAuthReady();
     const val = Number(chitValue);
-    const grp = String(groupId);
+    const grp = String(groupId).trim().toUpperCase();
     const amt = Number(monthlyAmount);
 
     if (isNaN(val) || !grp || isNaN(amt) || amt <= 0) {
@@ -927,10 +927,90 @@ export const groupPaymentSettingsService = {
         updatedBy: auth.currentUser?.email || 'Admin',
       }, { merge: true });
 
-      return { docId, chitValue: val, groupId: grp, monthlyAmount: amt };
+      const memberUpdateResults = await this.updateGroupMonthlyAmountForMembers({
+        chitValue: val,
+        groupId: grp,
+        monthlyAmount: amt,
+      });
+
+      return { docId, chitValue: val, groupId: grp, monthlyAmount: amt, ...memberUpdateResults };
     } catch (err) {
       console.error('Firestore saveGroupPaymentSetting error:', err.message);
       throw new Error(`Failed to save group payment setting: ${err.message}`);
+    }
+  },
+
+  async updateGroupMonthlyAmountForMembers({ chitValue, groupId, monthlyAmount }) {
+    await ensureAuthReady();
+    const val = Number(chitValue);
+    const grp = String(groupId).trim().toUpperCase();
+    const amt = Number(monthlyAmount);
+
+    let succeededCount = 0;
+    let failedCount = 0;
+    const failedMembers = [];
+    let totalTargetMembers = 0;
+
+    try {
+      const qSnap = await getDocs(collection(db, 'members'));
+      const updatePromises = [];
+
+      qSnap.forEach((docSnap) => {
+        const rawData = docSnap.data() || {};
+        const currentChits = Array.isArray(rawData.chits)
+          ? rawData.chits
+          : Array.isArray(rawData.holdings)
+          ? rawData.holdings
+          : [];
+
+        if (currentChits.length === 0) return;
+
+        let needsUpdate = false;
+        const updatedChits = currentChits.map((c) => {
+          const cGrp = String(c?.groupId || c?.group || '').trim().toUpperCase();
+          const cVal = Number(c?.totalChitValue || c?.totalValue || c?.chitValue || 100000);
+          const isCustom = Boolean(c?.hasCustomMonthlyAmount) || (typeof c?.customMonthlyAmount === 'number' && c.customMonthlyAmount > 0);
+
+          if (cGrp === grp && cVal === val) {
+            totalTargetMembers += 1;
+            if (!isCustom) {
+              needsUpdate = true;
+              return {
+                ...c,
+                monthlyAmount: amt,
+                amountToPay: amt,
+              };
+            }
+          }
+          return c;
+        });
+
+        if (needsUpdate) {
+          const memRef = doc(db, 'members', docSnap.id);
+          const memName = rawData.name || rawData.memberName || docSnap.id;
+
+          const p = updateDoc(memRef, {
+            chits: updatedChits,
+            holdings: updatedChits,
+            updatedAt: serverTimestamp(),
+          })
+            .then(() => {
+              succeededCount += 1;
+            })
+            .catch((err) => {
+              failedCount += 1;
+              failedMembers.push({ id: docSnap.id, name: memName, error: err.message });
+            });
+
+          updatePromises.push(p);
+        }
+      });
+
+      await Promise.allSettled(updatePromises);
+      return { succeededCount, failedCount, failedMembers, totalTargetMembers };
+    } catch (err) {
+      console.error('Error updating member monthly amounts for group:', err);
+      return { succeededCount, failedCount: 1, failedMembers: [{ id: 'all', name: 'Group Members', error: err.message }], totalTargetMembers };
     }
   },
 };

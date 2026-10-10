@@ -570,7 +570,8 @@ export default function WhatsAppPlaceholder() {
   };
 
   const handleClearSelection = () => {
-    setSelectedMemberIds([]);
+    const filteredIdSet = new Set(filteredRecipients.map((m) => m.id));
+    setSelectedMemberIds((prev) => prev.filter((id) => !filteredIdSet.has(id)));
   };
 
   const handleToggleMember = (id) => {
@@ -590,10 +591,10 @@ export default function WhatsAppPlaceholder() {
     });
   };
 
-  // Selected Members Roster (Preserved across all category / message type filter changes)
+  // Selected Members Roster (Restricted strictly to active/filtered recipients)
   const selectedMembersList = useMemo(() => {
-    return members.filter((m) => selectedMemberIds.includes(m.id));
-  }, [members, selectedMemberIds]);
+    return filteredRecipients.filter((m) => selectedMemberIds.includes(m.id));
+  }, [filteredRecipients, selectedMemberIds]);
 
   // Single Member Direct Backend Send Handler
   const handleSendSingleMessage = async (member) => {
@@ -783,7 +784,9 @@ export default function WhatsAppPlaceholder() {
         failed += 1;
       }
 
-      await new Promise((r) => setTimeout(r, 250));
+      if (i < recipients.length - 1) {
+        await new Promise((r) => setTimeout(r, 4500));
+      }
     }
 
     setBulkProgress({
@@ -803,7 +806,7 @@ export default function WhatsAppPlaceholder() {
     refreshHistoryLogs();
   };
 
-  const selectedCount = selectedMemberIds.length;
+  const selectedCount = selectedMembersList.length;
   const charCount = customTemplateText.length;
 
   return (

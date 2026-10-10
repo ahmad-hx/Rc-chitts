@@ -32,7 +32,7 @@ import SaveDashboardImageModal from '../components/SaveDashboardImageModal';
 import ViewDashboardImageModal from '../components/ViewDashboardImageModal';
 import EditDashboardImageModal from '../components/EditDashboardImageModal';
 import DashboardImageGallery from '../components/DashboardImageGallery';
-import { memberService, chitService, paymentService, auctionService } from '../services/dbService';
+import { memberService, chitService, paymentService, auctionService, groupPaymentSettingsService } from '../services/dbService';
 import { whatsappDbService } from '../services/whatsappDbService';
 import { dashboardImageService } from '../services/dashboardImageService';
 import { useBillingMonth } from '../context/BillingMonthContext';
@@ -91,6 +91,7 @@ export default function Dashboard() {
   const [members, setMembers] = useState([]);
   const [chits, setChits] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [groupPaymentSettings, setGroupPaymentSettings] = useState({});
   const [waLogs, setWaLogs] = useState([]);
   const [auctionsMap, setAuctionsMap] = useState({});
   const [auctionsList, setAuctionsList] = useState([]);
@@ -124,10 +125,11 @@ export default function Dashboard() {
       setLoading(true);
       setError(null);
       try {
-        const [fetchedMembers, fetchedChits, fetchedPayments, fetchedWaLogs, fetchedAuctions, fetchedImages] = await Promise.all([
+        const [fetchedMembers, fetchedChits, fetchedPayments, settingsRes, fetchedWaLogs, fetchedAuctions, fetchedImages] = await Promise.all([
           memberService.getMembers(),
           chitService.getChits(),
           paymentService.getPayments().catch(() => []),
+          groupPaymentSettingsService.getGroupPaymentSettings().catch(() => ({ settingsMap: {} })),
           whatsappDbService.getWhatsAppHistory().catch(() => []),
           auctionService.getAuctions().catch(() => ({ auctionsMap: {}, auctionsList: [] })),
           dashboardImageService.getDashboardImages().catch(() => []),
@@ -136,6 +138,7 @@ export default function Dashboard() {
           setMembers(Array.isArray(fetchedMembers) ? fetchedMembers : []);
           setChits(Array.isArray(fetchedChits) ? fetchedChits : []);
           setPayments(Array.isArray(fetchedPayments) ? fetchedPayments : []);
+          setGroupPaymentSettings(settingsRes?.settingsMap || {});
           setWaLogs(Array.isArray(fetchedWaLogs) ? fetchedWaLogs : []);
           setAuctionsMap(fetchedAuctions?.auctionsMap || {});
           setAuctionsList(Array.isArray(fetchedAuctions?.auctionsList) ? fetchedAuctions.auctionsList : []);
@@ -192,7 +195,7 @@ export default function Dashboard() {
       const memberChitsWithPending = [];
 
       chitSubscriptions.forEach((c) => {
-        const reqAmount = getEffectiveMonthlyAmount(m, c, {});
+        const reqAmount = getEffectiveMonthlyAmount(m, c, groupPaymentSettings);
 
         let paidForChit = 0;
         const mPhoneClean = (m.phone || m.whatsapp || '').replace(/\D/g, '');

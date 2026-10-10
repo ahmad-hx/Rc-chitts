@@ -514,7 +514,9 @@ export default function PendingPayments() {
     for (let i = 0; i < selectedRows.length; i++) {
       setSendProgress({ current: i + 1, total: selectedRows.length });
       await handleSendWhatsAppReminder(selectedRows[i]);
-      await new Promise((r) => setTimeout(r, 200));
+      if (i < selectedRows.length - 1) {
+        await new Promise((r) => setTimeout(r, 4500));
+      }
     }
 
     setIsBulkSending(false);
