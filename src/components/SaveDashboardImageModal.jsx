@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   AlertCircle,
   X,
-  FileText,
   Loader2,
 } from 'lucide-react';
 import { dashboardImageService } from '../services/dashboardImageService';

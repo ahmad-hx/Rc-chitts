@@ -3,7 +3,7 @@ import Card from '../components/Card';
 import Button from '../components/Button';
 import Badge from '../components/Badge';
 import Toast from '../components/Toast';
-import { Settings, Shield, HardDrive, Bell, Save, Download, Upload, CheckCircle2, FileSpreadsheet, AlertTriangle, RefreshCw, Layers, Check, ShieldCheck, MessageSquare, Send, X, PhoneCall } from 'lucide-react';
+import { Settings, Shield, HardDrive, Bell, Save, Download, CheckCircle2, FileSpreadsheet, AlertTriangle, RefreshCw, Layers, Check, ShieldCheck, MessageSquare, Send, PhoneCall } from 'lucide-react';
 import { collection, getDocs } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { memberService, chitService, paymentService } from '../services/dbService';

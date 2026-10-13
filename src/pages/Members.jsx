@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Search,
-  Filter,
   Plus,
   UserPlus,
   Phone,
@@ -18,16 +17,12 @@ import {
   IndianRupee,
   MoreVertical,
   RefreshCw,
-  CheckCircle2,
-  Clock,
   Eye,
   SlidersHorizontal,
-  FileSpreadsheet,
   Trash2,
   Trash,
   AlertCircle,
 } from 'lucide-react';
-import Card from '../components/Card';
 import Button from '../components/Button';
 import Badge from '../components/Badge';
 import Toast from '../components/Toast';

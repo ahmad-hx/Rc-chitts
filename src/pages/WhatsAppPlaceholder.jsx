@@ -29,7 +29,6 @@ import {
 } from '../services/messagingService';
 import {
   sendSingleWhatsAppMessage,
-  sendTestWhatsAppMessage,
   getWhatsAppApiUrl,
   reconnectWhatsAppGateway,
   disconnectWhatsAppGateway,
@@ -663,41 +662,6 @@ export default function WhatsAppPlaceholder() {
     }
   };
 
-  // Quick Test Message Execution
-  const handleExecuteTestSend = async (recipientName, rawPhone) => {
-    const norm = normalizePhone(rawPhone);
-    const testMsg = `Hello ${recipientName} 👋 This is a test message from Raghavendra Chitts.`;
-
-    try {
-      const res = await sendTestWhatsAppMessage({ recipient: norm, message: testMsg });
-
-      const isSent = res.success || res.status === 'SENT';
-      const statusText = isSent ? 'SENT' : res.status || 'NOT_CONFIGURED';
-
-      await createMessageHistoryDoc({
-        member: { id: 'test_member', name: recipientName },
-        phone: norm,
-        channel: 'WHATSAPP',
-        message: testMsg,
-        status: statusText,
-        groupId: selectedGroupId,
-        billingMonth,
-        pendingAmount: 0,
-        isTest: true,
-      });
-
-      refreshHistoryLogs();
-
-      if (isSent) {
-        showToast(`✓ Live test message sent to ${recipientName}!`, 'success');
-      } else {
-        showToast(`⚠️ Device not linked yet. Please scan QR Code to enable direct sending.`, 'warning');
-        setIsQrModalOpen(true);
-      }
-    } catch (err) {
-      showToast(`Test send error: ${err.message}`, 'error');
-    }
-  };
 
   // Bulk Batch Send Handler
   const handleExecuteBulkSend = async () => {

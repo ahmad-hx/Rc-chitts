@@ -21,7 +21,6 @@ import {
   Minimize,
   Bell,
   Clock,
-  CircleDollarSign,
 } from 'lucide-react';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import Logo from '../components/Logo';
