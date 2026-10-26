@@ -9,38 +9,48 @@
  */
 
 /**
+ * Normalizes group identifiers (e.g. 'Group I', 'group_I', 'GROUP I', 'I' -> 'I')
+ */
+export function normalizeGroupId(raw = '') {
+  if (!raw) return 'I';
+  const clean = String(raw)
+    .trim()
+    .toUpperCase()
+    .replace(/^GROUP[_\s-]*/i, '')
+    .replace(/^[_\s-]+/, '')
+    .trim();
+  return clean || 'I';
+}
+
+/**
  * Determines whether a subscription or member has an explicitly configured custom monthly amount
  * rather than an inherited default value.
  *
  * @param {Object} member - The member object
  * @param {Object} subscription - The specific chit holding/subscription object
- * @returns {boolean} True if explicitly customized
+ * @returns {boolean} True if explicitly customized with a valid positive number
  */
 export function hasExplicitCustomMonthlyAmount(member = null, subscription = null) {
-  // Check explicit flags on subscription
+  // Check explicit flags and positive custom amount on subscription
   if (subscription) {
-    if (
+    const isFlagged =
       subscription.hasCustomMonthlyAmount === true ||
       subscription.isCustomMonthly === true ||
-      subscription.isCustomAmount === true
-    ) {
-      return true;
-    }
-    if (typeof subscription.customMonthlyAmount === 'number' && subscription.customMonthlyAmount > 0) {
+      subscription.isCustomAmount === true;
+    const hasCustomVal = typeof subscription.customMonthlyAmount === 'number' && subscription.customMonthlyAmount > 0;
+    if (isFlagged && hasCustomVal) {
       return true;
     }
   }
 
-  // Check explicit flags on root member object
+  // Check explicit flags and positive custom amount on root member object
   if (member) {
-    if (
+    const isFlagged =
       member.hasCustomMonthlyAmount === true ||
       member.isCustomMonthly === true ||
-      member.isCustomAmount === true
-    ) {
-      return true;
-    }
-    if (typeof member.customMonthlyAmount === 'number' && member.customMonthlyAmount > 0) {
+      member.isCustomAmount === true;
+    const hasCustomVal = typeof member.customMonthlyAmount === 'number' && member.customMonthlyAmount > 0;
+    if (isFlagged && hasCustomVal) {
       return true;
     }
   }
@@ -51,12 +61,17 @@ export function hasExplicitCustomMonthlyAmount(member = null, subscription = nul
 /**
  * Resolve the effective base monthly payable amount for a member's specific chit subscription.
  *
+ * Consistent Business Rule:
+ * 1. If subscription/member has an explicit, valid custom monthly amount, use it.
+ * 2. Otherwise, use current monthly amount configured for the assigned chit group.
+ * 3. Fallback to chit group definition, legacy stored amount, or Math.floor(val / 20) / 5000.
+ *
  * @param {Object} member - The member object
  * @param {Object} subscription - The specific chit holding/subscription object
- * @param {Object} groupPaymentSettings - Map or object of group payment settings (`${val}_${grp}`)
+ * @param {Object} groupPaymentSettings - Map or object of group payment settings
  * @param {Object} [chitGroup] - Optional chit group definition
  * @param {Object} [monthlyAdjustment] - Optional monthly adjustment record
- * @returns {number} The resolved base monthly amount (e.g. 4560, 9250, 22500, 47000, 10000, etc.)
+ * @returns {number} The resolved base monthly amount
  */
 export function getEffectiveMonthlyAmount(
   member = null,
@@ -73,7 +88,7 @@ export function getEffectiveMonthlyAmount(
     chitGroup?.totalChitValue ??
     100000
   );
-  const grp = String(
+  const rawGrp = String(
     subscription?.groupId ??
     subscription?.group ??
     subscription?.chitGroup ??
@@ -81,43 +96,54 @@ export function getEffectiveMonthlyAmount(
     member?.group ??
     chitGroup?.groupId ??
     'I'
-  ).trim().toUpperCase();
+  ).trim();
+  const grpUpper = rawGrp.toUpperCase();
+  const cleanGrp = normalizeGroupId(rawGrp);
 
-  // 1. Explicit individual subscription custom amount (only if explicitly flagged as custom)
-  if (subscription) {
-    if (
-      subscription.hasCustomMonthlyAmount === true ||
-      subscription.isCustomMonthly === true ||
-      subscription.isCustomAmount === true
-    ) {
-      const explicitAmt = Number(subscription.customMonthlyAmount ?? subscription.monthlyAmount ?? subscription.amountToPay);
-      if (!isNaN(explicitAmt) && explicitAmt > 0) {
-        return explicitAmt;
-      }
-    }
-    if (typeof subscription.customMonthlyAmount === 'number' && subscription.customMonthlyAmount > 0) {
-      return subscription.customMonthlyAmount;
+  // 1. Explicit individual subscription custom amount (only if explicitly configured with valid amount)
+  if (subscription && hasExplicitCustomMonthlyAmount(null, subscription)) {
+    const customAmt = Number(subscription.customMonthlyAmount);
+    if (!isNaN(customAmt) && customAmt > 0) {
+      return customAmt;
     }
   }
 
-  // 2. Explicit member custom amount (only if explicitly flagged as custom)
-  if (member) {
-    if (
-      member.hasCustomMonthlyAmount === true ||
-      member.isCustomMonthly === true ||
-      member.isCustomAmount === true
-    ) {
-      const explicitAmt = Number(member.customMonthlyAmount ?? member.monthlyAmount ?? member.amountToPay);
-      if (!isNaN(explicitAmt) && explicitAmt > 0) {
-        return explicitAmt;
-      }
-    }
-    if (typeof member.customMonthlyAmount === 'number' && member.customMonthlyAmount > 0) {
-      return member.customMonthlyAmount;
+  // 2. Explicit member custom amount (only if explicitly configured with valid amount)
+  if (member && hasExplicitCustomMonthlyAmount(member, null)) {
+    const customAmt = Number(member.customMonthlyAmount);
+    if (!isNaN(customAmt) && customAmt > 0) {
+      return customAmt;
     }
   }
 
-  // 3. Existing monthly adjustment record if passed
+  // 3. Current monthly amount configured for the assigned chit group (check normalized & raw keys)
+  if (groupPaymentSettings) {
+    const rawMap = groupPaymentSettings.settingsMap || groupPaymentSettings;
+    const candidateKeys = [
+      `${val}_${cleanGrp}`,
+      `${val}_${grpUpper}`,
+      `${val}_${rawGrp}`,
+      `group_${cleanGrp}_${val}`,
+      `group_${grpUpper}_${val}`,
+      `${cleanGrp}_${val}`,
+      `${grpUpper}_${val}`,
+    ];
+
+    for (const key of candidateKeys) {
+      const entry = rawMap[key];
+      if (typeof entry === 'number' && entry > 0) {
+        return entry;
+      }
+      if (entry && typeof entry === 'object') {
+        const amt = Number(entry.monthlyAmount ?? entry.monthlyPayment ?? entry.baseAmount ?? entry.amount);
+        if (!isNaN(amt) && amt > 0) {
+          return amt;
+        }
+      }
+    }
+  }
+
+  // 4. Existing monthly adjustment record if passed
   if (monthlyAdjustment) {
     const adjMonthly = Number(
       monthlyAdjustment.chitAmount ??
@@ -129,16 +155,7 @@ export function getEffectiveMonthlyAmount(
     }
   }
 
-  // 4. Current monthly amount configured for the assigned chit group
-  const settingKey = `${val}_${grp}`;
-  if (groupPaymentSettings) {
-    const rawMap = groupPaymentSettings.settingsMap || groupPaymentSettings;
-    if (typeof rawMap[settingKey] === 'number' && rawMap[settingKey] > 0) {
-      return rawMap[settingKey];
-    }
-  }
-
-  // 5. Chit group default or mathematical fallback
+  // 5. Chit group default definition
   if (chitGroup) {
     const grpMonthly = Number(chitGroup.monthlyPremium ?? chitGroup.monthlyAmount ?? chitGroup.baseGroupMonthly);
     if (!isNaN(grpMonthly) && grpMonthly > 0) {
@@ -146,6 +163,7 @@ export function getEffectiveMonthlyAmount(
     }
   }
 
+  // 6. Legacy stored subscription or member amount
   const legacyStored = Number(
     subscription?.monthlyAmount ??
     subscription?.amountToPay ??
@@ -156,6 +174,7 @@ export function getEffectiveMonthlyAmount(
     return legacyStored;
   }
 
+  // 7. Mathematical fallback
   if (val > 0) {
     return Math.floor(val / 20);
   }

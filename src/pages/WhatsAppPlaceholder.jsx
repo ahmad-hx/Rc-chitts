@@ -96,9 +96,9 @@ export default function WhatsAppPlaceholder() {
   const [latestQrGenId, setLatestQrGenId] = useState(0);
 
   // 3. Template & Language States
-  const [selectedTemplateId, setSelectedTemplateId] = useState('PAYMENT_REMINDER');
-  const [language, setLanguage] = useState('english');
-  const [customTemplateText, setCustomTemplateText] = useState(MESSAGE_TEMPLATES.PAYMENT_REMINDER.englishText);
+  const [selectedTemplateId, setSelectedTemplateId] = useState('SINGLE_CHIT');
+  const [language, setLanguage] = useState('telugu');
+  const [customTemplateText, setCustomTemplateText] = useState(MESSAGE_TEMPLATES.SINGLE_CHIT.teluguText);
   const [savedTemplates, setSavedTemplates] = useState({});
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
 
@@ -422,8 +422,11 @@ export default function WhatsAppPlaceholder() {
           const chitsList = Array.isArray(fetchedChits) ? fetchedChits : [];
           setMembers(list);
           setChits(chitsList);
-          setGroupPaymentSettings(settingsRes?.settingsMap || {});
-          setSavedTemplates(fetchedTemplates || {});
+          const tmpls = fetchedTemplates || {};
+          if (!tmpls['SINGLE_CHIT'] && tmpls['PAYMENT_REMINDER']) {
+            tmpls['SINGLE_CHIT'] = { ...tmpls['PAYMENT_REMINDER'], id: 'SINGLE_CHIT', title: 'Single Chit Reminder' };
+          }
+          setSavedTemplates(tmpls);
 
           // Extract groups for diagnostic logging
           const groupsSet = new Set();
@@ -472,8 +475,8 @@ export default function WhatsAppPlaceholder() {
 
   // Sync Template Text on Template, Language, or Saved Templates Change
   useEffect(() => {
-    const savedTmpl = savedTemplates[selectedTemplateId];
-    const defaultTmpl = MESSAGE_TEMPLATES[selectedTemplateId] || MESSAGE_TEMPLATES.PAYMENT_REMINDER;
+    const savedTmpl = savedTemplates[selectedTemplateId] || (selectedTemplateId === 'SINGLE_CHIT' ? savedTemplates['PAYMENT_REMINDER'] : null);
+    const defaultTmpl = MESSAGE_TEMPLATES[selectedTemplateId] || MESSAGE_TEMPLATES.SINGLE_CHIT;
 
     let textToUse = '';
     if (savedTmpl) {
@@ -502,11 +505,12 @@ export default function WhatsAppPlaceholder() {
     setIsSavingTemplate(true);
     try {
       const currentSaved = savedTemplates[selectedTemplateId] || {};
+      const defaultTmpl = MESSAGE_TEMPLATES[selectedTemplateId] || MESSAGE_TEMPLATES.SINGLE_CHIT;
       const tmplToSave = {
         id: selectedTemplateId,
-        title: MESSAGE_TEMPLATES[selectedTemplateId]?.title || selectedTemplateId,
-        englishText: language === 'english' ? customTemplateText : (currentSaved.englishText || MESSAGE_TEMPLATES[selectedTemplateId]?.englishText || ''),
-        teluguText: language === 'telugu' ? customTemplateText : (currentSaved.teluguText || MESSAGE_TEMPLATES[selectedTemplateId]?.teluguText || ''),
+        title: defaultTmpl.title || (selectedTemplateId === 'MULTIPLE_CHIT' ? 'Multiple Chit Reminder' : 'Single Chit Reminder'),
+        englishText: language === 'english' ? customTemplateText : (currentSaved.englishText || defaultTmpl.englishText || ''),
+        teluguText: language === 'telugu' ? customTemplateText : (currentSaved.teluguText || defaultTmpl.teluguText || ''),
         customText: customTemplateText,
       };
 
@@ -515,6 +519,8 @@ export default function WhatsAppPlaceholder() {
       setSavedTemplates((prev) => ({
         ...prev,
         [selectedTemplateId]: tmplToSave,
+        // If saving SINGLE_CHIT, also sync alias
+        ...(selectedTemplateId === 'SINGLE_CHIT' ? { PAYMENT_REMINDER: tmplToSave } : {}),
       }));
 
       showToast(`✓ Message template for "${tmplToSave.title}" saved to Firebase!`, 'success');
@@ -527,7 +533,7 @@ export default function WhatsAppPlaceholder() {
 
   // Reset Template to Default Format
   const handleResetTemplate = () => {
-    const defaultTmpl = MESSAGE_TEMPLATES[selectedTemplateId] || MESSAGE_TEMPLATES.PAYMENT_REMINDER;
+    const defaultTmpl = MESSAGE_TEMPLATES[selectedTemplateId] || MESSAGE_TEMPLATES.SINGLE_CHIT;
     let defaultText = '';
     if (language === 'english') defaultText = defaultTmpl.englishText;
     else if (language === 'telugu') defaultText = defaultTmpl.teluguText;
@@ -579,16 +585,48 @@ export default function WhatsAppPlaceholder() {
     );
   };
 
-  // Personalized Message Compiler
-  const getCompiledMessageForMember = (member) => {
-    return generatePersonalizedMessage(member, customTemplateText, {
+  // Helper to resolve currently active Single Chit template text
+  const getSingleTemplateText = useCallback(() => {
+    if (selectedTemplateId === 'SINGLE_CHIT' && customTemplateText) {
+      return customTemplateText;
+    }
+    const saved = savedTemplates['SINGLE_CHIT'] || savedTemplates['PAYMENT_REMINDER'];
+    if (saved) {
+      if (language === 'english') return saved.englishText || saved.customText || MESSAGE_TEMPLATES.SINGLE_CHIT.englishText;
+      return saved.teluguText || saved.customText || MESSAGE_TEMPLATES.SINGLE_CHIT.teluguText;
+    }
+    return language === 'english' ? MESSAGE_TEMPLATES.SINGLE_CHIT.englishText : MESSAGE_TEMPLATES.SINGLE_CHIT.teluguText;
+  }, [selectedTemplateId, customTemplateText, savedTemplates, language]);
+
+  // Helper to resolve currently active Multiple Chit template text
+  const getMultiTemplateText = useCallback(() => {
+    if (selectedTemplateId === 'MULTIPLE_CHIT' && customTemplateText) {
+      return customTemplateText;
+    }
+    const saved = savedTemplates['MULTIPLE_CHIT'];
+    if (saved) {
+      if (language === 'english') return saved.englishText || saved.customText || MESSAGE_TEMPLATES.MULTIPLE_CHIT.englishText;
+      return saved.teluguText || saved.customText || MESSAGE_TEMPLATES.MULTIPLE_CHIT.teluguText;
+    }
+    return language === 'english' ? MESSAGE_TEMPLATES.MULTIPLE_CHIT.englishText : MESSAGE_TEMPLATES.MULTIPLE_CHIT.teluguText;
+  }, [selectedTemplateId, customTemplateText, savedTemplates, language]);
+
+  // Personalized Message Compiler — guarantees correct template per member type
+  const getCompiledMessageForMember = useCallback((member) => {
+    if (!member) return '';
+    const singleText = getSingleTemplateText();
+    const multiText = getMultiTemplateText();
+
+    return generatePersonalizedMessage(member, null, {
       groupId: selectedGroupId,
       billingMonth,
       dueDate,
       groupPaymentSettings,
       chitsList: chits,
+      singleTemplateText: singleText,
+      multiTemplateText: multiText,
     });
-  };
+  }, [getSingleTemplateText, getMultiTemplateText, selectedGroupId, billingMonth, dueDate, groupPaymentSettings, chits]);
 
   // Selected Members Roster (Restricted strictly to active/filtered recipients)
   const selectedMembersList = useMemo(() => {
@@ -1242,11 +1280,8 @@ export default function WhatsAppPlaceholder() {
                 onChange={(e) => setSelectedTemplateId(e.target.value)}
                 className="w-full px-3 py-2 bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] font-bold focus:outline-none focus:ring-1 focus:ring-[#285F52] cursor-pointer"
               >
-                {Object.values(MESSAGE_TEMPLATES).map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.title}
-                  </option>
-                ))}
+                <option value="SINGLE_CHIT">Single Chit Reminder Template</option>
+                <option value="MULTIPLE_CHIT">Multiple Chit Reminder Template</option>
               </select>
             </div>
 
@@ -1301,9 +1336,16 @@ export default function WhatsAppPlaceholder() {
           {/* RECIPIENT PREVIEW & SEND BUTTON */}
           <Card className="p-5 border border-[#E5E7EB] bg-white rounded-2xl shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-[#E5E7EB] pb-2">
-              <h2 className="text-xs font-extrabold text-[#111111] uppercase tracking-wider">
-                3. Live Message Preview
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xs font-extrabold text-[#111111] uppercase tracking-wider">
+                  3. Live Message Preview
+                </h2>
+                {selectedPreviewMember && (
+                  <span className="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-[#EEF6F3] text-[#285F52] border border-[#BFD8D0]">
+                    {getActiveChits(selectedPreviewMember).length > 1 ? 'Multiple Chit Format' : 'Single Chit Format'}
+                  </span>
+                )}
+              </div>
               {selectedMembersList.length > 0 ? (
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] text-[#667085] font-bold">Preview:</span>

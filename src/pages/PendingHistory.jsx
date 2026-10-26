@@ -16,7 +16,7 @@ import Button from '../components/Button';
 import Badge from '../components/Badge';
 import Toast from '../components/Toast';
 import { useBillingMonth } from '../context/BillingMonthContext';
-import { memberService, chitService, monthlyRecordService } from '../services/dbService';
+import { memberService, chitService, monthlyRecordService, groupPaymentSettingsService } from '../services/dbService';
 import { getEffectiveMonthlyAmount } from '../utils/amountUtils';
 
 function compareGroupIds(groupIdA = '', groupIdB = '') {
@@ -32,6 +32,7 @@ export default function PendingHistory() {
   const [historyRecords, setHistoryRecords] = useState([]);
   const [members, setMembers] = useState([]);
   const [chits, setChits] = useState([]);
+  const [groupPaymentSettings, setGroupPaymentSettings] = useState({});
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
 
@@ -52,16 +53,18 @@ export default function PendingHistory() {
     async function loadHistory() {
       setLoading(true);
       try {
-        const [adjRes, mList, cList] = await Promise.all([
+        const [adjRes, mList, cList, settingsRes] = await Promise.all([
           monthlyRecordService.getMonthlyAdjustments(null),
           memberService.getMembers().catch(() => []),
           chitService.getChits().catch(() => []),
+          groupPaymentSettingsService.getGroupPaymentSettings().catch(() => ({ settingsMap: {} })),
         ]);
 
         if (mounted) {
           setHistoryRecords(adjRes.adjustmentsList || []);
           setMembers(Array.isArray(mList) ? mList : []);
           setChits(Array.isArray(cList) ? cList : []);
+          setGroupPaymentSettings(settingsRes?.settingsMap || {});
         }
       } catch (err) {
         if (mounted) {
@@ -136,7 +139,7 @@ export default function PendingHistory() {
 
       chitSubscriptions.forEach((c) => {
         const gId = String(c.groupId || m.groupId || 'I').trim();
-        const reqChitAmount = getEffectiveMonthlyAmount(m, c);
+        const reqChitAmount = getEffectiveMonthlyAmount(m, c, groupPaymentSettings);
 
         (availableMonths || ['August 2026']).forEach((bMonth) => {
           const key = `${m.id}_${gId}_${bMonth}`;

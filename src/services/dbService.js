@@ -13,6 +13,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '../firebase.js';
 import { historyService } from './historyService.js';
+import { normalizeGroupId, hasExplicitCustomMonthlyAmount } from '../utils/amountUtils.js';
 
 // Helper to normalize phone numbers for deduplication
 function normalizePhone(value = '') {
@@ -884,14 +885,25 @@ export const groupPaymentSettingsService = {
 
       qSnap.forEach((docSnap) => {
         const data = docSnap.data() || {};
-        const key = `${data.chitValue}_${data.groupId}`;
+        const rawGrp = String(data.groupId || (docSnap.id.includes('_') ? docSnap.id.split('_')[1] : 'I')).trim();
+        const cleanGrp = normalizeGroupId(rawGrp);
+        const val = Number(data.chitValue || (docSnap.id.includes('_') ? docSnap.id.split('_')[0] : 100000));
+
         if (typeof data.monthlyAmount === 'number' || !isNaN(Number(data.monthlyAmount))) {
-          settingsMap[key] = Number(data.monthlyAmount);
+          const amt = Number(data.monthlyAmount);
+          // Register under normalized, raw, and docId keys to guarantee robust resolution
+          settingsMap[`${val}_${cleanGrp}`] = amt;
+          settingsMap[`${val}_${rawGrp.toUpperCase()}`] = amt;
+          settingsMap[`${val}_${rawGrp}`] = amt;
+          settingsMap[docSnap.id] = amt;
+          settingsMap[`group_${cleanGrp}_${val}`] = amt;
+
           settingsList.push({
             id: docSnap.id,
-            chitValue: Number(data.chitValue),
-            groupId: String(data.groupId),
-            monthlyAmount: Number(data.monthlyAmount),
+            chitValue: val,
+            groupId: rawGrp,
+            cleanGroupId: cleanGrp,
+            monthlyAmount: amt,
             updatedAt: data.updatedAt,
             updatedBy: data.updatedBy,
           });
@@ -908,7 +920,8 @@ export const groupPaymentSettingsService = {
   async saveGroupPaymentSetting({ chitValue, groupId, monthlyAmount }) {
     await ensureAuthReady();
     const val = Number(chitValue);
-    const grp = String(groupId).trim().toUpperCase();
+    const rawGrp = String(groupId).trim();
+    const grp = normalizeGroupId(rawGrp);
     const amt = Number(monthlyAmount);
 
     if (isNaN(val) || !grp || isNaN(amt) || amt <= 0) {
@@ -927,6 +940,34 @@ export const groupPaymentSettingsService = {
         updatedBy: auth.currentUser?.email || 'Admin',
       }, { merge: true });
 
+      // If raw group name had "Group " prefix, also sync raw docId for complete compatibility
+      if (rawGrp.toUpperCase() !== grp) {
+        try {
+          await setDoc(doc(db, 'groupPaymentSettings', `${val}_${rawGrp.toUpperCase()}`), {
+            chitValue: val,
+            groupId: rawGrp,
+            monthlyAmount: amt,
+            updatedAt: serverTimestamp(),
+            updatedBy: auth.currentUser?.email || 'Admin',
+          }, { merge: true });
+        } catch (_) {}
+      }
+
+      // Also synchronize the 'chits' collection document for this group
+      try {
+        const chitDocId = `group_${grp}_${val}`;
+        const chitDocRef = doc(db, 'chits', chitDocId);
+        await setDoc(chitDocRef, {
+          groupId: grp,
+          totalChitValue: val,
+          monthlyPremium: amt,
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+      } catch (chitDocErr) {
+        console.warn('Notice: Updating group doc in chits collection:', chitDocErr?.message);
+      }
+
+      // Synchronize all member subscriptions for this group
       const memberUpdateResults = await this.updateGroupMonthlyAmountForMembers({
         chitValue: val,
         groupId: grp,
@@ -943,7 +984,7 @@ export const groupPaymentSettingsService = {
   async updateGroupMonthlyAmountForMembers({ chitValue, groupId, monthlyAmount }) {
     await ensureAuthReady();
     const val = Number(chitValue);
-    const grp = String(groupId).trim().toUpperCase();
+    const grp = normalizeGroupId(groupId);
     const amt = Number(monthlyAmount);
 
     let succeededCount = 0;
@@ -957,43 +998,89 @@ export const groupPaymentSettingsService = {
 
       qSnap.forEach((docSnap) => {
         const rawData = docSnap.data() || {};
-        const currentChits = Array.isArray(rawData.chits)
+        let currentChits = Array.isArray(rawData.chits)
           ? rawData.chits
           : Array.isArray(rawData.holdings)
           ? rawData.holdings
           : [];
 
+        // Check if member has root-level subscription without chits array
+        const hasRootGroup = Boolean(rawData.group || rawData.groupId || rawData.chitGroup);
+        if (currentChits.length === 0 && hasRootGroup) {
+          const rGrp = normalizeGroupId(rawData.group || rawData.groupId || rawData.chitGroup);
+          const rVal = Number(rawData.chitValue || rawData.totalChitValue || rawData.totalValue || 100000);
+          if (rGrp === grp && rVal === val) {
+            currentChits = [{
+              id: `chit_${docSnap.id}_${grp}`,
+              name: `₹${(val / 100000).toFixed(0)} Lakh Chit (Group ${grp})`,
+              groupId: grp,
+              totalChitValue: val,
+              monthlyAmount: Number(rawData.monthlyAmount || amt),
+              amountToPay: Number(rawData.amountToPay || amt),
+              hasCustomMonthlyAmount: Boolean(rawData.hasCustomMonthlyAmount),
+              customMonthlyAmount: typeof rawData.customMonthlyAmount === 'number' ? rawData.customMonthlyAmount : undefined,
+              pending: Number(rawData.pending || rawData.pendingAmount || 0),
+              balance: Number(rawData.balance || rawData.balanceAmount || 0),
+              quantity: Number(rawData.quantity || 1),
+              status: rawData.status || 'ACTIVE',
+            }];
+          }
+        }
+
         if (currentChits.length === 0) return;
 
         let needsUpdate = false;
+        let memberMatchedThisGroup = false;
+
         const updatedChits = currentChits.map((c) => {
-          const cGrp = String(c?.groupId || c?.group || '').trim().toUpperCase();
-          const cVal = Number(c?.totalChitValue || c?.totalValue || c?.chitValue || 100000);
-          const isCustom = Boolean(c?.hasCustomMonthlyAmount) || (typeof c?.customMonthlyAmount === 'number' && c.customMonthlyAmount > 0);
+          const cGrp = normalizeGroupId(c?.groupId || c?.group || rawData?.groupId || rawData?.group);
+          const cVal = Number(c?.totalChitValue || c?.totalValue || c?.chitValue || rawData?.totalChitValue || rawData?.chitValue || 100000);
+          const isExplicitCustom = hasExplicitCustomMonthlyAmount(rawData, c);
 
           if (cGrp === grp && cVal === val) {
-            totalTargetMembers += 1;
-            if (!isCustom) {
+            memberMatchedThisGroup = true;
+            if (!isExplicitCustom) {
               needsUpdate = true;
               return {
                 ...c,
                 monthlyAmount: amt,
                 amountToPay: amt,
+                // Ensure legacy accidental custom flags are cleared
+                hasCustomMonthlyAmount: false,
+                isCustomMonthly: false,
+                isCustomAmount: false,
               };
             }
           }
           return c;
         });
 
+        if (memberMatchedThisGroup) {
+          totalTargetMembers += 1;
+        }
+
         if (needsUpdate) {
           const memRef = doc(db, 'members', docSnap.id);
           const memName = rawData.name || rawData.memberName || docSnap.id;
 
-          const p = updateDoc(memRef, {
+          const updatePayload = {
             chits: updatedChits,
             holdings: updatedChits,
             updatedAt: serverTimestamp(),
-          })
+          };
+
+          // If root-level fields exist and match this group, also sync root fields
+          if (hasRootGroup) {
+            const rGrp = normalizeGroupId(rawData.group || rawData.groupId || rawData.chitGroup);
+            const rVal = Number(rawData.chitValue || rawData.totalChitValue || rawData.totalValue || 100000);
+            if (rGrp === grp && rVal === val) {
+              updatePayload.monthlyAmount = amt;
+              updatePayload.amountToPay = amt;
+              updatePayload.hasCustomMonthlyAmount = false;
+            }
+          }
+
+          const p = updateDoc(memRef, updatePayload)
             .then(() => {
               succeededCount += 1;
             })
@@ -1011,6 +1098,93 @@ export const groupPaymentSettingsService = {
     } catch (err) {
       console.error('Error updating member monthly amounts for group:', err);
       return { succeededCount, failedCount: 1, failedMembers: [{ id: 'all', name: 'Group Members', error: err.message }], totalTargetMembers };
+    }
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GROUP RECORDS SPREADSHEET SERVICE (Separate collection: groupRecords)
+// Excel-Style chit group member records, remarks, and custom editable columns
+// ─────────────────────────────────────────────────────────────────────────────
+export const groupRecordService = {
+  async getGroupRecord(chitValue, groupId) {
+    await ensureAuthReady();
+    const val = Number(chitValue);
+    const grp = normalizeGroupId(groupId);
+    const docId = `record_${val}_${grp}`;
+
+    const defaultHeaders = {
+      notes: 'Notes / Remarks',
+      custom1: 'Custom 1',
+      custom2: 'Custom 2',
+      custom3: 'Custom 3',
+      custom4: 'Custom 4',
+    };
+
+    try {
+      const docRef = doc(db, 'groupRecords', docId);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data() || {};
+        return {
+          id: docSnap.id,
+          chitValue: val,
+          groupId: grp,
+          columnHeaders: { ...defaultHeaders, ...(data.columnHeaders || {}) },
+          records: data.records || {},
+          updatedAt: data.updatedAt,
+          updatedBy: data.updatedBy,
+        };
+      }
+      return {
+        id: docId,
+        chitValue: val,
+        groupId: grp,
+        columnHeaders: defaultHeaders,
+        records: {},
+      };
+    } catch (err) {
+      console.error('Firestore getGroupRecord error:', err.message);
+      return {
+        id: docId,
+        chitValue: val,
+        groupId: grp,
+        columnHeaders: defaultHeaders,
+        records: {},
+      };
+    }
+  },
+
+  async saveGroupRecord({ chitValue, groupId, columnHeaders, records }) {
+    await ensureAuthReady();
+    const val = Number(chitValue);
+    const grp = normalizeGroupId(groupId);
+    const docId = `record_${val}_${grp}`;
+
+    const defaultHeaders = {
+      notes: 'Notes / Remarks',
+      custom1: 'Custom 1',
+      custom2: 'Custom 2',
+      custom3: 'Custom 3',
+      custom4: 'Custom 4',
+    };
+
+    const payload = sanitizeForFirestore({
+      chitValue: val,
+      groupId: grp,
+      columnHeaders: { ...defaultHeaders, ...(columnHeaders || {}) },
+      records: records || {},
+      updatedAt: serverTimestamp(),
+      updatedBy: auth.currentUser?.email || 'Admin',
+    });
+
+    try {
+      const docRef = doc(db, 'groupRecords', docId);
+      await setDoc(docRef, payload, { merge: true });
+      return { id: docId, ...payload };
+    } catch (err) {
+      console.error('Firestore saveGroupRecord error:', err.message);
+      throw new Error(`Failed to save spreadsheet records to Firebase: ${err.message}`);
     }
   },
 };

@@ -20,6 +20,7 @@ import PendingHistory from './pages/PendingHistory';
 import WhatsAppPlaceholder from './pages/WhatsAppPlaceholder';
 import History from './pages/History';
 import SettingsPlaceholder from './pages/SettingsPlaceholder';
+import ChitRecords from './pages/ChitRecords';
 
 import AdminLayout from './layouts/AdminLayout';
 import Logo from './components/Logo';
@@ -176,6 +177,19 @@ function App() {
                 isAuthenticated ? (
                   <AdminLayout onLogout={handleLogout}>
                     <ChitsPlaceholder />
+                  </AdminLayout>
+                ) : (
+                  <Navigate to="/login" replace />
+                )
+              }
+            />
+
+            <Route
+              path="/chit-records"
+              element={
+                isAuthenticated ? (
+                  <AdminLayout onLogout={handleLogout}>
+                    <ChitRecords />
                   </AdminLayout>
                 ) : (
                   <Navigate to="/login" replace />

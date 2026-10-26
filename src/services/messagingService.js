@@ -41,96 +41,83 @@ export async function saveMessageTemplate(templateData) {
 }
 
 // ─── Default Message Templates ────────────────────────────────────────────────
+export const DEFAULT_SINGLE_CHIT_TEMPLATE = {
+  id: 'SINGLE_CHIT',
+  title: 'Single Chit Reminder',
+  englishText: `{{memberName}} గారు
+
+ఈనెల చీటీ {{chitMonth}}      {{monthlyAmount}}
+పాత బాకీ             {{pendingAmount}}
+నిల్వ                   {{balanceCredit}}
+
+మొత్తం               {{finalPayable}}
+
+ఈనెల మీ వాయిదా మొత్తాన్ని 15వ తారీకు లోపు
+తప్పనిసరిగా చెల్లించవలెను
+
+ఇట్లు
+రాఘవేంద్ర చిట్టి`,
+  teluguText: `{{memberName}} గారు
+
+ఈనెల చీటీ {{chitMonth}}      {{monthlyAmount}}
+పాత బాకీ             {{pendingAmount}}
+నిల్వ                   {{balanceCredit}}
+
+మొత్తం               {{finalPayable}}
+
+ఈనెల మీ వాయిదా మొత్తాన్ని 15వ తారీకు లోపు
+తప్పనిసరిగా చెల్లించవలెను
+
+ఇట్లు
+రాఘవేంద్ర చిట్టి`,
+};
+
+export const DEFAULT_MULTIPLE_CHIT_TEMPLATE = {
+  id: 'MULTIPLE_CHIT',
+  title: 'Multiple Chit Reminder',
+  englishText: `{{memberName}} గారు
+
+{{chitLines}}
+
+పాత బాకీ : {{pendingAmount}}
+నిల్వ     : {{balanceAmount}}
+
+మొత్తం    : ₹{{finalAmount}}
+
+ఈనెల మీ వాయిదా మొత్తాన్ని 15వ తారీకు లోపు
+తప్పనిసరిగా చెల్లించవలెను
+
+ఇట్లు
+రాఘవేంద్ర చిట్టి`,
+  teluguText: `{{memberName}} గారు
+
+{{chitLines}}
+
+పాత బాకీ : {{pendingAmount}}
+నిల్వ     : {{balanceAmount}}
+
+మొత్తం    : ₹{{finalAmount}}
+
+ఈనెల మీ వాయిదా మొత్తాన్ని 15వ తారీకు లోపు
+తప్పనిసరిగా చెల్లించవలెను
+
+ఇట్లు
+రాఘవేంద్ర చిట్టి`,
+};
+
 export const MESSAGE_TEMPLATES = {
-  PAYMENT_REMINDER: {
-    id: 'PAYMENT_REMINDER',
-    title: 'Payment Reminder',
-    englishText: `{{memberName}} గారు
-
-ఈనెల చీటీ {{chitMonth}}      {{monthlyAmount}}
-పాత బాకీ             {{pendingAmount}}
-నిల్వ                   {{balanceCredit}}
-
-మొత్తం               {{finalPayable}}
-
-ఈనెల మీ వాయిదా మొత్తాన్ని 15వ తారీకు లోపు
-తప్పనిసరిగా చెల్లించవలెను
-
-ఇట్లు
-రాఘవేంద్ర చిట్టి`,
-    teluguText: `{{memberName}} గారు
-
-ఈనెల చీటీ {{chitMonth}}      {{monthlyAmount}}
-పాత బాకీ             {{pendingAmount}}
-నిల్వ                   {{balanceCredit}}
-
-మొత్తం               {{finalPayable}}
-
-ఈనెల మీ వాయిదా మొత్తాన్ని 15వ తారీకు లోపు
-తప్పనిసరిగా చెల్లించవలెను
-
-ఇట్లు
-రాఘవేంద్ర చిట్టి`,
-  },
+  SINGLE_CHIT: DEFAULT_SINGLE_CHIT_TEMPLATE,
+  MULTIPLE_CHIT: DEFAULT_MULTIPLE_CHIT_TEMPLATE,
+  PAYMENT_REMINDER: DEFAULT_SINGLE_CHIT_TEMPLATE,
   PENDING_PAYMENT: {
+    ...DEFAULT_SINGLE_CHIT_TEMPLATE,
     id: 'PENDING_PAYMENT',
     title: 'Pending Payment Warning',
-    englishText: `{{memberName}} గారు
-
-ఈనెల చీటీ {{chitMonth}}      {{monthlyAmount}}
-పాత బాకీ             {{pendingAmount}}
-నిల్వ                   {{balanceCredit}}
-
-మొత్తం               {{finalPayable}}
-
-ఈనెల మీ వాయిదా మొత్తాన్ని 15వ తారీకు లోపు
-తప్పనిసరిగా చెల్లించవలెను
-
-ఇట్లు
-రాఘవేంద్ర చిట్టి`,
-    teluguText: `{{memberName}} గారు
-
-ఈనెల చీటీ {{chitMonth}}      {{monthlyAmount}}
-పాత బాకీ             {{pendingAmount}}
-నిల్వ                   {{balanceCredit}}
-
-మొత్తం               {{finalPayable}}
-
-ఈనెల మీ వాయిదా మొత్తాన్ని 15వ తారీకు లోపు
-తప్పనిసరిగా చెల్లించవలెను
-
-ఇట్లు
-రాఘవేంద్ర చిట్టి`,
   },
   CUSTOM: {
+    ...DEFAULT_SINGLE_CHIT_TEMPLATE,
     id: 'CUSTOM',
     title: 'Custom Message',
-    englishText: `{{memberName}} గారు
-
-ఈనెల చీటీ {{chitMonth}}      {{monthlyAmount}}
-పాత బాకీ             {{pendingAmount}}
-నిల్వ                   {{balanceCredit}}
-
-మొత్తం               {{finalPayable}}
-
-ఈనెల మీ వాయిదా మొత్తాన్ని 15వ తారీకు లోపు
-తప్పనిసరిగా చెల్లించవలెను
-
-ఇట్లు
-రాఘవేంద్ర చిట్టి`,
-    teluguText: `{{memberName}} గారు
-
-ఈనెల చీటీ {{chitMonth}}      {{monthlyAmount}}
-పాత బాకీ             {{pendingAmount}}
-నిల్వ                   {{balanceCredit}}
-
-మొత్తం               {{finalPayable}}
-
-ఈనెల మీ వాయిదా మొత్తాన్ని 15వ తారీకు లోపు
-తప్పనిసరిగా చెల్లించవలెను
-
-ఇట్లు
-రాఘవేంద్ర చిట్టి`,
   },
 };
 
@@ -269,6 +256,8 @@ export function generatePersonalizedMessage(
     allGroupsList = [],
     paymentsList = [],
     payments = [],
+    singleTemplateText = null,
+    multiTemplateText = null,
   } = {}
 ) {
   if (!member) return '';
@@ -282,20 +271,24 @@ export function generatePersonalizedMessage(
     : (Array.isArray(payments) && payments.length > 0 ? payments : []);
 
   const activeChits = getActiveChits(member);
+  const isMulti = activeChits.length > 1;
 
-  // If member has multiple active chits, MUST format using Multiple Chit combined message logic
-  if (activeChits.length > 1) {
+  // Multiple Chit member formatting
+  if (isMulti) {
+    const textToUse = multiTemplateText || templateText;
     return formatLockedWhatsAppMessage(member, {
       groupPaymentSettings,
       billingMonth,
       dueDate,
       allGroupsList: groupsToUse,
       paymentsList: pList,
+      customTemplateText: textToUse,
     });
   }
 
   // Single Chit format
-  if (templateText && typeof templateText === 'string' && templateText.trim()) {
+  const singleTextToUse = singleTemplateText || templateText;
+  if (singleTextToUse && typeof singleTextToUse === 'string' && singleTextToUse.trim()) {
     const targetChit = activeChits[0] || (member?.groupId || member?.group || member?.chitGroup ? {
       groupId: member.groupId || member.group || member.chitGroup,
       totalChitValue: member.calculatedTotalChitValue || member.totalChitValue || 100000,
@@ -318,7 +311,7 @@ export function generatePersonalizedMessage(
     const resolvedFinal = finalAmount !== null && finalAmount !== undefined ? finalAmount : Math.max(Number(resolvedTotal) - Number(resolvedBalance), 0);
 
     return formatWhatsAppTemplate({
-      templateText,
+      templateText: singleTextToUse,
       memberName: member.name || 'Member',
       phone: member.whatsapp || member.phone || '',
       groupName: targetChit.groupId || groupId || 'Chit Group',

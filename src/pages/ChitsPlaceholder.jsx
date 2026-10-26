@@ -257,10 +257,16 @@ export default function ChitsPlaceholder() {
         showToast(`✓ Monthly payment for Group ${targetGroupForMonthly.groupId} set to ₹${parsedAmount.toLocaleString('en-IN')}!`);
       }
 
-      // Refresh members from Firestore to ensure UI state is 100% up to date
-      const updatedMembers = await memberService.getMembers().catch(() => null);
+      // Refresh members and chits from Firestore to ensure UI state is 100% up to date
+      const [updatedMembers, updatedChits] = await Promise.all([
+        memberService.getMembers().catch(() => null),
+        chitService.getChits().catch(() => null),
+      ]);
       if (Array.isArray(updatedMembers)) {
         setMembers(updatedMembers);
+      }
+      if (Array.isArray(updatedChits)) {
+        setChits(updatedChits);
       }
     } catch (err) {
       showToast(`Failed to save: ${err.message}`, 'error');

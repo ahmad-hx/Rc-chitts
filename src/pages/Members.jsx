@@ -33,6 +33,7 @@ import {
   getEffectiveMonthlyAmount,
   isMemberSpecificMonthlyAmount,
   calculateHoldingPayable,
+  normalizeGroupId,
 } from '../utils/amountUtils';
 import { getChitMonthForGroup } from '../utils/chitMonthUtils';
 import { useBillingMonth } from '../context/BillingMonthContext';
@@ -604,10 +605,11 @@ export default function Members() {
       const chits = editMemberSubscriptions.map((sub, idx) => {
         const val = Number(sub.chitValue);
         const grp = String(sub.groupId).trim().toUpperCase();
+        const cleanGrp = normalizeGroupId(grp);
         const monthly = Number(sub.monthlyAmount) || Math.floor(val / 20);
-        const key = `${val}_${grp}`;
-        const groupAmt = groupPaymentSettings[key];
-        const isCustom = typeof groupAmt === 'number' && groupAmt > 0 ? monthly !== groupAmt : monthly !== Math.floor(val / 20);
+        const key = `${val}_${cleanGrp}`;
+        const groupAmt = groupPaymentSettings[key] ?? groupPaymentSettings[`${val}_${grp}`] ?? groupPaymentSettings[`group_${cleanGrp}_${val}`];
+        const isCustom = sub.hasCustomMonthlyAmount === true && (typeof groupAmt === 'number' && groupAmt > 0 ? monthly !== groupAmt : monthly !== Math.floor(val / 20));
 
         const baseObj = sub.originalChit ? { ...sub.originalChit } : {};
 
@@ -617,8 +619,8 @@ export default function Members() {
           name: `₹${(val / 100000).toFixed(0)} Lakh Chit (Group ${grp})`,
           groupId: grp,
           totalChitValue: val,
-          monthlyAmount: monthly,
-          amountToPay: monthly,
+          monthlyAmount: isCustom ? monthly : (typeof groupAmt === 'number' && groupAmt > 0 ? groupAmt : monthly),
+          amountToPay: isCustom ? monthly : (typeof groupAmt === 'number' && groupAmt > 0 ? groupAmt : monthly),
           hasCustomMonthlyAmount: isCustom,
           pending: Math.max(Number(sub.pending) || 0, 0),
           balance: Math.max(Number(sub.balance) || 0, 0),
@@ -630,6 +632,7 @@ export default function Members() {
           chitObj.customMonthlyAmount = monthly;
         } else {
           delete chitObj.customMonthlyAmount;
+          chitObj.customMonthlyAmount = null;
         }
 
         return chitObj;
@@ -932,14 +935,22 @@ export default function Members() {
       const chits = newChitSubscriptions.map((sub, idx) => {
         const val = Number(sub.chitValue);
         const grp = String(sub.groupId).trim().toUpperCase();
+        const cleanGrp = normalizeGroupId(grp);
         const monthly = Number(sub.monthlyAmount) || Math.floor(val / 20);
+        const key = `${val}_${cleanGrp}`;
+        const groupAmt = groupPaymentSettings[key] ?? groupPaymentSettings[`${val}_${grp}`] ?? groupPaymentSettings[`group_${cleanGrp}_${val}`];
+        const isCustom = sub.hasCustomMonthlyAmount === true && (typeof groupAmt === 'number' && groupAmt > 0 ? monthly !== groupAmt : monthly !== Math.floor(val / 20));
+        const effectiveMonthly = isCustom ? monthly : (typeof groupAmt === 'number' && groupAmt > 0 ? groupAmt : monthly);
+
         return {
           id: `chit_${Date.now()}_${idx}_${grp}`,
           name: `₹${(val / 100000).toFixed(0)} Lakh Chit (Group ${grp})`,
           groupId: grp,
           totalChitValue: val,
-          monthlyAmount: monthly,
-          amountToPay: monthly,
+          monthlyAmount: effectiveMonthly,
+          amountToPay: effectiveMonthly,
+          hasCustomMonthlyAmount: isCustom,
+          customMonthlyAmount: isCustom ? monthly : null,
           pending: Math.max(Number(sub.pending) || 0, 0),
           balance: Math.max(Number(sub.balance) || 0, 0),
           quantity: 1,

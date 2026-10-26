@@ -21,6 +21,7 @@ import {
   Minimize,
   Bell,
   Clock,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import Logo from '../components/Logo';
@@ -117,6 +118,7 @@ export default function AdminLayout({ children, onLogout }) {
         { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
         { name: 'Members', path: '/members', icon: Users },
         { name: 'Chit Groups', path: '/chits', icon: Layers },
+        { name: 'Chit Records', path: '/chit-records', icon: FileSpreadsheet },
         { name: 'Payments', path: '/payments', icon: IndianRupee },
         { name: 'Pending Payments', path: '/pending-payments', icon: Clock },
         { name: 'Pending History', path: '/pending-history', icon: HistoryIcon },

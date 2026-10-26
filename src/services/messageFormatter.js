@@ -227,6 +227,87 @@ export function getPaidAmountForChit(member, chit, billingMonth, paymentsList = 
   return paidSum;
 }
 
+/**
+ * Replace placeholders dynamically in custom Multiple Chit WhatsApp templates.
+ */
+export function formatWhatsAppTemplateMulti({
+  templateText = '',
+  memberName = 'Member',
+  phone = '',
+  chitLinesText = '',
+  chitMonth = '1',
+  monthlyAmount = '0',
+  chitAmount = '0',
+  pendingAmount = '0',
+  balanceAmount = '0',
+  totalAmount = '0',
+  finalAmount = '0',
+  billingMonth = 'August 2026',
+  dueDate = '15th of Month',
+  upiUrl = null,
+}) {
+  if (!templateText) return '';
+
+  const cleanMonthlyAmt = formatRawNumber(monthlyAmount || chitAmount);
+  const cleanPendingAmt = formatRawNumber(pendingAmount);
+  const cleanBalanceAmt = formatRawNumber(balanceAmount);
+  const cleanTotalAmt = formatRawNumber(totalAmount);
+  const cleanFinalAmt = formatRawNumber(finalAmount);
+  const formattedPhone = formatDisplayPhoneNumber(phone);
+
+  let compiled = templateText
+    .replace(/\{\{memberName\}\}/g, memberName || 'Member')
+    .replace(/\{MEMBER_NAME\}/g, memberName || 'Member')
+    .replace(/\{\{phone\}\}/g, formattedPhone || '')
+    .replace(/\{\{chitLines\}\}/g, chitLinesText || '')
+    .replace(/\{CHIT_LINES\}/g, chitLinesText || '')
+    .replace(/\{\{chitMonth\}\}/g, String(chitMonth || '1'))
+    .replace(/\{CHIT_MONTH\}/g, String(chitMonth || '1'))
+    .replace(/\{\{chit_month\}\}/g, String(chitMonth || '1'))
+    .replace(/\{chitMonth\}/g, String(chitMonth || '1'))
+    .replace(/\{\{monthlyAmount\}\}/g, cleanMonthlyAmt)
+    .replace(/\{MONTHLY_AMOUNT\}/g, cleanMonthlyAmt)
+    .replace(/\{\{chitAmount\}\}/g, cleanMonthlyAmt)
+    .replace(/\{CHIT_AMOUNT\}/g, cleanMonthlyAmt)
+    .replace(/\{\{pendingAmount\}\}/g, cleanPendingAmt)
+    .replace(/\{PENDING_AMOUNT\}/g, cleanPendingAmt)
+    .replace(/\{\{balanceAmount\}\}/g, cleanBalanceAmt)
+    .replace(/\{BALANCE_AMOUNT\}/g, cleanBalanceAmt)
+    .replace(/\{\{balanceCredit\}\}/g, cleanBalanceAmt)
+    .replace(/\{\{totalAmount\}\}/g, cleanTotalAmt)
+    .replace(/\{TOTAL_AMOUNT\}/g, cleanTotalAmt)
+    .replace(/\{\{finalAmount\}\}/g, cleanFinalAmt)
+    .replace(/\{FINAL_AMOUNT\}/g, cleanFinalAmt)
+    .replace(/\{\{finalPayable\}\}/g, cleanFinalAmt)
+    .replace(/\{\{amountToPay\}\}/g, cleanFinalAmt)
+    .replace(/\{AMOUNT_TO_PAY\}/g, cleanFinalAmt)
+    .replace(/\{\{billingMonth\}\}/g, billingMonth || 'August 2026')
+    .replace(/\{BILLING_MONTH\}/g, billingMonth || 'August 2026')
+    .replace(/\{\{dueDate\}\}/g, dueDate || '15th of Month')
+    .replace(/\{DUE_DATE\}/g, dueDate || '15th of Month');
+
+  // If the template did not explicitly include {{chitLines}}, but chit lines exist, ensure they appear after greeting
+  if (!templateText.includes('{{chitLines}}') && !templateText.includes('{CHIT_LINES}') && chitLinesText) {
+    const greetingMatch = compiled.match(/^([^\n]+(?:గారు|Garu|Sir|Madam|ji)?)\n*/i);
+    if (greetingMatch) {
+      const greeting = greetingMatch[0];
+      const rest = compiled.slice(greeting.length);
+      compiled = `${greeting.trim()}\n\n${chitLinesText}\n\n${rest.trim()}`;
+    } else {
+      compiled = `${chitLinesText}\n\n${compiled}`;
+    }
+  }
+
+  // Strip any accidental double currency symbols
+  compiled = compiled.replace(/₹₹+/g, '₹');
+
+  if (upiUrl && upiUrl.trim()) {
+    compiled += `\n\nPayment Link (UPI):\n${upiUrl.trim()}`;
+  }
+
+  return compiled;
+}
+
 export function formatLockedWhatsAppMessage(
   member,
   {
@@ -235,6 +316,13 @@ export function formatLockedWhatsAppMessage(
     dueDate = '15th of Month',
     allGroupsList = [],
     paymentsList = [],
+    customTemplateText = null,
+    chitMonth = null,
+    monthlyAmount = null,
+    pendingAmount = null,
+    balanceAmount = null,
+    totalAmount = null,
+    finalAmount = null,
   } = {}
 ) {
   if (!member) return '';
@@ -253,19 +341,47 @@ export function formatLockedWhatsAppMessage(
     } : {});
 
     const chitMonthData = getChitMonthForGroup(targetChit, billingMonth, allGroupsList);
-    const chitMonthStr = chitMonthData.display || `${chitMonthData.currentMonth || 1}/${chitMonthData.totalMonths || 20}`;
+    const chitMonthStr = chitMonth || chitMonthData.display || `${chitMonthData.currentMonth || 1}/${chitMonthData.totalMonths || 20}`;
 
-    const baseMonthly = getEffectiveMonthlyAmount(member, targetChit, groupPaymentSettings);
+    const baseMonthly = monthlyAmount !== null && monthlyAmount !== undefined
+      ? Number(monthlyAmount)
+      : getEffectiveMonthlyAmount(member, targetChit, groupPaymentSettings);
     const quantity = Number(targetChit.quantity || 1);
     const fullMonthlyAmount = baseMonthly * quantity;
     const paidSoFar = getPaidAmountForChit(member, targetChit, billingMonth, paymentsList);
     const remainingMonthly = Math.max(fullMonthlyAmount - paidSoFar, 0);
 
-    const pendingAmount = Number(targetChit.pending ?? member.pending ?? 0);
-    const balanceCredit = Number(targetChit.balance ?? member.balance ?? 0);
-    const finalPayable = Math.max(remainingMonthly + pendingAmount - balanceCredit, 0);
+    const calcPending = pendingAmount !== null && pendingAmount !== undefined
+      ? Number(pendingAmount)
+      : Number(targetChit.pending ?? member.pending ?? 0);
+    const calcBalance = balanceAmount !== null && balanceAmount !== undefined
+      ? Number(balanceAmount)
+      : Number(targetChit.balance ?? member.balance ?? 0);
+    const calcTotal = totalAmount !== null && totalAmount !== undefined
+      ? Number(totalAmount)
+      : (remainingMonthly + calcPending);
+    const calcFinal = finalAmount !== null && finalAmount !== undefined
+      ? Number(finalAmount)
+      : Math.max(remainingMonthly + calcPending - calcBalance, 0);
 
-    const formattedBalance = balanceCredit === 0 ? '00' : balanceCredit;
+    const formattedBalance = calcBalance === 0 ? '00' : calcBalance;
+
+    if (customTemplateText && typeof customTemplateText === 'string' && customTemplateText.trim()) {
+      return formatWhatsAppTemplate({
+        templateText: customTemplateText,
+        memberName,
+        phone: member.whatsapp || member.phone || '',
+        groupName: targetChit.groupId || 'Chit Group',
+        chitMonth: chitMonthStr,
+        chitAmount: remainingMonthly,
+        pendingAmount: calcPending,
+        balanceAmount: calcBalance,
+        totalAmount: calcTotal,
+        finalAmount: calcFinal,
+        billingMonth,
+        dueDate,
+      });
+    }
 
     return `${memberName} గారు
 
@@ -313,17 +429,43 @@ export function formatLockedWhatsAppMessage(
     return `${chitMonthStr} : ${formatRawNumber(remainingMonthly)}`;
   });
 
-  if (totalPendingSum === 0 && member?.pending) {
+  if (pendingAmount !== null && pendingAmount !== undefined) {
+    totalPendingSum = Number(pendingAmount);
+  } else if (totalPendingSum === 0 && member?.pending) {
     const mPending = Number(member.pending);
     if (!isNaN(mPending) && mPending > 0) totalPendingSum = mPending;
   }
-  if (totalBalanceSum === 0 && member?.balance) {
+  if (balanceAmount !== null && balanceAmount !== undefined) {
+    totalBalanceSum = Number(balanceAmount);
+  } else if (totalBalanceSum === 0 && member?.balance) {
     const mBalance = Number(member.balance);
     if (!isNaN(mBalance) && mBalance > 0) totalBalanceSum = mBalance;
   }
 
-  const combinedFinalPayable = Math.max(totalMonthlySum + totalPendingSum - totalBalanceSum, 0);
+  const combinedTotal = totalAmount !== null && totalAmount !== undefined
+    ? Number(totalAmount)
+    : (totalMonthlySum + totalPendingSum);
+  const combinedFinalPayable = finalAmount !== null && finalAmount !== undefined
+    ? Number(finalAmount)
+    : Math.max(totalMonthlySum + totalPendingSum - totalBalanceSum, 0);
   const chitLinesText = chitLines.join('\n');
+
+  if (customTemplateText && typeof customTemplateText === 'string' && customTemplateText.trim()) {
+    return formatWhatsAppTemplateMulti({
+      templateText: customTemplateText,
+      memberName,
+      phone: member.whatsapp || member.phone || '',
+      chitLinesText,
+      chitMonth: chitMonth || billingMonth,
+      monthlyAmount: totalMonthlySum,
+      pendingAmount: totalPendingSum,
+      balanceAmount: totalBalanceSum,
+      totalAmount: combinedTotal,
+      finalAmount: combinedFinalPayable,
+      billingMonth,
+      dueDate,
+    });
+  }
 
   return `${memberName} గారు
 
