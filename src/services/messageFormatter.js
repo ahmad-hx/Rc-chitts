@@ -386,10 +386,10 @@ export function formatLockedWhatsAppMessage(
     return `${memberName} గారు
 
 ఈనెల చీటీ ${chitMonthStr}      ${remainingMonthly}
-పాత బాకీ             ${pendingAmount}
+పాత బాకీ             ${calcPending}
 నిల్వ                   ${formattedBalance}
 
-మొత్తం               ${finalPayable}
+మొత్తం               ${calcFinal}
 
 ఈనెల మీ వాయిదా మొత్తాన్ని 15వ తారీకు లోపు
 తప్పనిసరిగా చెల్లించవలెను

@@ -275,20 +275,22 @@ export function generatePersonalizedMessage(
 
   // Multiple Chit member formatting
   if (isMulti) {
-    const textToUse = multiTemplateText || templateText;
+    const rawText = multiTemplateText || templateText;
+    const isCustom = rawText && rawText !== 'PAYMENT_REMINDER_TEMPLATE' && rawText !== 'LOCKED_DEFAULT' && typeof rawText === 'string';
     return formatLockedWhatsAppMessage(member, {
       groupPaymentSettings,
       billingMonth,
       dueDate,
       allGroupsList: groupsToUse,
       paymentsList: pList,
-      customTemplateText: textToUse,
+      customTemplateText: isCustom ? rawText : null,
     });
   }
 
   // Single Chit format
-  const singleTextToUse = singleTemplateText || templateText;
-  if (singleTextToUse && typeof singleTextToUse === 'string' && singleTextToUse.trim()) {
+  const rawSingleText = singleTemplateText || templateText;
+  const isSingleCustom = rawSingleText && rawSingleText !== 'PAYMENT_REMINDER_TEMPLATE' && rawSingleText !== 'LOCKED_DEFAULT' && typeof rawSingleText === 'string';
+  if (isSingleCustom && rawSingleText.trim()) {
     const targetChit = activeChits[0] || (member?.groupId || member?.group || member?.chitGroup ? {
       groupId: member.groupId || member.group || member.chitGroup,
       totalChitValue: member.calculatedTotalChitValue || member.totalChitValue || 100000,

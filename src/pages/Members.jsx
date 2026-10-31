@@ -28,6 +28,7 @@ import Badge from '../components/Badge';
 import Toast from '../components/Toast';
 import Modal from '../components/Modal';
 import MemberMessageModal from '../components/MemberMessageModal';
+import PaymentStatusBadge from '../components/PaymentStatusBadge';
 import { memberService, chitService, groupPaymentSettingsService } from '../services/dbService';
 import {
   getEffectiveMonthlyAmount,
@@ -303,7 +304,7 @@ export default function Members() {
 
   const calculateMemberTotalPayable = (member) => {
     const activeChits = getActiveChits(member);
-    return activeChits.reduce((sum, chit) => sum + calculateChitPayable(chit), 0);
+    return activeChits.reduce((sum, chit) => sum + calculateChitPayable(chit, member), 0);
   };
 
   // Pre-calculate Roster Statistics for Top Category Navigation Cards
@@ -761,6 +762,7 @@ export default function Members() {
     const current = getGroupMonthlyBaseAmount(val, grp);
 
     setTargetGroupForMonthly({
+      id: group.id || group.docId || null,
       chitValue: val,
       groupId: grp,
       fullFormattedValue: `₹${(val / 100000).toFixed(0)} Lakh Group ${grp}`,
@@ -782,6 +784,7 @@ export default function Members() {
     setIsSavingMonthlyAmount(true);
     try {
       const res = await groupPaymentSettingsService.saveGroupPaymentSetting({
+        groupDocId: targetGroupForMonthly.id,
         chitValue: targetGroupForMonthly.chitValue,
         groupId: targetGroupForMonthly.groupId,
         monthlyAmount: parsedAmount,
@@ -1418,6 +1421,7 @@ export default function Members() {
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="text-base font-black text-[#111111] truncate">{member.name}</h3>
+                          <PaymentStatusBadge member={member} />
                           <Badge variant={isMulti ? 'neutral' : 'success'} className="text-[10px] font-bold">
                             {isMulti ? 'MULTIPLE' : 'SINGLE'}
                           </Badge>
@@ -1587,7 +1591,10 @@ export default function Members() {
             <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Member Name</span>
-                <span className="font-bold text-white text-sm">{selectedMember.name}</span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="font-bold text-white text-sm">{selectedMember.name}</span>
+                  <PaymentStatusBadge member={selectedMember} />
+                </div>
               </div>
               <div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Mobile Phone</span>

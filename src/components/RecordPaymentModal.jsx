@@ -5,6 +5,7 @@ import { IndianRupee } from 'lucide-react';
 import { memberService, paymentService, chitService, groupPaymentSettingsService } from '../services/dbService';
 import { useBillingMonth } from '../context/BillingMonthContext';
 import { getEffectiveMonthlyAmount } from '../utils/amountUtils';
+import PaymentStatusBadge from './PaymentStatusBadge';
 
 export default function RecordPaymentModal({
   isOpen,
@@ -253,8 +254,11 @@ export default function RecordPaymentModal({
         )}
 
         {/* MEMBER SELECTOR */}
-        <div className="space-y-1">
-          <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">Member *</label>
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">Member *</label>
+            {selectedMember && <PaymentStatusBadge member={selectedMember} />}
+          </div>
           <select
             value={selectedMemberId}
             onChange={(e) => {
@@ -263,11 +267,20 @@ export default function RecordPaymentModal({
             }}
             className="w-full px-3 py-2 text-xs bg-[#F7F8F7] border border-[#E5E7EB] rounded-xl text-[#111111] font-bold focus:outline-none focus:ring-1 focus:ring-[#285F52] cursor-pointer"
           >
-            {members.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name} ({m.phone}) {m.classification === 'MULTIPLE' ? '• Multi-Chit' : ''}
-              </option>
-            ))}
+            {members.map((m) => {
+              const pendingVal = Number(m.pendingAmount || 0);
+              const balanceVal = Number(m.balanceAmount || 0);
+              const statusTag = [
+                pendingVal > 0 ? '🔴 Pending' : '',
+                balanceVal > 0 ? '🟢 Balance' : '',
+              ].filter(Boolean).join(' ');
+
+              return (
+                <option key={m.id} value={m.id}>
+                  {m.name} ({m.phone}) {statusTag ? `[${statusTag}] ` : ''}{m.classification === 'MULTIPLE' ? '• Multi-Chit' : ''}
+                </option>
+              );
+            })}
           </select>
         </div>
 

@@ -198,6 +198,7 @@ export default function ChitsPlaceholder() {
     const current = getGroupMonthlyPremium(group);
 
     setTargetGroupForMonthly({
+      id: group?.id || group?.docId || null,
       chitValue: val,
       groupId: grp,
       fullFormattedValue: `₹${(val / 100000).toFixed(0)} Lakh Group ${grp}`,
@@ -239,6 +240,7 @@ export default function ChitsPlaceholder() {
     setIsSavingMonthly(true);
     try {
       const res = await groupPaymentSettingsService.saveGroupPaymentSetting({
+        groupDocId: targetGroupForMonthly.id,
         chitValue: targetGroupForMonthly.chitValue,
         groupId: targetGroupForMonthly.groupId,
         monthlyAmount: parsedAmount,

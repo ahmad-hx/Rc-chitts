@@ -19,6 +19,9 @@ import {
   RefreshCw,
   Table,
   RotateCcw,
+  Plus,
+  Trash2,
+  X,
 } from 'lucide-react';
 
 import Card from '../components/Card';
@@ -31,13 +34,12 @@ import {
   memberService,
   chitService,
   groupPaymentSettingsService,
-  groupRecordService,
+  groupSpreadsheetService,
 } from '../services/dbService';
 import { getEffectiveMonthlyAmount, normalizeGroupId } from '../utils/amountUtils';
-import { getChitMonthForGroup } from '../utils/chitMonthUtils';
 import { useBillingMonth } from '../context/BillingMonthContext';
 
-// Roman numeral parsing helper
+// Roman numeral parsing helper for sorting Groups (I, II, III, IV, etc.)
 function parseRomanNumeral(str = '') {
   const clean = String(str).toUpperCase().trim().replace(/^GROUP\s+/, '');
   const romanMap = { I: 1, V: 5, X: 10, L: 50, C: 100, D: 500, M: 1000 };
@@ -84,23 +86,24 @@ export default function ChitRecords() {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
 
-  // Spreadsheet state for active group sheet
-  const [groupRecordData, setGroupRecordData] = useState(null);
-  const [sheetRows, setSheetRows] = useState({});
-  const [columnHeaders, setColumnHeaders] = useState({
-    notes: 'Notes / Remarks',
-    custom1: 'Custom 1',
-    custom2: 'Custom 2',
-    custom3: 'Custom 3',
-    custom4: 'Custom 4',
-  });
-  const [isSavingRecord, setIsSavingRecord] = useState(false);
+  // Blank Spreadsheet State for Active Group Sheet
+  const [spreadsheetColumns, setSpreadsheetColumns] = useState([
+    { id: 'col_sno', name: 'S.No', width: 70 },
+    { id: 'col_1', name: 'Column 1', width: 180 },
+    { id: 'col_2', name: 'Column 2', width: 180 },
+    { id: 'col_3', name: 'Column 3', width: 180 },
+    { id: 'col_4', name: 'Column 4', width: 180 },
+  ]);
+  const [spreadsheetRows, setSpreadsheetRows] = useState([]);
+  const [isSavingSpreadsheet, setIsSavingSpreadsheet] = useState(false);
+  const [isLoadingSpreadsheet, setIsLoadingSpreadsheet] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [sheetSearchQuery, setSheetSearchQuery] = useState('');
 
-  // Column header rename modal state
-  const [isHeaderModalOpen, setIsHeaderModalOpen] = useState(false);
-  const [editingHeaders, setEditingHeaders] = useState({ ...columnHeaders });
+  // Column Management Modal State
+  const [isManageColumnsModalOpen, setIsManageColumnsModalOpen] = useState(false);
+  const [editingColumns, setEditingColumns] = useState([]);
+  const [newColumnName, setNewColumnName] = useState('');
 
   // Unsaved changes confirm modal
   const [pendingNavigationAction, setPendingNavigationAction] = useState(null);
@@ -123,7 +126,7 @@ export default function ChitRecords() {
     return 'categories';
   }, [selectedCategory, selectedGroupId]);
 
-  // Load database records on mount
+  // Load database records on mount (for Category and Group list statistics)
   const loadDatabaseData = useCallback(async () => {
     setLoading(true);
     try {
@@ -152,7 +155,6 @@ export default function ChitRecords() {
   const availableCategories = useMemo(() => {
     const valueMap = new Map();
 
-    // From explicit chits collection
     (chits || []).forEach((c) => {
       const val = Number(c.totalChitValue || c.totalValue || c.chitValue || 100000);
       if (val > 0) {
@@ -170,7 +172,6 @@ export default function ChitRecords() {
       }
     });
 
-    // From members holdings
     (members || []).forEach((m) => {
       if (m.status === 'archived') return;
       const activeChits = (m.chits || []).filter((c) => !c.status || c.status === 'ACTIVE');
@@ -206,7 +207,6 @@ export default function ChitRecords() {
 
     const groupMap = new Map();
 
-    // From chits collection
     (chits || []).forEach((c) => {
       const val = Number(c.totalChitValue || c.totalValue || c.chitValue || 100000);
       if (val === selectedCategory) {
@@ -230,7 +230,6 @@ export default function ChitRecords() {
       }
     });
 
-    // Populate enrolled members and discover groups referenced across members
     (members || []).forEach((m) => {
       if (m.status === 'archived') return;
       const activeChits = (m.chits || []).filter((c) => !c.status || c.status === 'ACTIVE');
@@ -276,240 +275,267 @@ export default function ChitRecords() {
     };
   }, [categoryGroups, selectedGroupId, selectedCategory]);
 
-  // Load Group Records Spreadsheet data when Screen 3 (sheet) opens
+  // Load Group's Independent Spreadsheet when Screen 3 (sheet) opens
   useEffect(() => {
     let mounted = true;
-    async function loadSpreadsheetRecord() {
-      if (!selectedCategory || !selectedGroupId) {
-        setGroupRecordData(null);
-        setSheetRows({});
+    async function loadSpreadsheet() {
+      if (!selectedCategory || !selectedGroupId || !activeGroup) {
+        setSpreadsheetRows([]);
         setIsDirty(false);
         return;
       }
 
+      setIsLoadingSpreadsheet(true);
       try {
         const cleanGrp = normalizeGroupId(selectedGroupId);
-        const record = await groupRecordService.getGroupRecord(selectedCategory, cleanGrp);
+        const data = await groupSpreadsheetService.getSpreadsheet(
+          activeGroup.id,
+          selectedCategory,
+          cleanGrp
+        );
+
         if (mounted) {
-          setGroupRecordData(record);
-          setColumnHeaders(
-            record.columnHeaders || {
-              notes: 'Notes / Remarks',
-              custom1: 'Custom 1',
-              custom2: 'Custom 2',
-              custom3: 'Custom 3',
-              custom4: 'Custom 4',
-            }
+          setSpreadsheetColumns(
+            Array.isArray(data.columns) && data.columns.length > 0
+              ? data.columns
+              : [
+                  { id: 'col_sno', name: 'S.No', width: 70 },
+                  { id: 'col_1', name: 'Column 1', width: 180 },
+                  { id: 'col_2', name: 'Column 2', width: 180 },
+                  { id: 'col_3', name: 'Column 3', width: 180 },
+                  { id: 'col_4', name: 'Column 4', width: 180 },
+                ]
           );
-          setSheetRows(record.records || {});
+
+          setSpreadsheetRows(
+            Array.isArray(data.rows) && data.rows.length > 0
+              ? data.rows
+              : [
+                  { id: 'row_1', cells: { col_sno: '1', col_1: '', col_2: '', col_3: '', col_4: '' } },
+                  { id: 'row_2', cells: { col_sno: '2', col_1: '', col_2: '', col_3: '', col_4: '' } },
+                  { id: 'row_3', cells: { col_sno: '3', col_1: '', col_2: '', col_3: '', col_4: '' } },
+                  { id: 'row_4', cells: { col_sno: '4', col_1: '', col_2: '', col_3: '', col_4: '' } },
+                  { id: 'row_5', cells: { col_sno: '5', col_1: '', col_2: '', col_3: '', col_4: '' } },
+                ]
+          );
           setIsDirty(false);
         }
       } catch (err) {
-        console.error('Failed to load group sheet record:', err);
+        console.error('Failed to load group spreadsheet:', err);
         if (mounted) {
-          showToast('Failed to load group spreadsheet data.', 'error');
+          showToast('Failed to load group spreadsheet from Firebase.', 'error');
+        }
+      } finally {
+        if (mounted) {
+          setIsLoadingSpreadsheet(false);
         }
       }
     }
 
-    loadSpreadsheetRecord();
+    loadSpreadsheet();
     return () => {
       mounted = false;
     };
-  }, [selectedCategory, selectedGroupId]);
-
-  // Compute members belonging to the active group
-  const groupMembersRoster = useMemo(() => {
-    if (!selectedCategory || !selectedGroupId) return [];
-    const cleanGrp = normalizeGroupId(selectedGroupId);
-
-    const roster = [];
-    (members || []).forEach((m) => {
-      if (m.status === 'archived') return;
-
-      const activeChits = (m.chits || []).filter((c) => !c.status || c.status === 'ACTIVE');
-      activeChits.forEach((c) => {
-        const cVal = Number(c.totalChitValue || c.totalValue || c.chitValue || m.totalChitValue || 100000);
-        const cGrp = normalizeGroupId(c.groupId || c.group || m.groupId || m.group);
-
-        if (cVal === selectedCategory && cGrp === cleanGrp) {
-          const subId = c.id || `sub_${m.id}_${cleanGrp}`;
-          const effectiveMonthly = getEffectiveMonthlyAmount(m, c, groupPaymentSettings);
-
-          roster.push({
-            rowKey: subId,
-            memberId: m.id,
-            memberName: m.name,
-            phone: m.phone || m.whatsapp || '',
-            whatsapp: m.whatsapp || m.phone || '',
-            classification: m.classification || (activeChits.length > 1 ? 'MULTIPLE' : 'SINGLE'),
-            subscription: c,
-            monthlyAmount: effectiveMonthly,
-            quantity: Number(c.quantity || 1),
-          });
-        }
-      });
-    });
-
-    // Stable sort by member name
-    return roster.sort((a, b) => a.memberName.localeCompare(b.memberName));
-  }, [members, selectedCategory, selectedGroupId, groupPaymentSettings]);
+  }, [selectedCategory, selectedGroupId, activeGroup?.id]);
 
   // Filtered rows for Excel sheet based on in-sheet search
-  const filteredRoster = useMemo(() => {
+  const filteredRows = useMemo(() => {
     const q = sheetSearchQuery.toLowerCase().trim();
-    if (!q) return groupMembersRoster;
-    return groupMembersRoster.filter(
-      (r) =>
-        r.memberName.toLowerCase().includes(q) ||
-        r.phone.includes(q) ||
-        (sheetRows[r.rowKey]?.notes && sheetRows[r.rowKey].notes.toLowerCase().includes(q)) ||
-        (sheetRows[r.rowKey]?.custom1 && sheetRows[r.rowKey].custom1.toLowerCase().includes(q)) ||
-        (sheetRows[r.rowKey]?.custom2 && sheetRows[r.rowKey].custom2.toLowerCase().includes(q)) ||
-        (sheetRows[r.rowKey]?.custom3 && sheetRows[r.rowKey].custom3.toLowerCase().includes(q)) ||
-        (sheetRows[r.rowKey]?.custom4 && sheetRows[r.rowKey].custom4.toLowerCase().includes(q))
-    );
-  }, [groupMembersRoster, sheetSearchQuery, sheetRows]);
+    if (!q) return spreadsheetRows;
+    return spreadsheetRows.filter((row) => {
+      const cells = row.cells || {};
+      return Object.values(cells).some((val) =>
+        String(val || '').toLowerCase().includes(q)
+      );
+    });
+  }, [spreadsheetRows, sheetSearchQuery]);
 
   // Cell change handler
-  const handleCellChange = (rowKey, field, value) => {
-    setSheetRows((prev) => {
-      const existingRow = prev[rowKey] || {};
-      return {
-        ...prev,
-        [rowKey]: {
-          ...existingRow,
-          [field]: value,
-          updatedAt: new Date().toISOString(),
+  const handleCellChange = (rowId, colId, value) => {
+    setSpreadsheetRows((prev) =>
+      prev.map((r) =>
+        r.id === rowId
+          ? {
+              ...r,
+              cells: {
+                ...(r.cells || {}),
+                [colId]: value,
+              },
+            }
+          : r
+      )
+    );
+    setIsDirty(true);
+  };
+
+  // Add 1 Row
+  const handleAddRow = () => {
+    const nextSNo = spreadsheetRows.length + 1;
+    const newRowId = `row_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    const initialCells = {};
+    spreadsheetColumns.forEach((col) => {
+      initialCells[col.id] = col.id === 'col_sno' ? String(nextSNo) : '';
+    });
+
+    setSpreadsheetRows((prev) => [...prev, { id: newRowId, cells: initialCells }]);
+    setIsDirty(true);
+  };
+
+  // Add 5 Rows at once
+  const handleAdd5Rows = () => {
+    const newRows = [];
+    const baseLen = spreadsheetRows.length;
+    for (let i = 0; i < 5; i++) {
+      const nextSNo = baseLen + i + 1;
+      const newRowId = `row_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 5)}`;
+      const initialCells = {};
+      spreadsheetColumns.forEach((col) => {
+        initialCells[col.id] = col.id === 'col_sno' ? String(nextSNo) : '';
+      });
+      newRows.push({ id: newRowId, cells: initialCells });
+    }
+
+    setSpreadsheetRows((prev) => [...prev, ...newRows]);
+    setIsDirty(true);
+  };
+
+  // Delete Row
+  const handleDeleteRow = (rowId) => {
+    setSpreadsheetRows((prev) => {
+      const filtered = prev.filter((r) => r.id !== rowId);
+      // Auto-renumber col_sno if present
+      return filtered.map((r, idx) => ({
+        ...r,
+        cells: {
+          ...(r.cells || {}),
+          ...(r.cells?.col_sno !== undefined ? { col_sno: String(idx + 1) } : {}),
         },
-      };
+      }));
     });
     setIsDirty(true);
   };
 
-  // Save spreadsheet custom records & headers to Firebase
-  const handleSaveSpreadsheet = async () => {
-    if (!selectedCategory || !selectedGroupId) return;
+  // Add Column
+  const handleAddColumn = (name) => {
+    const colCount = spreadsheetColumns.length;
+    const colName = name && name.trim() ? name.trim() : `Column ${colCount}`;
+    const newColId = `col_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
 
-    setIsSavingRecord(true);
+    const newCol = { id: newColId, name: colName, width: 180 };
+    setSpreadsheetColumns((prev) => [...prev, newCol]);
+
+    // Ensure all existing rows have the cell initialized
+    setSpreadsheetRows((prev) =>
+      prev.map((r) => ({
+        ...r,
+        cells: {
+          ...(r.cells || {}),
+          [newColId]: '',
+        },
+      }))
+    );
+
+    setIsDirty(true);
+    showToast(`Added column "${colName}".`, 'success');
+  };
+
+  // Delete Column
+  const handleDeleteColumn = (colId) => {
+    if (spreadsheetColumns.length <= 1) {
+      showToast('Cannot delete all columns. At least one column must remain.', 'error');
+      return;
+    }
+    const targetCol = spreadsheetColumns.find((c) => c.id === colId);
+    setSpreadsheetColumns((prev) => prev.filter((c) => c.id !== colId));
+
+    // Remove key from cell rows
+    setSpreadsheetRows((prev) =>
+      prev.map((r) => {
+        const cells = { ...(r.cells || {}) };
+        delete cells[colId];
+        return { ...r, cells };
+      })
+    );
+
+    setIsDirty(true);
+    showToast(`Column "${targetCol?.name || 'Column'}" removed.`, 'info');
+  };
+
+  // Save Spreadsheet to Firebase (Document ID: groupSpreadsheets/{activeGroup.id})
+  const handleSaveSpreadsheet = async () => {
+    if (!selectedCategory || !selectedGroupId || !activeGroup) return;
+
+    setIsSavingSpreadsheet(true);
     try {
       const cleanGrp = normalizeGroupId(selectedGroupId);
-      await groupRecordService.saveGroupRecord({
+      await groupSpreadsheetService.saveSpreadsheet({
+        groupDocId: activeGroup.id,
         chitValue: selectedCategory,
         groupId: cleanGrp,
-        columnHeaders,
-        records: sheetRows,
+        columns: spreadsheetColumns,
+        rows: spreadsheetRows,
       });
 
       setIsDirty(false);
-      showToast(`✓ Spreadsheet records for Group ${cleanGrp} saved to Firebase!`, 'success');
+      showToast(`✓ Blank spreadsheet for Group ${cleanGrp} saved to Firebase!`, 'success');
     } catch (err) {
-      console.error('Failed to save spreadsheet record:', err);
+      console.error('Failed to save spreadsheet:', err);
       showToast(`Failed to save spreadsheet: ${err.message}`, 'error');
     } finally {
-      setIsSavingRecord(false);
+      setIsSavingSpreadsheet(false);
     }
-  };
-
-  // Save custom column header renames
-  const handleSaveHeaders = () => {
-    setColumnHeaders({ ...editingHeaders });
-    setIsDirty(true);
-    setIsHeaderModalOpen(false);
-    showToast('Column headers updated! Click "Save Changes" to persist in Firebase.', 'info');
   };
 
   // Export genuine .xlsx workbook
   const handleExportExcel = () => {
-    if (!groupMembersRoster.length) {
-      showToast('No member records to export for this group.', 'error');
+    if (!spreadsheetRows.length) {
+      showToast('No rows to export for this group spreadsheet.', 'error');
       return;
     }
 
     try {
       const cleanGrp = normalizeGroupId(selectedGroupId);
       const categoryLakh = (selectedCategory / 100000).toFixed(0);
-      const titleBanner = `Raghavendra Chitts — ₹${categoryLakh} Lakh Chit (Group ${cleanGrp}) Member Sheet`;
+      const titleBanner = `Raghavendra Chitts — ₹${categoryLakh} Lakh Chit (Group ${cleanGrp}) Spreadsheet`;
       const exportDate = new Date().toLocaleDateString('en-IN', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
       });
 
-      // Prepare worksheet rows
+      const headerNames = spreadsheetColumns.map((col) => col.name);
+      const dataRows = spreadsheetRows.map((row) =>
+        spreadsheetColumns.map((col) => row.cells?.[col.id] || '')
+      );
+
       const worksheetData = [
         [titleBanner],
-        [`Export Date: ${exportDate} | Active Members: ${groupMembersRoster.length}`],
+        [`Export Date: ${exportDate} | Rows: ${spreadsheetRows.length} | Columns: ${spreadsheetColumns.length}`],
         [], // empty separator row
-        [
-          'S.No',
-          'Member Name',
-          'Phone Number',
-          'Monthly Amount (₹)',
-          columnHeaders.notes || 'Notes / Remarks',
-          columnHeaders.custom1 || 'Custom 1',
-          columnHeaders.custom2 || 'Custom 2',
-          columnHeaders.custom3 || 'Custom 3',
-          columnHeaders.custom4 || 'Custom 4',
-        ],
+        headerNames,
+        ...dataRows,
       ];
-
-      let totalMonthlySum = 0;
-
-      groupMembersRoster.forEach((row, idx) => {
-        const rowData = sheetRows[row.rowKey] || {};
-        totalMonthlySum += Number(row.monthlyAmount || 0);
-
-        worksheetData.push([
-          idx + 1,
-          row.memberName,
-          row.phone || '',
-          row.monthlyAmount,
-          rowData.notes || '',
-          rowData.custom1 || '',
-          rowData.custom2 || '',
-          rowData.custom3 || '',
-          rowData.custom4 || '',
-        ]);
-      });
-
-      // Summary row
-      worksheetData.push([]);
-      worksheetData.push([
-        'TOTAL',
-        `${groupMembersRoster.length} Members`,
-        '',
-        totalMonthlySum,
-        '',
-        '',
-        '',
-        '',
-        '',
-      ]);
 
       const ws = XLSX.utils.aoa_to_sheet(worksheetData);
 
-      // Define clear column widths for Excel readability
-      ws['!cols'] = [
-        { wch: 8 },  // S.No
-        { wch: 28 }, // Member Name
-        { wch: 16 }, // Phone Number
-        { wch: 20 }, // Monthly Amount
-        { wch: 28 }, // Notes / Remarks
-        { wch: 22 }, // Custom 1
-        { wch: 22 }, // Custom 2
-        { wch: 22 }, // Custom 3
-        { wch: 22 }, // Custom 4
-      ];
+      // Compute dynamic column widths
+      ws['!cols'] = spreadsheetColumns.map((col, idx) => {
+        const headerLen = String(col.name || '').length;
+        const maxCellLen = Math.max(
+          ...dataRows.map((r) => String(r[idx] || '').length),
+          0
+        );
+        return { wch: Math.max(12, Math.min(Math.max(headerLen, maxCellLen) + 4, 45)) };
+      });
 
       const wb = XLSX.utils.book_new();
       const validSheetName = `Group_${cleanGrp}_${categoryLakh}L`.substring(0, 31);
       XLSX.utils.book_append_sheet(wb, ws, validSheetName);
 
-      const fileName = `Raghavendra_Chitts_${categoryLakh}L_Group_${cleanGrp}_Records_${new Date().toISOString().split('T')[0]}.xlsx`;
+      const fileName = `Raghavendra_Chitts_${categoryLakh}L_Group_${cleanGrp}_Sheet_${new Date().toISOString().split('T')[0]}.xlsx`;
       XLSX.writeFile(wb, fileName);
 
-      showToast(`✓ Genuine Excel workbook downloaded: ${fileName}!`, 'success');
+      showToast(`✓ Genuine Excel spreadsheet exported: ${fileName}!`, 'success');
     } catch (err) {
       console.error('Failed to export Excel file:', err);
       showToast(`Excel export failed: ${err.message}`, 'error');
@@ -547,6 +573,36 @@ export default function ChitRecords() {
     handleNavigateSafely(() => {
       setSearchParams({ category: String(selectedCategory) });
     });
+  };
+
+  // Manage Columns Modal Handlers
+  const handleOpenManageColumns = () => {
+    setEditingColumns(spreadsheetColumns.map((col) => ({ ...col })));
+    setNewColumnName('');
+    setIsManageColumnsModalOpen(true);
+  };
+
+  const handleSaveColumnChanges = () => {
+    setSpreadsheetColumns([...editingColumns]);
+    setIsDirty(true);
+    setIsManageColumnsModalOpen(false);
+    showToast('Spreadsheet columns updated! Click "Save Changes" to persist in Firebase.', 'info');
+  };
+
+  const handleModalAddColumn = () => {
+    const trimmed = newColumnName.trim();
+    const colName = trimmed || `Column ${editingColumns.length}`;
+    const newColId = `col_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+    setEditingColumns([...editingColumns, { id: newColId, name: colName, width: 180 }]);
+    setNewColumnName('');
+  };
+
+  const handleModalDeleteColumn = (colId) => {
+    if (editingColumns.length <= 1) {
+      showToast('Cannot delete all columns. At least one column must remain.', 'error');
+      return;
+    }
+    setEditingColumns(editingColumns.filter((c) => c.id !== colId));
   };
 
   return (
@@ -596,12 +652,12 @@ export default function ChitRecords() {
               <FileSpreadsheet className="w-7 h-7 text-[#285F52]" />
               {currentView === 'categories' && 'All Chit Categories'}
               {currentView === 'groups' && `₹${(selectedCategory / 100000).toFixed(0)} Lakh Chit Groups`}
-              {currentView === 'sheet' && `Group ${activeGroup?.groupId} Member Spreadsheet`}
+              {currentView === 'sheet' && `Group ${activeGroup?.groupId} Spreadsheet`}
             </h1>
             <p className="text-xs text-[#667085] mt-1">
-              {currentView === 'categories' && 'Select a chit category to explore its groups and manage Excel-style member records.'}
-              {currentView === 'groups' && 'Select a specific chit group below to view and edit its live Excel member sheet.'}
-              {currentView === 'sheet' && `Live editable worksheet for Group ${activeGroup?.groupId} (${groupMembersRoster.length} enrolled members). Changes persist in Firebase.`}
+              {currentView === 'categories' && 'Select a chit category to explore its groups and open their independent Excel spreadsheets.'}
+              {currentView === 'groups' && 'Select a specific chit group below to view and edit its blank custom Excel spreadsheet.'}
+              {currentView === 'sheet' && `Blank, editable spreadsheet for Group ${activeGroup?.groupId}. Add custom rows, columns, and remarks. Changes persist in Firebase.`}
             </p>
           </div>
 
@@ -634,15 +690,12 @@ export default function ChitRecords() {
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() => {
-                    setEditingHeaders({ ...columnHeaders });
-                    setIsHeaderModalOpen(true);
-                  }}
+                  onClick={handleOpenManageColumns}
                   className="rounded-xl gap-2 cursor-pointer font-bold border-[#E5E7EB]"
-                  title="Rename custom column headers"
+                  title="Rename, add, or delete column headers"
                 >
                   <Edit2 className="w-3.5 h-3.5" />
-                  <span>Rename Columns</span>
+                  <span>Manage Columns</span>
                 </Button>
 
                 <Button
@@ -659,11 +712,11 @@ export default function ChitRecords() {
                   variant="primary"
                   size="sm"
                   onClick={handleSaveSpreadsheet}
-                  disabled={isSavingRecord || !isDirty}
+                  disabled={isSavingSpreadsheet || !isDirty}
                   className="rounded-xl gap-2 cursor-pointer font-bold shadow-xs"
                 >
-                  <Save className={`w-4 h-4 ${isSavingRecord ? 'animate-spin' : ''}`} />
-                  <span>{isSavingRecord ? 'Saving...' : isDirty ? 'Save Changes *' : 'Saved'}</span>
+                  <Save className={`w-4 h-4 ${isSavingSpreadsheet ? 'animate-spin' : ''}`} />
+                  <span>{isSavingSpreadsheet ? 'Saving...' : isDirty ? 'Save Changes *' : 'Saved'}</span>
                 </Button>
               </>
             )}
@@ -840,7 +893,7 @@ export default function ChitRecords() {
         </div>
       )}
 
-      {/* ─── SCREEN 3: EXCEL-STYLE GROUP MEMBER SHEET ──────────────────────────── */}
+      {/* ─── SCREEN 3: BLANK EDITABLE EXCEL-STYLE GROUP SPREADSHEET ────────────── */}
       {currentView === 'sheet' && activeGroup && (
         <div className="space-y-4">
           {/* SHEET CONTROLS & SEARCH */}
@@ -851,25 +904,59 @@ export default function ChitRecords() {
               </span>
               <div>
                 <h2 className="text-sm font-black text-[#111111]">
-                  ₹{(selectedCategory / 100000).toFixed(0)} Lakh Chit • Group {activeGroup.groupId} Roster
+                  ₹{(selectedCategory / 100000).toFixed(0)} Lakh Chit • Group {activeGroup.groupId} Spreadsheet
                 </h2>
                 <p className="text-[11px] text-[#667085]">
-                  {groupMembersRoster.length} Total Subscriptions • Inline editable cells auto-mark sheet as modified
+                  {spreadsheetRows.length} Rows • {spreadsheetColumns.length} Columns • Independent sheet saved to Firebase
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <div className="relative">
                 <Search className="w-4 h-4 text-[#667085] absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder="Filter sheet members / remarks..."
+                  placeholder="Search inside sheet..."
                   value={sheetSearchQuery}
                   onChange={(e) => setSheetSearchQuery(e.target.value)}
-                  className="pl-9 pr-3 py-1.5 text-xs font-medium rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] text-[#111111] focus:outline-none focus:border-[#285F52] w-60"
+                  className="pl-9 pr-3 py-1.5 text-xs font-medium rounded-xl border border-[#E5E7EB] bg-[#F7F8F7] text-[#111111] focus:outline-none focus:border-[#285F52] w-52"
                 />
               </div>
+
+              {/* QUICK ROW & COLUMN ADD ACTIONS */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleAddRow}
+                className="rounded-xl text-xs gap-1 font-bold cursor-pointer"
+                title="Add a new row at the bottom"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Row</span>
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleAdd5Rows}
+                className="rounded-xl text-xs gap-1 font-bold cursor-pointer"
+                title="Add 5 empty rows at once"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+5 Rows</span>
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleAddColumn()}
+                className="rounded-xl text-xs gap-1 font-bold cursor-pointer"
+                title="Add a new custom column"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Column</span>
+              </Button>
 
               {isDirty && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-[#FFF8E7] text-[#B7791F] font-bold text-xs border border-[#FDE68A]">
@@ -880,175 +967,148 @@ export default function ChitRecords() {
             </div>
           </div>
 
-          {/* EXCEL SPREADSHEET TABLE */}
+          {/* SPREADSHEET GRID TABLE */}
           <div className="bg-white border border-[#E5E7EB] rounded-2xl shadow-xs overflow-hidden">
-            <div className="overflow-x-auto max-h-[620px] overflow-y-auto">
-              <table className="w-full text-left text-xs border-collapse font-sans">
-                {/* STICKY EXCEL-STYLE TABLE HEADER */}
-                <thead className="bg-[#F7F8F7] sticky top-0 z-10 border-b border-[#E5E7EB] shadow-xs text-[#111111]">
-                  <tr>
-                    <th className="p-3 font-black text-center w-14 border-r border-[#E5E7EB] text-[#667085] uppercase tracking-wider text-[10px]">
-                      S.No
-                    </th>
-                    <th className="p-3 font-black min-w-[200px] border-r border-[#E5E7EB] uppercase tracking-wider text-[10px]">
-                      Member Name
-                    </th>
-                    <th className="p-3 font-black min-w-[130px] border-r border-[#E5E7EB] text-right uppercase tracking-wider text-[10px]">
-                      Monthly Amount
-                    </th>
-                    <th className="p-3 font-black min-w-[220px] border-r border-[#E5E7EB] uppercase tracking-wider text-[10px]">
-                      <div className="flex items-center justify-between">
-                        <span>{columnHeaders.notes || 'Notes / Remarks'}</span>
-                      </div>
-                    </th>
-                    <th className="p-3 font-black min-w-[170px] border-r border-[#E5E7EB] uppercase tracking-wider text-[10px]">
-                      <div className="flex items-center justify-between">
-                        <span>{columnHeaders.custom1 || 'Custom 1'}</span>
-                      </div>
-                    </th>
-                    <th className="p-3 font-black min-w-[170px] border-r border-[#E5E7EB] uppercase tracking-wider text-[10px]">
-                      <div className="flex items-center justify-between">
-                        <span>{columnHeaders.custom2 || 'Custom 2'}</span>
-                      </div>
-                    </th>
-                    <th className="p-3 font-black min-w-[170px] border-r border-[#E5E7EB] uppercase tracking-wider text-[10px]">
-                      <div className="flex items-center justify-between">
-                        <span>{columnHeaders.custom3 || 'Custom 3'}</span>
-                      </div>
-                    </th>
-                    <th className="p-3 font-black min-w-[170px] uppercase tracking-wider text-[10px]">
-                      <div className="flex items-center justify-between">
-                        <span>{columnHeaders.custom4 || 'Custom 4'}</span>
-                      </div>
-                    </th>
-                  </tr>
-                </thead>
-
-                {/* SPREADSHEET ROWS */}
-                <tbody className="divide-y divide-[#E5E7EB]">
-                  {filteredRoster.length === 0 ? (
+            {isLoadingSpreadsheet ? (
+              <div className="p-16 text-center text-xs font-bold text-[#667085]">
+                <RefreshCw className="w-6 h-6 animate-spin mx-auto text-[#285F52] mb-2" />
+                Loading group spreadsheet...
+              </div>
+            ) : (
+              <div className="overflow-x-auto max-h-[620px] overflow-y-auto">
+                <table className="w-full text-left text-xs border-collapse font-sans">
+                  {/* STICKY EXCEL-STYLE TABLE HEADER */}
+                  <thead className="bg-[#F7F8F7] sticky top-0 z-10 border-b border-[#E5E7EB] shadow-xs text-[#111111]">
                     <tr>
-                      <td colSpan={8} className="p-12 text-center text-[#667085] font-bold text-xs">
-                        {sheetSearchQuery
-                          ? 'No member records match the search filter.'
-                          : 'No active member subscriptions found for this group.'}
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredRoster.map((row, idx) => {
-                      const rowData = sheetRows[row.rowKey] || {};
-
-                      return (
-                        <tr
-                          key={row.rowKey}
-                          className="hover:bg-[#F9FAFB] transition-colors group"
+                      {spreadsheetColumns.map((col, cIdx) => (
+                        <th
+                          key={col.id}
+                          style={{ minWidth: col.width || 160 }}
+                          className={`p-3 font-black border-r border-[#E5E7EB] uppercase tracking-wider text-[11px] ${
+                            col.id === 'col_sno' ? 'text-center w-14 min-w-[60px] text-[#667085]' : ''
+                          }`}
                         >
-                          {/* S.No */}
-                          <td className="p-3 text-center font-mono font-bold text-[#667085] bg-[#F7F8F7]/50 border-r border-[#E5E7EB]">
-                            {idx + 1}
-                          </td>
+                          <div className="flex items-center justify-between group">
+                            <span>{col.name}</span>
+                            {col.id !== 'col_sno' && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteColumn(col.id)}
+                                title={`Delete ${col.name}`}
+                                className="opacity-0 group-hover:opacity-100 text-[#98A2B3] hover:text-[#B42318] p-0.5 rounded cursor-pointer transition-opacity"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        </th>
+                      ))}
+                      <th className="p-3 w-12 text-center text-[#667085] uppercase tracking-wider text-[10px]">
+                        Action
+                      </th>
+                    </tr>
+                  </thead>
 
-                          {/* Member Name */}
-                          <td className="p-3 border-r border-[#E5E7EB]">
-                            <div className="font-bold text-[#111111]">{row.memberName}</div>
-                            <div className="text-[11px] font-mono text-[#667085]">
-                              {row.phone ? `+${row.phone}` : 'No phone'} •{' '}
-                              <span className="text-[10px] font-bold text-[#285F52]">
-                                {row.classification}
-                              </span>
-                            </div>
-                          </td>
+                  {/* SPREADSHEET ROWS */}
+                  <tbody className="divide-y divide-[#E5E7EB]">
+                    {filteredRows.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={spreadsheetColumns.length + 1}
+                          className="p-12 text-center text-[#667085] font-bold text-xs"
+                        >
+                          {sheetSearchQuery
+                            ? 'No rows match the search query.'
+                            : 'This spreadsheet is currently blank. Click "+ Add Row" above to begin entering data.'}
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredRows.map((row, rIdx) => {
+                        const cells = row.cells || {};
 
-                          {/* Monthly Amount (Effective resolved amount) */}
-                          <td className="p-3 border-r border-[#E5E7EB] text-right font-mono font-black text-[#285F52]">
-                            ₹{Number(row.monthlyAmount || 0).toLocaleString('en-IN')}
-                          </td>
+                        return (
+                          <tr
+                            key={row.id}
+                            className="hover:bg-[#F9FAFB] transition-colors group"
+                          >
+                            {spreadsheetColumns.map((col) => {
+                              const isSNo = col.id === 'col_sno';
+                              const cellValue = cells[col.id] !== undefined ? cells[col.id] : '';
 
-                          {/* Notes / Remarks (Editable cell) */}
-                          <td className="p-2 border-r border-[#E5E7EB]">
-                            <input
-                              type="text"
-                              value={rowData.notes || ''}
-                              onChange={(e) => handleCellChange(row.rowKey, 'notes', e.target.value)}
-                              placeholder="Enter remarks..."
-                              className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-transparent hover:border-[#E5E7EB] focus:border-[#285F52] focus:bg-white focus:outline-none transition-all font-medium text-[#111111] bg-transparent"
-                            />
-                          </td>
+                              return (
+                                <td
+                                  key={col.id}
+                                  className={`p-1.5 border-r border-[#E5E7EB] ${
+                                    isSNo ? 'bg-[#F7F8F7]/40 text-center font-bold text-[#667085]' : ''
+                                  }`}
+                                >
+                                  {isSNo ? (
+                                    <span className="font-mono text-xs">{cellValue || rIdx + 1}</span>
+                                  ) : (
+                                    <input
+                                      type="text"
+                                      value={cellValue}
+                                      onChange={(e) => handleCellChange(row.id, col.id, e.target.value)}
+                                      placeholder="—"
+                                      className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-transparent hover:border-[#E5E7EB] focus:border-[#285F52] focus:bg-white focus:outline-none transition-all font-medium text-[#111111] bg-transparent"
+                                    />
+                                  )}
+                                </td>
+                              );
+                            })}
 
-                          {/* Custom Column 1 (Editable cell) */}
-                          <td className="p-2 border-r border-[#E5E7EB]">
-                            <input
-                              type="text"
-                              value={rowData.custom1 || ''}
-                              onChange={(e) => handleCellChange(row.rowKey, 'custom1', e.target.value)}
-                              placeholder="Enter value..."
-                              className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-transparent hover:border-[#E5E7EB] focus:border-[#285F52] focus:bg-white focus:outline-none transition-all font-medium text-[#111111] bg-transparent"
-                            />
-                          </td>
-
-                          {/* Custom Column 2 (Editable cell) */}
-                          <td className="p-2 border-r border-[#E5E7EB]">
-                            <input
-                              type="text"
-                              value={rowData.custom2 || ''}
-                              onChange={(e) => handleCellChange(row.rowKey, 'custom2', e.target.value)}
-                              placeholder="Enter value..."
-                              className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-transparent hover:border-[#E5E7EB] focus:border-[#285F52] focus:bg-white focus:outline-none transition-all font-medium text-[#111111] bg-transparent"
-                            />
-                          </td>
-
-                          {/* Custom Column 3 (Editable cell) */}
-                          <td className="p-2 border-r border-[#E5E7EB]">
-                            <input
-                              type="text"
-                              value={rowData.custom3 || ''}
-                              onChange={(e) => handleCellChange(row.rowKey, 'custom3', e.target.value)}
-                              placeholder="Enter value..."
-                              className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-transparent hover:border-[#E5E7EB] focus:border-[#285F52] focus:bg-white focus:outline-none transition-all font-medium text-[#111111] bg-transparent"
-                            />
-                          </td>
-
-                          {/* Custom Column 4 (Editable cell) */}
-                          <td className="p-2">
-                            <input
-                              type="text"
-                              value={rowData.custom4 || ''}
-                              onChange={(e) => handleCellChange(row.rowKey, 'custom4', e.target.value)}
-                              placeholder="Enter value..."
-                              className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-transparent hover:border-[#E5E7EB] focus:border-[#285F52] focus:bg-white focus:outline-none transition-all font-medium text-[#111111] bg-transparent"
-                            />
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
+                            {/* ROW ACTION: DELETE ROW */}
+                            <td className="p-1.5 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteRow(row.id)}
+                                title="Delete this row"
+                                className="opacity-0 group-hover:opacity-100 p-1.5 text-[#98A2B3] hover:text-[#B42318] hover:bg-[#FEF3F2] rounded-lg transition-all cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
             {/* SPREADSHEET FOOTER BAR */}
             <div className="bg-[#F7F8F7] border-t border-[#E5E7EB] p-3 px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-bold text-[#667085]">
               <div className="flex items-center gap-4">
-                <span>Total Members: <strong className="text-[#111111]">{groupMembersRoster.length}</strong></span>
+                <span>Total Rows: <strong className="text-[#111111] font-mono">{spreadsheetRows.length}</strong></span>
                 <span>•</span>
-                <span>
-                  Total Group Monthly Pool:{' '}
-                  <strong className="text-[#285F52] font-mono">
-                    ₹{groupMembersRoster.reduce((sum, r) => sum + Number(r.monthlyAmount || 0), 0).toLocaleString('en-IN')}
-                  </strong>
+                <span>Total Columns: <strong className="text-[#111111] font-mono">{spreadsheetColumns.length}</strong></span>
+                <span>•</span>
+                <span className="text-[11px] text-[#667085]">
+                  Dedicated Firestore sheet: <code className="font-mono text-[#285F52]">groupSpreadsheets/{activeGroup.id}</code>
                 </span>
               </div>
 
               <div className="flex items-center gap-2">
                 <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddRow}
+                  className="rounded-xl text-xs gap-1 font-bold cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Row</span>
+                </Button>
+
+                <Button
                   variant="primary"
                   size="sm"
                   onClick={handleSaveSpreadsheet}
-                  disabled={isSavingRecord || !isDirty}
-                  className="rounded-xl text-xs gap-1.5 shadow-xs"
+                  disabled={isSavingSpreadsheet || !isDirty}
+                  className="rounded-xl text-xs gap-1.5 shadow-xs font-bold cursor-pointer"
                 >
-                  <Save className="w-3.5 h-3.5" />
-                  <span>{isSavingRecord ? 'Saving Records...' : isDirty ? 'Save Changes *' : 'All Changes Saved ✓'}</span>
+                  <Save className={`w-3.5 h-3.5 ${isSavingSpreadsheet ? 'animate-spin' : ''}`} />
+                  <span>{isSavingSpreadsheet ? 'Saving...' : isDirty ? 'Save Changes *' : 'All Changes Saved ✓'}</span>
                 </Button>
               </div>
             </div>
@@ -1056,85 +1116,88 @@ export default function ChitRecords() {
         </div>
       )}
 
-      {/* ─── MODAL: RENAME CUSTOM COLUMN HEADERS ──────────────────────────────── */}
-      {isHeaderModalOpen && (
+      {/* ─── MODAL: MANAGE SPREADSHEET COLUMNS ─────────────────────────────────── */}
+      {isManageColumnsModalOpen && (
         <Modal
-          isOpen={isHeaderModalOpen}
-          onClose={() => setIsHeaderModalOpen(false)}
-          title="Rename Spreadsheet Column Headers"
-          subtitle={`Configure custom headers for Group ${activeGroup?.groupId} Excel records.`}
-          maxWidth="max-w-md"
+          isOpen={isManageColumnsModalOpen}
+          onClose={() => setIsManageColumnsModalOpen(false)}
+          title="Manage Spreadsheet Columns"
+          subtitle={`Configure custom headers and columns for Group ${activeGroup?.groupId}.`}
+          maxWidth="max-w-lg"
         >
           <div className="space-y-4 text-xs font-sans">
-            <div>
-              <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block mb-1">
-                Notes / Remarks Header
+            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">
+                Existing Columns
               </label>
-              <input
-                type="text"
-                value={editingHeaders.notes}
-                onChange={(e) => setEditingHeaders({ ...editingHeaders, notes: e.target.value })}
-                className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] font-bold text-[#111111] focus:outline-none focus:border-[#285F52]"
-              />
+
+              {editingColumns.map((col, idx) => (
+                <div key={col.id} className="flex items-center gap-2">
+                  <span className="w-6 text-center font-mono font-bold text-[#667085]">{idx + 1}.</span>
+                  <input
+                    type="text"
+                    value={col.name}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setEditingColumns((prev) =>
+                        prev.map((c) => (c.id === col.id ? { ...c, name: val } : c))
+                      );
+                    }}
+                    disabled={col.id === 'col_sno'}
+                    className={`flex-1 px-3 py-1.5 rounded-xl border border-[#E5E7EB] font-bold text-[#111111] focus:outline-none focus:border-[#285F52] ${
+                      col.id === 'col_sno' ? 'bg-[#F7F8F7] text-[#667085] cursor-not-allowed' : ''
+                    }`}
+                  />
+                  {col.id !== 'col_sno' && (
+                    <button
+                      type="button"
+                      onClick={() => handleModalDeleteColumn(col.id)}
+                      className="p-2 text-[#98A2B3] hover:text-[#B42318] hover:bg-[#FEF3F2] rounded-xl transition-colors cursor-pointer"
+                      title="Remove column"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
 
-            <div>
-              <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block mb-1">
-                Custom Column 1 Name
+            {/* ADD NEW COLUMN SECTION INSIDE MODAL */}
+            <div className="pt-3 border-t border-[#E5E7EB] space-y-2">
+              <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">
+                Add New Column
               </label>
-              <input
-                type="text"
-                value={editingHeaders.custom1}
-                onChange={(e) => setEditingHeaders({ ...editingHeaders, custom1: e.target.value })}
-                placeholder="e.g. Token No"
-                className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] font-bold text-[#111111] focus:outline-none focus:border-[#285F52]"
-              />
-            </div>
-
-            <div>
-              <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block mb-1">
-                Custom Column 2 Name
-              </label>
-              <input
-                type="text"
-                value={editingHeaders.custom2}
-                onChange={(e) => setEditingHeaders({ ...editingHeaders, custom2: e.target.value })}
-                placeholder="e.g. Passbook No"
-                className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] font-bold text-[#111111] focus:outline-none focus:border-[#285F52]"
-              />
-            </div>
-
-            <div>
-              <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block mb-1">
-                Custom Column 3 Name
-              </label>
-              <input
-                type="text"
-                value={editingHeaders.custom3}
-                onChange={(e) => setEditingHeaders({ ...editingHeaders, custom3: e.target.value })}
-                placeholder="e.g. Guarantor"
-                className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] font-bold text-[#111111] focus:outline-none focus:border-[#285F52]"
-              />
-            </div>
-
-            <div>
-              <label className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block mb-1">
-                Custom Column 4 Name
-              </label>
-              <input
-                type="text"
-                value={editingHeaders.custom4}
-                onChange={(e) => setEditingHeaders({ ...editingHeaders, custom4: e.target.value })}
-                placeholder="e.g. Remark 2"
-                className="w-full px-3 py-2 rounded-xl border border-[#E5E7EB] font-bold text-[#111111] focus:outline-none focus:border-[#285F52]"
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="e.g. Receipt No, Chit Month, Token..."
+                  value={newColumnName}
+                  onChange={(e) => setNewColumnName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleModalAddColumn();
+                    }
+                  }}
+                  className="flex-1 px-3 py-1.5 rounded-xl border border-[#E5E7EB] font-medium text-[#111111] focus:outline-none focus:border-[#285F52]"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleModalAddColumn}
+                  className="rounded-xl font-bold cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add</span>
+                </Button>
+              </div>
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#E5E7EB]">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setIsHeaderModalOpen(false)}
+                onClick={() => setIsManageColumnsModalOpen(false)}
                 className="rounded-xl font-bold cursor-pointer"
               >
                 Cancel
@@ -1142,10 +1205,10 @@ export default function ChitRecords() {
               <Button
                 variant="primary"
                 size="sm"
-                onClick={handleSaveHeaders}
+                onClick={handleSaveColumnChanges}
                 className="rounded-xl font-bold cursor-pointer shadow-xs"
               >
-                Apply Headers
+                Apply Columns
               </Button>
             </div>
           </div>
@@ -1158,12 +1221,12 @@ export default function ChitRecords() {
           isOpen={Boolean(pendingNavigationAction)}
           onClose={() => setPendingNavigationAction(null)}
           title="Unsaved Spreadsheet Changes"
-          subtitle="You have unsaved changes in this group sheet."
+          subtitle="You have unsaved changes in this group spreadsheet."
           maxWidth="max-w-md"
         >
           <div className="space-y-4 text-xs font-sans">
             <p className="text-[#667085] leading-relaxed">
-              If you leave this group sheet without saving, your recent edits to notes or custom columns will be discarded.
+              If you leave this group spreadsheet without saving, your recent edits will be lost.
             </p>
 
             <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#E5E7EB]">

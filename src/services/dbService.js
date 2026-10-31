@@ -10,10 +10,15 @@ import {
   query,
   where,
   serverTimestamp,
+  writeBatch,
 } from 'firebase/firestore';
 import { auth, db } from '../firebase.js';
 import { historyService } from './historyService.js';
-import { normalizeGroupId, hasExplicitCustomMonthlyAmount } from '../utils/amountUtils.js';
+import {
+  normalizeGroupId,
+  hasExplicitCustomMonthlyAmount,
+  isSubscriptionBelongingToGroup,
+} from '../utils/amountUtils.js';
 
 // Helper to normalize phone numbers for deduplication
 function normalizePhone(value = '') {
@@ -917,7 +922,7 @@ export const groupPaymentSettingsService = {
     }
   },
 
-  async saveGroupPaymentSetting({ chitValue, groupId, monthlyAmount }) {
+  async saveGroupPaymentSetting({ chitValue, groupId, monthlyAmount, groupDocId = null }) {
     await ensureAuthReady();
     const val = Number(chitValue);
     const rawGrp = String(groupId).trim();
@@ -932,6 +937,7 @@ export const groupPaymentSettingsService = {
     const docRef = doc(db, 'groupPaymentSettings', docId);
 
     try {
+      // 1. Save normalized setting doc
       await setDoc(docRef, {
         chitValue: val,
         groupId: grp,
@@ -940,24 +946,23 @@ export const groupPaymentSettingsService = {
         updatedBy: auth.currentUser?.email || 'Admin',
       }, { merge: true });
 
-      // If raw group name had "Group " prefix, also sync raw docId for complete compatibility
-      if (rawGrp.toUpperCase() !== grp) {
-        try {
-          await setDoc(doc(db, 'groupPaymentSettings', `${val}_${rawGrp.toUpperCase()}`), {
-            chitValue: val,
-            groupId: rawGrp,
-            monthlyAmount: amt,
-            updatedAt: serverTimestamp(),
-            updatedBy: auth.currentUser?.email || 'Admin',
-          }, { merge: true });
-        } catch (_) {}
-      }
-
-      // Also synchronize the 'chits' collection document for this group
+      // 2. Save alias doc if raw group has prefix
       try {
-        const chitDocId = `group_${grp}_${val}`;
-        const chitDocRef = doc(db, 'chits', chitDocId);
+        await setDoc(doc(db, 'groupPaymentSettings', `${val}_GROUP ${grp}`), {
+          chitValue: val,
+          groupId: grp,
+          monthlyAmount: amt,
+          updatedAt: serverTimestamp(),
+          updatedBy: auth.currentUser?.email || 'Admin',
+        }, { merge: true });
+      } catch (_) {}
+
+      // 3. Synchronize the 'chits' collection document for this group
+      try {
+        const targetChitDocId = groupDocId || `group_${grp}_${val}`;
+        const chitDocRef = doc(db, 'chits', targetChitDocId);
         await setDoc(chitDocRef, {
+          id: targetChitDocId,
           groupId: grp,
           totalChitValue: val,
           monthlyPremium: amt,
@@ -967,12 +972,27 @@ export const groupPaymentSettingsService = {
         console.warn('Notice: Updating group doc in chits collection:', chitDocErr?.message);
       }
 
-      // Synchronize all member subscriptions for this group
+      // 4. Synchronize all member subscriptions for this exact group across Single & Multiple Chits
       const memberUpdateResults = await this.updateGroupMonthlyAmountForMembers({
         chitValue: val,
         groupId: grp,
         monthlyAmount: amt,
+        groupDocId,
       });
+
+      // 5. Log history event
+      try {
+        await historyService.logHistoryEvent({
+          category: 'Group',
+          action: 'GROUP_MONTHLY_AMOUNT_UPDATED',
+          title: `Group ${grp} Monthly Amount Updated: ₹${amt.toLocaleString('en-IN')}`,
+          details: `Chit Group ${grp} (₹${(val / 100000).toFixed(0)} Lakh) monthly installment updated to ₹${amt.toLocaleString('en-IN')}. Synchronized for ${memberUpdateResults.succeededCount} related member subscriptions.`,
+          entityId: docId,
+          entityType: 'GROUP',
+          groupId: grp,
+          chitValue: val,
+        });
+      } catch (_) {}
 
       return { docId, chitValue: val, groupId: grp, monthlyAmount: amt, ...memberUpdateResults };
     } catch (err) {
@@ -981,20 +1001,21 @@ export const groupPaymentSettingsService = {
     }
   },
 
-  async updateGroupMonthlyAmountForMembers({ chitValue, groupId, monthlyAmount }) {
+  async updateGroupMonthlyAmountForMembers({ chitValue, groupId, monthlyAmount, groupDocId = null }) {
     await ensureAuthReady();
     const val = Number(chitValue);
     const grp = normalizeGroupId(groupId);
     const amt = Number(monthlyAmount);
+    const targetDocId = groupDocId || `group_${grp}_${val}`;
 
     let succeededCount = 0;
-    let failedCount = 0;
-    const failedMembers = [];
     let totalTargetMembers = 0;
 
     try {
       const qSnap = await getDocs(collection(db, 'members'));
-      const updatePromises = [];
+      const batchList = [];
+      let currentBatch = writeBatch(db);
+      let opCountInBatch = 0;
 
       qSnap.forEach((docSnap) => {
         const rawData = docSnap.data() || {};
@@ -1033,19 +1054,17 @@ export const groupPaymentSettingsService = {
         let memberMatchedThisGroup = false;
 
         const updatedChits = currentChits.map((c) => {
-          const cGrp = normalizeGroupId(c?.groupId || c?.group || rawData?.groupId || rawData?.group);
-          const cVal = Number(c?.totalChitValue || c?.totalValue || c?.chitValue || rawData?.totalChitValue || rawData?.chitValue || 100000);
-          const isExplicitCustom = hasExplicitCustomMonthlyAmount(rawData, c);
-
-          if (cGrp === grp && cVal === val) {
+          const belongs = isSubscriptionBelongingToGroup(c, grp, val, targetDocId);
+          if (belongs) {
             memberMatchedThisGroup = true;
+            // Check if explicitly custom
+            const isExplicitCustom = hasExplicitCustomMonthlyAmount(rawData, c, amt);
             if (!isExplicitCustom) {
               needsUpdate = true;
               return {
                 ...c,
                 monthlyAmount: amt,
                 amountToPay: amt,
-                // Ensure legacy accidental custom flags are cleared
                 hasCustomMonthlyAmount: false,
                 isCustomMonthly: false,
                 isCustomAmount: false,
@@ -1061,8 +1080,6 @@ export const groupPaymentSettingsService = {
 
         if (needsUpdate) {
           const memRef = doc(db, 'members', docSnap.id);
-          const memName = rawData.name || rawData.memberName || docSnap.id;
-
           const updatePayload = {
             chits: updatedChits,
             holdings: updatedChits,
@@ -1080,24 +1097,31 @@ export const groupPaymentSettingsService = {
             }
           }
 
-          const p = updateDoc(memRef, updatePayload)
-            .then(() => {
-              succeededCount += 1;
-            })
-            .catch((err) => {
-              failedCount += 1;
-              failedMembers.push({ id: docSnap.id, name: memName, error: err.message });
-            });
+          currentBatch.update(memRef, updatePayload);
+          opCountInBatch += 1;
+          succeededCount += 1;
 
-          updatePromises.push(p);
+          if (opCountInBatch >= 400) {
+            batchList.push(currentBatch);
+            currentBatch = writeBatch(db);
+            opCountInBatch = 0;
+          }
         }
       });
 
-      await Promise.allSettled(updatePromises);
-      return { succeededCount, failedCount, failedMembers, totalTargetMembers };
+      if (opCountInBatch > 0) {
+        batchList.push(currentBatch);
+      }
+
+      // Commit all batches atomically
+      if (batchList.length > 0) {
+        await Promise.all(batchList.map((b) => b.commit()));
+      }
+
+      return { succeededCount, failedCount: 0, failedMembers: [], totalTargetMembers };
     } catch (err) {
       console.error('Error updating member monthly amounts for group:', err);
-      return { succeededCount, failedCount: 1, failedMembers: [{ id: 'all', name: 'Group Members', error: err.message }], totalTargetMembers };
+      throw new Error(`Failed to update all group members: ${err.message}`);
     }
   },
 };
@@ -1190,6 +1214,112 @@ export const groupRecordService = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GROUP SPREADSHEET SERVICE (Separate collection: groupSpreadsheets)
+// Dedicated blank, editable spreadsheet storage per unique chit group
+// ─────────────────────────────────────────────────────────────────────────────
+export const groupSpreadsheetService = {
+  async getSpreadsheet(groupDocId, chitValue, groupId) {
+    await ensureAuthReady();
+    const cleanGrp = normalizeGroupId(groupId);
+    const val = Number(chitValue || 100000);
+    const docId = groupDocId || `group_${cleanGrp}_${val}`;
+
+    const defaultColumns = [
+      { id: 'col_sno', name: 'S.No', width: 70 },
+      { id: 'col_1', name: 'Column 1', width: 180 },
+      { id: 'col_2', name: 'Column 2', width: 180 },
+      { id: 'col_3', name: 'Column 3', width: 180 },
+      { id: 'col_4', name: 'Column 4', width: 180 },
+    ];
+
+    const defaultRows = [
+      { id: 'row_1', cells: { col_sno: '1', col_1: '', col_2: '', col_3: '', col_4: '' } },
+      { id: 'row_2', cells: { col_sno: '2', col_1: '', col_2: '', col_3: '', col_4: '' } },
+      { id: 'row_3', cells: { col_sno: '3', col_1: '', col_2: '', col_3: '', col_4: '' } },
+      { id: 'row_4', cells: { col_sno: '4', col_1: '', col_2: '', col_3: '', col_4: '' } },
+      { id: 'row_5', cells: { col_sno: '5', col_1: '', col_2: '', col_3: '', col_4: '' } },
+    ];
+
+    try {
+      const docRef = doc(db, 'groupSpreadsheets', docId);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data() || {};
+        return {
+          id: docSnap.id,
+          groupDocId: docId,
+          chitValue: val,
+          groupId: cleanGrp,
+          columns: Array.isArray(data.columns) && data.columns.length > 0 ? data.columns : defaultColumns,
+          rows: Array.isArray(data.rows) && data.rows.length > 0 ? data.rows : defaultRows,
+          updatedAt: data.updatedAt,
+          updatedBy: data.updatedBy,
+        };
+      }
+
+      return {
+        id: docId,
+        groupDocId: docId,
+        chitValue: val,
+        groupId: cleanGrp,
+        columns: defaultColumns,
+        rows: defaultRows,
+      };
+    } catch (err) {
+      console.error('Firestore getSpreadsheet error:', err.message);
+      return {
+        id: docId,
+        groupDocId: docId,
+        chitValue: val,
+        groupId: cleanGrp,
+        columns: defaultColumns,
+        rows: defaultRows,
+      };
+    }
+  },
+
+  async saveSpreadsheet({ groupDocId, chitValue, groupId, columns, rows }) {
+    await ensureAuthReady();
+    const cleanGrp = normalizeGroupId(groupId);
+    const val = Number(chitValue || 100000);
+    const docId = groupDocId || `group_${cleanGrp}_${val}`;
+
+    const payload = sanitizeForFirestore({
+      groupDocId: docId,
+      chitValue: val,
+      groupId: cleanGrp,
+      columns: columns || [],
+      rows: rows || [],
+      updatedAt: serverTimestamp(),
+      updatedBy: auth.currentUser?.email || 'Admin',
+    });
+
+    try {
+      const docRef = doc(db, 'groupSpreadsheets', docId);
+      await setDoc(docRef, payload, { merge: true });
+
+      try {
+        await historyService.logHistoryEvent({
+          category: 'ChitRecords',
+          action: 'SPREADSHEET_SAVED',
+          title: `Spreadsheet Saved: Group ${cleanGrp} (${(val / 100000).toFixed(0)}L)`,
+          details: `Spreadsheet for Group ${cleanGrp} updated with ${rows?.length || 0} rows and ${columns?.length || 0} columns.`,
+          entityId: docId,
+          entityType: 'SPREADSHEET',
+          groupId: cleanGrp,
+          chitValue: val,
+        });
+      } catch (_) {}
+
+      return { id: docId, ...payload };
+    } catch (err) {
+      console.error('Firestore saveSpreadsheet error:', err.message);
+      throw new Error(`Failed to save spreadsheet to Firebase: ${err.message}`);
+    }
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MONTHLY RECORD SERVICE (Separate collection: monthlyAdjustments)
 // Preserves historical month-by-month pending payments, paid amounts & balances
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1252,6 +1382,50 @@ export const monthlyRecordService = {
 
     try {
       await setDoc(docRef, docData, { merge: true });
+
+      // Synchronize member document in 'members' collection so member list and indicators reflect pending/balance immediately and after refresh
+      try {
+        const memRef = doc(db, 'members', memberId);
+        const memSnap = await getDoc(memRef);
+        if (memSnap.exists()) {
+          const memData = memSnap.data() || {};
+          const currentChits = memData.chits || memData.holdings || [];
+          const cleanGrp = normalizeGroupId(groupId);
+          let modified = false;
+
+          const updatedChits = currentChits.map((c) => {
+            const cGrp = normalizeGroupId(c.groupId || c.group);
+            if (cGrp === cleanGrp || c.id === groupId) {
+              modified = true;
+              return {
+                ...c,
+                pending: Math.max(Number(pendingAmount) || 0, 0),
+                balance: Math.max(Number(balanceAmount) || 0, 0),
+              };
+            }
+            return c;
+          });
+
+          const updatePayload = {
+            updatedAt: serverTimestamp(),
+          };
+
+          if (modified) {
+            updatePayload.chits = updatedChits;
+            updatePayload.holdings = updatedChits;
+          }
+
+          if (currentChits.length <= 1) {
+            updatePayload.pending = Math.max(Number(pendingAmount) || 0, 0);
+            updatePayload.balance = Math.max(Number(balanceAmount) || 0, 0);
+          }
+
+          await updateDoc(memRef, updatePayload);
+        }
+      } catch (memSyncErr) {
+        console.warn('Notice: Syncing member pending/balance on monthly adjustment:', memSyncErr?.message);
+      }
+
       return { id: docId, ...docData };
     } catch (err) {
       console.error('Firestore saveMonthlyAdjustment error:', err.message);

@@ -24,6 +24,7 @@ import Button from '../components/Button';
 import Badge from '../components/Badge';
 import Toast from '../components/Toast';
 import Modal from '../components/Modal';
+import PaymentStatusBadge from '../components/PaymentStatusBadge';
 import { useBillingMonth } from '../context/BillingMonthContext';
 import {
   memberService,
@@ -788,7 +789,10 @@ export default function PendingPayments() {
                             />
                           </td>
                           <td className="p-3 font-bold text-[#111111]">
-                            <div>{row.memberName}</div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span>{row.memberName}</span>
+                              <PaymentStatusBadge pending={row.pendingAmount} balance={row.balanceAmount} />
+                            </div>
                             <div className="text-[10px] font-normal text-[#667085] font-mono">{row.phone}</div>
                           </td>
                           <td className="p-3 font-semibold text-[#667085]">{row.groupName}</td>
@@ -888,11 +892,12 @@ export default function PendingPayments() {
                             />
                           </td>
                           <td className="p-3 font-bold text-[#111111]">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span>{row.memberName}</span>
                               <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-[#FFF8E7] text-[#B7791F] border border-[#FDE68A] shrink-0">
                                 PARTIAL
                               </span>
+                              <PaymentStatusBadge pending={row.pendingAmount} balance={row.balanceAmount} />
                             </div>
                             <div className="text-[10px] font-normal text-[#667085] font-mono">{row.phone}</div>
                           </td>

@@ -16,6 +16,7 @@ import Button from '../components/Button';
 import Badge from '../components/Badge';
 import Toast from '../components/Toast';
 import Modal from '../components/Modal';
+import PaymentStatusBadge from '../components/PaymentStatusBadge';
 import {
   MESSAGE_TEMPLATES,
   normalizePhone,
@@ -1041,13 +1042,16 @@ export default function WhatsAppPlaceholder() {
                       </td>
 
                       <td className="p-3 font-bold text-[#111111]">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedPreviewMember(member)}
-                          className="hover:underline text-left"
-                        >
-                          {member.name}
-                        </button>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedPreviewMember(member)}
+                            className="hover:underline text-left cursor-pointer"
+                          >
+                            {member.name}
+                          </button>
+                          <PaymentStatusBadge member={member} />
+                        </div>
                       </td>
 
                       <td className="p-3 font-mono text-[#667085] font-medium">
