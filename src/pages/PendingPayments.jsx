@@ -281,7 +281,7 @@ export default function PendingPayments() {
 
         let paidAmount = paidFromTxns;
         let pendingAmount = Math.max(reqChitAmount - paidAmount, 0);
-        let balanceAmount = Number(c.balance || c.balanceAmount || 0);
+        let balanceAmount = Number(c.balance || 0);
 
         // Apply live edited overrides if present
         if (editedAmounts[rowKey]) {

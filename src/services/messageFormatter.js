@@ -357,7 +357,7 @@ export function formatLockedWhatsAppMessage(
       : Number(targetChit.pending ?? targetChit.pendingAmount ?? member.pending ?? member.pendingAmount ?? 0);
     const calcBalance = balanceAmount !== null && balanceAmount !== undefined
       ? Number(balanceAmount)
-      : Number(targetChit.balance ?? targetChit.balanceAmount ?? member.balance ?? member.balanceAmount ?? 0);
+      : Number(targetChit.balance ?? member.balance ?? 0);
     const calcTotal = totalAmount !== null && totalAmount !== undefined
       ? Number(totalAmount)
       : (remainingMonthly + calcPending);
@@ -420,7 +420,7 @@ export function formatLockedWhatsAppMessage(
     const remainingMonthly = Math.max(fullMonthlyAmount - safePaid, 0);
 
     const cPending = Number(c?.pending ?? c?.pendingAmount ?? 0);
-    const cBalance = Number(c?.balance ?? c?.balanceAmount ?? 0);
+    const cBalance = Number(c?.balance ?? 0);
     const safePending = isNaN(cPending) || cPending < 0 ? 0 : cPending;
     const safeBalance = isNaN(cBalance) || cBalance < 0 ? 0 : cBalance;
 
@@ -440,7 +440,7 @@ export function formatLockedWhatsAppMessage(
   if (balanceAmount !== null && balanceAmount !== undefined) {
     totalBalanceSum = Number(balanceAmount);
   } else if (totalBalanceSum === 0) {
-    const mBalance = Number(member?.balance ?? member?.balanceAmount ?? 0);
+    const mBalance = Number(member?.balance ?? 0);
     if (!isNaN(mBalance) && mBalance > 0) totalBalanceSum = mBalance;
   }
 

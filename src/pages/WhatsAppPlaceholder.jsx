@@ -166,13 +166,13 @@ export default function WhatsAppPlaceholder() {
           const qty = Number(c.quantity || 1);
           sumChit += baseMonthly * qty;
           sumPending += Number(c.pending ?? c.pendingAmount ?? 0);
-          sumBalance += Number(c.balance ?? c.balanceAmount ?? 0);
+          sumBalance += Number(c.balance ?? 0);
         });
         if (sumPending === 0 && (selectedPreviewMember.pending || selectedPreviewMember.pendingAmount)) {
           sumPending = Number(selectedPreviewMember.pending || selectedPreviewMember.pendingAmount || 0);
         }
-        if (sumBalance === 0 && (selectedPreviewMember.balance || selectedPreviewMember.balanceAmount)) {
-          sumBalance = Number(selectedPreviewMember.balance || selectedPreviewMember.balanceAmount || 0);
+        if (sumBalance === 0 && selectedPreviewMember.balance) {
+          sumBalance = Number(selectedPreviewMember.balance || 0);
         }
         setChitAmount(String(sumChit));
         setGroupPendingAmount(String(sumPending));
@@ -182,7 +182,7 @@ export default function WhatsAppPlaceholder() {
           groupId: selectedPreviewMember.groupId || selectedPreviewMember.group || selectedPreviewMember.chitGroup,
           totalChitValue: selectedPreviewMember.calculatedTotalChitValue || selectedPreviewMember.totalChitValue || 100000,
           pending: selectedPreviewMember.pending || selectedPreviewMember.pendingAmount || 0,
-          balance: selectedPreviewMember.balance || selectedPreviewMember.balanceAmount || 0,
+          balance: selectedPreviewMember.balance || 0,
           quantity: 1,
         } : {});
         const matchedGroup = findAssociatedGroupForSubscription(targetChit, chits);
@@ -190,7 +190,7 @@ export default function WhatsAppPlaceholder() {
         const qty = Number(targetChit.quantity || 1);
         const singleMonthly = baseMonthly * qty;
         const singlePending = Number(targetChit.pending ?? targetChit.pendingAmount ?? selectedPreviewMember.pending ?? selectedPreviewMember.pendingAmount ?? 0);
-        const singleBalance = Number(targetChit.balance ?? targetChit.balanceAmount ?? selectedPreviewMember.balance ?? selectedPreviewMember.balanceAmount ?? 0);
+        const singleBalance = Number(targetChit.balance ?? selectedPreviewMember.balance ?? 0);
         setChitAmount(String(singleMonthly));
         setGroupPendingAmount(String(singlePending));
         setBalanceAmount(String(singleBalance));

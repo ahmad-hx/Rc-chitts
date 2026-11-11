@@ -355,6 +355,56 @@ assert.strictEqual(updatedAmt1, 9200, 'Group 1 should now be 9200');
 assert.strictEqual(updatedAmt2, 7800, 'Group 2 should REMAIN 7800');
 console.log('✓ Test 15 passed');
 
+// ─── 16. Multi-Chit Member with Undefined Balance / Principal BalanceAmount ──
+console.log('Test 16: Multi-Chit Member Subscriptions All Show Non-Zero Payable');
+const chinthaRatnam = {
+  id: 'mem_chintha',
+  name: 'Chintha Ratnam',
+  phone: '919505493467',
+  classification: 'MULTIPLE',
+  chits: [
+    {
+      id: 'sub_grp_iv',
+      groupId: 'IV',
+      totalChitValue: 100000,
+      monthlyAmount: 4400,
+      pending: 0,
+      // balance is undefined (not set in DB), while balanceAmount is 100000 (total chit value)
+      balanceAmount: 100000,
+      quantity: 1,
+      status: 'ACTIVE',
+    },
+    {
+      id: 'sub_grp_xiv',
+      groupId: 'XIV',
+      totalChitValue: 100000,
+      monthlyAmount: 4700,
+      pending: 0,
+      balance: 0,
+      balanceAmount: 100000,
+      quantity: 1,
+      status: 'ACTIVE',
+    },
+  ],
+};
+
+const chinthaSettings = {
+  settingsMap: {
+    '100000_IV': 4400,
+    '100000_XIV': 4700,
+  },
+};
+
+const payable1 = calculateHoldingPayable(chinthaRatnam.chits[0], chinthaRatnam, chinthaSettings);
+const payable2 = calculateHoldingPayable(chinthaRatnam.chits[1], chinthaRatnam, chinthaSettings);
+
+assert.strictEqual(payable1, 4400, 'Chit 1 (Group IV) payable must be 4,400 (NOT 0)');
+assert.strictEqual(payable2, 4700, 'Chit 2 (Group XIV) payable must be 4,700');
+
+const totalChinthaPayable = calculateMemberAggregatePayable(chinthaRatnam, chinthaSettings);
+assert.strictEqual(totalChinthaPayable, 9100, 'Total payable must be 4400 + 4700 = 9100');
+console.log('✓ Test 16 passed');
+
 console.log('\n===========================================');
-console.log('ALL 15 COMPREHENSIVE TESTS PASSED 100% SUCCESS! ✓✓✓');
+console.log('ALL 16 COMPREHENSIVE TESTS PASSED 100% SUCCESS! ✓✓✓');
 console.log('===========================================\n');

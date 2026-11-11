@@ -481,7 +481,7 @@ export function calculateHoldingPayable(
   const baseMonthly = getEffectiveMonthlyAmount(member, subscription, groupPaymentSettings, chitGroup, monthlyAdjustment, allGroupsList);
   const quantity = Number(subscription.quantity || 1);
   const pending = Number(subscription.pending ?? subscription.pendingAmount ?? 0);
-  const balance = Number(subscription.balance ?? subscription.balanceAmount ?? 0);
+  const balance = Number(subscription.balance ?? 0);
 
   return Math.max((baseMonthly * quantity) + pending - balance, 0);
 }

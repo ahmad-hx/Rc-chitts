@@ -299,7 +299,7 @@ export default function Members() {
   };
 
   const calculateChitPayable = (chit, member = null) => {
-    return calculateHoldingPayable(chit, member, groupPaymentSettings);
+    return calculateHoldingPayable(chit, member, groupPaymentSettings, null, null, chits);
   };
 
   const calculateMemberTotalPayable = (member) => {
@@ -504,7 +504,7 @@ export default function Members() {
           id: c.id || `chit_${member.id}_${idx}`,
           chitValue: String(c.totalChitValue || 100000),
           groupId: String(c.groupId || 'I'),
-          monthlyAmount: String(getEffectiveMonthlyAmount(member, c, groupPaymentSettings)),
+          monthlyAmount: String(getEffectiveMonthlyAmount(member, c, groupPaymentSettings, null, null, chits)),
           hasCustomMonthlyAmount: Boolean(c.hasCustomMonthlyAmount),
           customMonthlyAmount: c.customMonthlyAmount,
           pending: String(c.pending || 0),
@@ -516,7 +516,7 @@ export default function Members() {
             id: `chit_${member.id}_0`,
             chitValue: String(member.calculatedTotalChitValue || 100000),
             groupId: String(member.groupId || member.group || 'I'),
-            monthlyAmount: String(getEffectiveMonthlyAmount(member, null, groupPaymentSettings)),
+            monthlyAmount: String(getEffectiveMonthlyAmount(member, null, groupPaymentSettings, null, null, chits)),
             hasCustomMonthlyAmount: Boolean(member.hasCustomMonthlyAmount),
             customMonthlyAmount: member.customMonthlyAmount,
             pending: '0',
@@ -679,7 +679,7 @@ export default function Members() {
   };
 
   const handleOpenEditAdjustment = (member, chit) => {
-    const baseMonthly = getEffectiveMonthlyAmount(member, chit, groupPaymentSettings);
+    const baseMonthly = getEffectiveMonthlyAmount(member, chit, groupPaymentSettings, null, null, chits);
     const isCustom = isMemberSpecificMonthlyAmount(member, chit, groupPaymentSettings);
 
     setSelectedMember(member);
@@ -1623,7 +1623,7 @@ export default function Members() {
                 {getActiveChits(selectedMember).map((chit) => {
                   const val = chit.totalChitValue || 100000;
                   const grp = chit.groupId || 'I';
-                  const baseMonthly = getEffectiveMonthlyAmount(selectedMember, chit, groupPaymentSettings);
+                  const baseMonthly = getEffectiveMonthlyAmount(selectedMember, chit, groupPaymentSettings, null, null, chits);
                   const payable = calculateChitPayable(chit, selectedMember);
 
                   return (

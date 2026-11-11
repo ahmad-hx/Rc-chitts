@@ -27,7 +27,7 @@ export function getMemberPaymentStatus(member) {
     });
   } else {
     totalPending = Math.max(Number(member?.pending ?? member?.pendingAmount ?? 0), 0);
-    totalBalance = Math.max(Number(member?.balance ?? member?.balanceAmount ?? 0), 0);
+    totalBalance = Math.max(Number(member?.balance || 0), 0);
   }
 
   // Handle fractional amounts / floating point decimals accurately
