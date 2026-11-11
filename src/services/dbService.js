@@ -18,6 +18,7 @@ import {
   normalizeGroupId,
   hasExplicitCustomMonthlyAmount,
   isSubscriptionBelongingToGroup,
+  extractGroupDocInfo,
 } from '../utils/amountUtils.js';
 
 // Helper to normalize phone numbers for deduplication
@@ -112,8 +113,8 @@ export const memberService = {
                 totalChitValue: val,
                 monthlyAmount: resolvedMonthly,
                 amountToPay: resolvedMonthly,
-                pending: Number(c?.pending || 0),
-                balance: Number(c?.balance || 0),
+                pending: Number(c?.pending ?? c?.pendingAmount ?? 0),
+                balance: Number(c?.balance ?? c?.balanceAmount ?? 0),
                 balanceAmount: Number(c?.balanceAmount || val),
                 hasCustomMonthlyAmount: Boolean(c?.hasCustomMonthlyAmount),
                 customMonthlyAmount: typeof c?.customMonthlyAmount === 'number' ? c.customMonthlyAmount : undefined,
@@ -211,8 +212,8 @@ export const memberService = {
                 totalChitValue: val,
                 monthlyAmount: resolvedMonthly,
                 amountToPay: resolvedMonthly,
-                pending: Number(c?.pending || 0),
-                balance: Number(c?.balance || 0),
+                pending: Number(c?.pending ?? c?.pendingAmount ?? 0),
+                balance: Number(c?.balance ?? c?.balanceAmount ?? 0),
                 balanceAmount: Number(c?.balanceAmount || val),
                 hasCustomMonthlyAmount: Boolean(c?.hasCustomMonthlyAmount),
                 customMonthlyAmount: typeof c?.customMonthlyAmount === 'number' ? c.customMonthlyAmount : undefined,
@@ -890,18 +891,40 @@ export const groupPaymentSettingsService = {
 
       qSnap.forEach((docSnap) => {
         const data = docSnap.data() || {};
-        const rawGrp = String(data.groupId || (docSnap.id.includes('_') ? docSnap.id.split('_')[1] : 'I')).trim();
-        const cleanGrp = normalizeGroupId(rawGrp);
-        const val = Number(data.chitValue || (docSnap.id.includes('_') ? docSnap.id.split('_')[0] : 100000));
+        let val = Number(data.chitValue);
+        let rawGrp = String(data.groupId || '').trim();
+
+        if (isNaN(val) || val <= 0) {
+          if (docSnap.id.startsWith('group_')) {
+            const info = extractGroupDocInfo(docSnap.id);
+            val = info.chitValue;
+            if (!rawGrp) rawGrp = info.groupId;
+          } else if (docSnap.id.includes('_')) {
+            const parts = docSnap.id.split('_');
+            val = Number(parts[0]) || 100000;
+            if (!rawGrp) rawGrp = parts[1] || 'I';
+          } else {
+            val = 100000;
+          }
+        }
+        if (!rawGrp && docSnap.id.includes('_')) {
+          const parts = docSnap.id.split('_');
+          rawGrp = parts.length > 2 ? parts[1] : (parts[1] || 'I');
+        }
+        const cleanGrp = normalizeGroupId(rawGrp) || 'I';
 
         if (typeof data.monthlyAmount === 'number' || !isNaN(Number(data.monthlyAmount))) {
           const amt = Number(data.monthlyAmount);
           // Register under normalized, raw, and docId keys to guarantee robust resolution
           settingsMap[`${val}_${cleanGrp}`] = amt;
-          settingsMap[`${val}_${rawGrp.toUpperCase()}`] = amt;
+          settingsMap[`${val}_${cleanGrp.toUpperCase()}`] = amt;
+          settingsMap[`${val}_GROUP ${cleanGrp}`] = amt;
+          settingsMap[`${val}_Group ${cleanGrp}`] = amt;
           settingsMap[`${val}_${rawGrp}`] = amt;
           settingsMap[docSnap.id] = amt;
           settingsMap[`group_${cleanGrp}_${val}`] = amt;
+          settingsMap[`group_${cleanGrp.toLowerCase()}_${val}`] = amt;
+          settingsMap[`${cleanGrp}_${val}`] = amt;
 
           settingsList.push({
             id: docSnap.id,
@@ -957,7 +980,18 @@ export const groupPaymentSettingsService = {
         }, { merge: true });
       } catch (_) {}
 
-      // 3. Synchronize the 'chits' collection document for this group
+      // 3. Save groupDocId alias doc
+      try {
+        await setDoc(doc(db, 'groupPaymentSettings', `group_${grp}_${val}`), {
+          chitValue: val,
+          groupId: grp,
+          monthlyAmount: amt,
+          updatedAt: serverTimestamp(),
+          updatedBy: auth.currentUser?.email || 'Admin',
+        }, { merge: true });
+      } catch (_) {}
+
+      // 4. Synchronize the 'chits' collection document for this group
       try {
         const targetChitDocId = groupDocId || `group_${grp}_${val}`;
         const chitDocRef = doc(db, 'chits', targetChitDocId);
@@ -1113,9 +1147,11 @@ export const groupPaymentSettingsService = {
         batchList.push(currentBatch);
       }
 
-      // Commit all batches atomically
+      // Commit all batches sequentially
       if (batchList.length > 0) {
-        await Promise.all(batchList.map((b) => b.commit()));
+        for (const batch of batchList) {
+          await batch.commit();
+        }
       }
 
       return { succeededCount, failedCount: 0, failedMembers: [], totalTargetMembers };

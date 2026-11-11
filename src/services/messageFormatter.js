@@ -168,7 +168,7 @@ export function formatWhatsAppTemplate({
   return compiled;
 }
 
-import { getEffectiveMonthlyAmount } from '../utils/amountUtils.js';
+import { getEffectiveMonthlyAmount, findAssociatedGroupForSubscription } from '../utils/amountUtils.js';
 import { getActiveChits } from './messagingService.js';
 
 export function getPaidAmountForChit(member, chit, billingMonth, paymentsList = []) {
@@ -342,10 +342,11 @@ export function formatLockedWhatsAppMessage(
 
     const chitMonthData = getChitMonthForGroup(targetChit, billingMonth, allGroupsList);
     const chitMonthStr = chitMonth || chitMonthData.display || `${chitMonthData.currentMonth || 1}/${chitMonthData.totalMonths || 20}`;
+    const matchedGroup = findAssociatedGroupForSubscription(targetChit, allGroupsList);
 
     const baseMonthly = monthlyAmount !== null && monthlyAmount !== undefined
       ? Number(monthlyAmount)
-      : getEffectiveMonthlyAmount(member, targetChit, groupPaymentSettings);
+      : getEffectiveMonthlyAmount(member, targetChit, groupPaymentSettings, matchedGroup, null, allGroupsList);
     const quantity = Number(targetChit.quantity || 1);
     const fullMonthlyAmount = baseMonthly * quantity;
     const paidSoFar = getPaidAmountForChit(member, targetChit, billingMonth, paymentsList);
@@ -353,10 +354,10 @@ export function formatLockedWhatsAppMessage(
 
     const calcPending = pendingAmount !== null && pendingAmount !== undefined
       ? Number(pendingAmount)
-      : Number(targetChit.pending ?? member.pending ?? 0);
+      : Number(targetChit.pending ?? targetChit.pendingAmount ?? member.pending ?? member.pendingAmount ?? 0);
     const calcBalance = balanceAmount !== null && balanceAmount !== undefined
       ? Number(balanceAmount)
-      : Number(targetChit.balance ?? member.balance ?? 0);
+      : Number(targetChit.balance ?? targetChit.balanceAmount ?? member.balance ?? member.balanceAmount ?? 0);
     const calcTotal = totalAmount !== null && totalAmount !== undefined
       ? Number(totalAmount)
       : (remainingMonthly + calcPending);
@@ -407,7 +408,8 @@ export function formatLockedWhatsAppMessage(
     const chitMonthData = getChitMonthForGroup(c, billingMonth, allGroupsList);
     const chitMonthStr = chitMonthData.display || `${chitMonthData.currentMonth || 1}/${chitMonthData.totalMonths || 20}`;
 
-    const baseMonthly = getEffectiveMonthlyAmount(member, c, groupPaymentSettings);
+    const matchedGroup = findAssociatedGroupForSubscription(c, allGroupsList);
+    const baseMonthly = getEffectiveMonthlyAmount(member, c, groupPaymentSettings, matchedGroup, null, allGroupsList);
     const quantity = Number(c?.quantity || 1);
     const safeMonthly = isNaN(baseMonthly) || baseMonthly < 0 ? 0 : baseMonthly;
     const safeQty = isNaN(quantity) || quantity < 1 ? 1 : quantity;
@@ -417,8 +419,8 @@ export function formatLockedWhatsAppMessage(
     const safePaid = isNaN(paidSoFar) || paidSoFar < 0 ? 0 : paidSoFar;
     const remainingMonthly = Math.max(fullMonthlyAmount - safePaid, 0);
 
-    const cPending = Number(c?.pending || 0);
-    const cBalance = Number(c?.balance || 0);
+    const cPending = Number(c?.pending ?? c?.pendingAmount ?? 0);
+    const cBalance = Number(c?.balance ?? c?.balanceAmount ?? 0);
     const safePending = isNaN(cPending) || cPending < 0 ? 0 : cPending;
     const safeBalance = isNaN(cBalance) || cBalance < 0 ? 0 : cBalance;
 
@@ -431,14 +433,14 @@ export function formatLockedWhatsAppMessage(
 
   if (pendingAmount !== null && pendingAmount !== undefined) {
     totalPendingSum = Number(pendingAmount);
-  } else if (totalPendingSum === 0 && member?.pending) {
-    const mPending = Number(member.pending);
+  } else if (totalPendingSum === 0) {
+    const mPending = Number(member?.pending ?? member?.pendingAmount ?? 0);
     if (!isNaN(mPending) && mPending > 0) totalPendingSum = mPending;
   }
   if (balanceAmount !== null && balanceAmount !== undefined) {
     totalBalanceSum = Number(balanceAmount);
-  } else if (totalBalanceSum === 0 && member?.balance) {
-    const mBalance = Number(member.balance);
+  } else if (totalBalanceSum === 0) {
+    const mBalance = Number(member?.balance ?? member?.balanceAmount ?? 0);
     if (!isNaN(mBalance) && mBalance > 0) totalBalanceSum = mBalance;
   }
 

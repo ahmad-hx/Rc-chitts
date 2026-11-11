@@ -36,7 +36,7 @@ import {
 } from '../services/whatsappService';
 import { memberService, chitService, groupPaymentSettingsService } from '../services/dbService';
 import { useBillingMonth } from '../context/BillingMonthContext';
-import { getEffectiveMonthlyAmount } from '../utils/amountUtils';
+import { getEffectiveMonthlyAmount, findAssociatedGroupForSubscription } from '../utils/amountUtils';
 import { getChitMonthForGroup } from '../utils/chitMonthUtils';
 
 function parseRomanNumeral(str = '') {
@@ -161,12 +161,19 @@ export default function WhatsAppPlaceholder() {
         let sumPending = 0;
         let sumBalance = 0;
         activeChits.forEach((c) => {
-          const baseMonthly = getEffectiveMonthlyAmount(selectedPreviewMember, c, groupPaymentSettings);
+          const matchedGroup = findAssociatedGroupForSubscription(c, chits);
+          const baseMonthly = getEffectiveMonthlyAmount(selectedPreviewMember, c, groupPaymentSettings, matchedGroup, null, chits);
           const qty = Number(c.quantity || 1);
           sumChit += baseMonthly * qty;
-          sumPending += Number(c.pending || 0);
-          sumBalance += Number(c.balance || 0);
+          sumPending += Number(c.pending ?? c.pendingAmount ?? 0);
+          sumBalance += Number(c.balance ?? c.balanceAmount ?? 0);
         });
+        if (sumPending === 0 && (selectedPreviewMember.pending || selectedPreviewMember.pendingAmount)) {
+          sumPending = Number(selectedPreviewMember.pending || selectedPreviewMember.pendingAmount || 0);
+        }
+        if (sumBalance === 0 && (selectedPreviewMember.balance || selectedPreviewMember.balanceAmount)) {
+          sumBalance = Number(selectedPreviewMember.balance || selectedPreviewMember.balanceAmount || 0);
+        }
         setChitAmount(String(sumChit));
         setGroupPendingAmount(String(sumPending));
         setBalanceAmount(String(sumBalance));
@@ -174,21 +181,22 @@ export default function WhatsAppPlaceholder() {
         const targetChit = activeChits[0] || (selectedPreviewMember.groupId || selectedPreviewMember.group || selectedPreviewMember.chitGroup ? {
           groupId: selectedPreviewMember.groupId || selectedPreviewMember.group || selectedPreviewMember.chitGroup,
           totalChitValue: selectedPreviewMember.calculatedTotalChitValue || selectedPreviewMember.totalChitValue || 100000,
-          pending: selectedPreviewMember.pending || 0,
-          balance: selectedPreviewMember.balance || 0,
+          pending: selectedPreviewMember.pending || selectedPreviewMember.pendingAmount || 0,
+          balance: selectedPreviewMember.balance || selectedPreviewMember.balanceAmount || 0,
           quantity: 1,
         } : {});
-        const baseMonthly = getEffectiveMonthlyAmount(selectedPreviewMember, targetChit, groupPaymentSettings);
+        const matchedGroup = findAssociatedGroupForSubscription(targetChit, chits);
+        const baseMonthly = getEffectiveMonthlyAmount(selectedPreviewMember, targetChit, groupPaymentSettings, matchedGroup, null, chits);
         const qty = Number(targetChit.quantity || 1);
         const singleMonthly = baseMonthly * qty;
-        const singlePending = Number(targetChit.pending ?? selectedPreviewMember.pending ?? 0);
-        const singleBalance = Number(targetChit.balance ?? selectedPreviewMember.balance ?? 0);
+        const singlePending = Number(targetChit.pending ?? targetChit.pendingAmount ?? selectedPreviewMember.pending ?? selectedPreviewMember.pendingAmount ?? 0);
+        const singleBalance = Number(targetChit.balance ?? targetChit.balanceAmount ?? selectedPreviewMember.balance ?? selectedPreviewMember.balanceAmount ?? 0);
         setChitAmount(String(singleMonthly));
         setGroupPendingAmount(String(singlePending));
         setBalanceAmount(String(singleBalance));
       }
     }
-  }, [selectedPreviewMember, groupPaymentSettings]);
+  }, [selectedPreviewMember, groupPaymentSettings, chits]);
 
   // Auto-Calculated Amounts
   const totalAmount = useMemo(() => {
@@ -423,6 +431,7 @@ export default function WhatsAppPlaceholder() {
           const chitsList = Array.isArray(fetchedChits) ? fetchedChits : [];
           setMembers(list);
           setChits(chitsList);
+          setGroupPaymentSettings(settingsRes || {});
           const tmpls = fetchedTemplates || {};
           if (!tmpls['SINGLE_CHIT'] && tmpls['PAYMENT_REMINDER']) {
             tmpls['SINGLE_CHIT'] = { ...tmpls['PAYMENT_REMINDER'], id: 'SINGLE_CHIT', title: 'Single Chit Reminder' };
@@ -624,6 +633,7 @@ export default function WhatsAppPlaceholder() {
       dueDate,
       groupPaymentSettings,
       chitsList: chits,
+      allGroupsList: chits,
       singleTemplateText: singleText,
       multiTemplateText: multiText,
     });

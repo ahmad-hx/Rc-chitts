@@ -5,17 +5,19 @@
  * 1. Explicit individual subscription custom amount (intentionally configured by admin)
  * 2. Explicit member custom amount (for single-chit members only)
  * 3. Current monthly amount configured for the assigned chit group (groupPaymentSettings[`${val}_${grp}`])
- * 4. Monthly adjustment record (if active for current billing cycle)
- * 5. Chit group definition premium (chitGroup.monthlyPremium)
- * 6. Mathematical default fallback (Math.floor(val / 20), 5000)
+ * 4. Chit group definition premium (chitGroup.monthlyPremium / matchedGroup.monthlyPremium)
+ * 5. Monthly adjustment record (if active for current billing cycle)
+ * 6. Subscription stored monthly amount (from Firestore subscription document)
+ * 7. Mathematical default fallback (Math.floor(val / 20), 5000)
  */
 
 /**
  * Normalizes group identifiers into clean, stable codes (e.g. 'Group I', 'group_I', 'GROUP I', 'I', 'group_I_100000' -> 'I')
  */
 export function normalizeGroupId(raw = '') {
-  if (!raw) return 'I';
+  if (raw === null || raw === undefined) return '';
   const str = String(raw).trim();
+  if (!str) return '';
 
   // If raw is in Firestore doc format like 'group_I_100000' or 'group_A_200000'
   const docMatch = str.match(/^group[_\s-]+([A-Za-z0-9]+)[_\s-]+(\d+)$/i);
@@ -31,7 +33,7 @@ export function normalizeGroupId(raw = '') {
     .replace(/[_\s-]+(\d{5,7})$/, '') // Strip trailing chit values if joined with underscore (e.g. 'I_100000' -> 'I')
     .trim();
 
-  return clean || 'I';
+  return clean;
 }
 
 /**
@@ -50,7 +52,7 @@ export function extractGroupDocInfo(rawGroupIdOrDocId, chitValue = 100000) {
     };
   }
 
-  const groupId = normalizeGroupId(str);
+  const groupId = normalizeGroupId(str) || 'I';
   const val = Number(chitValue) || 100000;
   return {
     groupId,
@@ -79,7 +81,7 @@ export function isSubscriptionBelongingToGroup(
 
   const targetCleanGrp = normalizeGroupId(targetGroupId);
   const targetVal = Number(targetChitValue || 100000);
-  const targetDocId = targetGroupDocId || `group_${targetCleanGrp}_${targetVal}`;
+  const targetDocId = targetGroupDocId || (targetCleanGrp ? `group_${targetCleanGrp}_${targetVal}` : null);
 
   // 1. Direct document ID match if present
   const subDocId = subscription.groupDocId || subscription.chitDocId;
@@ -96,6 +98,10 @@ export function isSubscriptionBelongingToGroup(
   const rawSubGrp = subscription.groupId || subscription.group || subscription.chitGroup || '';
   const cleanSubGrp = normalizeGroupId(rawSubGrp);
 
+  if (!cleanSubGrp || !targetCleanGrp) {
+    return false;
+  }
+
   const subVal = Number(
     subscription.totalChitValue ??
     subscription.totalValue ??
@@ -104,25 +110,62 @@ export function isSubscriptionBelongingToGroup(
     0
   );
 
-  const grpMatches = cleanSubGrp === targetCleanGrp;
+  const grpMatches = cleanSubGrp.toUpperCase() === targetCleanGrp.toUpperCase();
   const valMatches = subVal > 0 ? subVal === targetVal : true;
 
-  if (grpMatches && valMatches) {
-    return true;
+  return grpMatches && valMatches;
+}
+
+/**
+ * Resolves the parent chit group for a subscription from a given groups array.
+ * Uses stable identifiers (document IDs, normalized group code, and chit value).
+ *
+ * @param {Object} subscription - Member subscription object
+ * @param {Array} allGroupsList - Array of chit group definitions
+ * @returns {Object|null} The matched chit group object or null
+ */
+export function findAssociatedGroupForSubscription(subscription, allGroupsList = []) {
+  if (!subscription || !Array.isArray(allGroupsList) || allGroupsList.length === 0) {
+    return null;
   }
 
-  // 3. Fallback name check if name contains exact group string (e.g. "Group I" and "1 Lakh")
-  if (subscription.name && typeof subscription.name === 'string') {
-    const hasGroup = subscription.name.toUpperCase().includes(`GROUP ${targetCleanGrp}`);
-    const hasValue = targetVal >= 100000
-      ? subscription.name.includes(`${(targetVal / 100000).toFixed(0)} Lakh`)
-      : subscription.name.includes(targetVal.toLocaleString('en-IN'));
-    if (hasGroup && hasValue) {
-      return true;
+  const subDocId = String(subscription.groupDocId || subscription.chitDocId || subscription.chitId || '').trim();
+  const subId = String(subscription.id || '').trim();
+  const rawSubGrp = String(subscription.groupId || subscription.group || subscription.chitGroup || '').trim();
+  const cleanSubGrp = normalizeGroupId(rawSubGrp);
+  const subVal = Number(subscription.totalChitValue ?? subscription.totalValue ?? subscription.chitValue ?? 0);
+
+  // 1. Direct document ID match
+  if (subDocId) {
+    const matched = allGroupsList.find((g) => g.id === subDocId);
+    if (matched) return matched;
+  }
+
+  if (subId && subId.startsWith('group_')) {
+    const matched = allGroupsList.find((g) => g.id === subId);
+    if (matched) return matched;
+  }
+
+  // 2. Match by normalized groupId AND totalChitValue
+  if (cleanSubGrp) {
+    const matched = allGroupsList.find((g) => {
+      const gClean = normalizeGroupId(g.groupId || g.group || g.id);
+      const gVal = Number(g.totalChitValue ?? g.totalValue ?? g.chitValue ?? 0);
+      const grpMatch = gClean.toUpperCase() === cleanSubGrp.toUpperCase();
+      const valMatch = subVal > 0 ? (gVal > 0 ? gVal === subVal : true) : true;
+      return grpMatch && valMatch;
+    });
+    if (matched) return matched;
+  }
+
+  // 3. Fallback to isSubscriptionBelongingToGroup
+  for (const g of allGroupsList) {
+    if (isSubscriptionBelongingToGroup(subscription, g.groupId, g.totalChitValue, g.id)) {
+      return g;
     }
   }
 
-  return false;
+  return null;
 }
 
 /**
@@ -158,12 +201,24 @@ export function hasExplicitCustomMonthlyAmount(member = null, subscription = nul
       ? subscription.customMonthlyAmount
       : Number(subscription.customMonthlyAmount);
 
-    if (isFlagged && !isNaN(customAmt) && customAmt > 0) {
+    const hasValidCustomNumber = !isNaN(customAmt) && customAmt > 0;
+
+    if (isFlagged && hasValidCustomNumber) {
       // If custom amount equals current group monthly amount, do not mistake it for a divergent custom override
       if (typeof groupMonthlyAmount === 'number' && groupMonthlyAmount > 0 && customAmt === groupMonthlyAmount) {
         return false;
       }
       return true;
+    }
+
+    // Also support custom monthly amount set without flag if positive and not equal to group amount
+    if (!isExplicitlyDisabled && hasValidCustomNumber) {
+      if (typeof groupMonthlyAmount === 'number' && groupMonthlyAmount > 0 && customAmt === groupMonthlyAmount) {
+        return false;
+      }
+      if (typeof groupMonthlyAmount === 'number' && groupMonthlyAmount > 0 && customAmt !== groupMonthlyAmount) {
+        return true;
+      }
     }
 
     // Subscription does not have its own explicit custom amount
@@ -203,11 +258,22 @@ export function hasExplicitCustomMonthlyAmount(member = null, subscription = nul
       ? member.customMonthlyAmount
       : Number(member.customMonthlyAmount);
 
-    if (isFlagged && !isNaN(customAmt) && customAmt > 0) {
+    const hasValidCustomNumber = !isNaN(customAmt) && customAmt > 0;
+
+    if (isFlagged && hasValidCustomNumber) {
       if (typeof groupMonthlyAmount === 'number' && groupMonthlyAmount > 0 && customAmt === groupMonthlyAmount) {
         return false;
       }
       return true;
+    }
+
+    if (!isExplicitlyDisabled && hasValidCustomNumber) {
+      if (typeof groupMonthlyAmount === 'number' && groupMonthlyAmount > 0 && customAmt === groupMonthlyAmount) {
+        return false;
+      }
+      if (typeof groupMonthlyAmount === 'number' && groupMonthlyAmount > 0 && customAmt !== groupMonthlyAmount) {
+        return true;
+      }
     }
   }
 
@@ -220,17 +286,20 @@ export function hasExplicitCustomMonthlyAmount(member = null, subscription = nul
  * Consistent Global Business Rule:
  * 1. If subscription/member has an explicit, valid custom monthly amount, use it.
  * 2. Otherwise, use current monthly amount configured for the assigned chit group (from groupPaymentSettings).
- * 3. Fallback to active monthly adjustment record if passed.
- * 4. Fallback to chit group definition (chitGroup.monthlyPremium).
- * 5. Fallback to mathematical default Math.floor(val / 20) or 5000.
+ * 3. Fallback to chit group definition (chitGroup.monthlyPremium / matchedGroup.monthlyPremium).
+ * 4. Fallback to active monthly adjustment record if passed.
+ * 5. Fallback to subscription stored monthly amount from Firestore (subscription.monthlyAmount / amountToPay).
+ * 6. Fallback to mathematical default Math.floor(val / 20) or 5000.
  *
  * NEVER falls back to an old stored amount if the group has a configured monthly amount.
+ * NEVER reuses one subscription's amount for the next subscription.
  *
  * @param {Object} member - The member object
  * @param {Object} subscription - The specific chit holding/subscription object
- * @param {Object} groupPaymentSettings - Map or object of group payment settings
+ * @param {Object} [groupPaymentSettings] - Map or object of group payment settings
  * @param {Object} [chitGroup] - Optional chit group definition
  * @param {Object} [monthlyAdjustment] - Optional monthly adjustment record
+ * @param {Array} [allGroupsList] - Optional list of chit groups for automatic group resolution
  * @returns {number} The resolved base monthly amount
  */
 export function getEffectiveMonthlyAmount(
@@ -238,14 +307,24 @@ export function getEffectiveMonthlyAmount(
   subscription = null,
   groupPaymentSettings = {},
   chitGroup = null,
-  monthlyAdjustment = null
+  monthlyAdjustment = null,
+  allGroupsList = []
 ) {
+  // Resolve associated group if chitGroup not provided or provided as list
+  const groupsArray = Array.isArray(allGroupsList) && allGroupsList.length > 0
+    ? allGroupsList
+    : (Array.isArray(chitGroup) && chitGroup.length > 0 ? chitGroup : []);
+
+  const resolvedGroup = (chitGroup && !Array.isArray(chitGroup))
+    ? chitGroup
+    : (groupsArray.length > 0 ? findAssociatedGroupForSubscription(subscription, groupsArray) : null);
+
   const val = Number(
     subscription?.totalChitValue ??
     subscription?.totalValue ??
     subscription?.chitValue ??
+    resolvedGroup?.totalChitValue ??
     member?.calculatedTotalChitValue ??
-    chitGroup?.totalChitValue ??
     100000
   );
 
@@ -253,15 +332,15 @@ export function getEffectiveMonthlyAmount(
     subscription?.groupId ??
     subscription?.group ??
     subscription?.chitGroup ??
+    resolvedGroup?.groupId ??
     member?.groupId ??
     member?.group ??
-    chitGroup?.groupId ??
     'I'
   ).trim();
 
-  const cleanGrp = normalizeGroupId(rawGrp);
+  const cleanGrp = normalizeGroupId(rawGrp) || 'I';
   const grpUpper = cleanGrp.toUpperCase();
-  const targetDocId = subscription?.groupDocId || chitGroup?.id || `group_${cleanGrp}_${val}`;
+  const targetDocId = subscription?.groupDocId || subscription?.chitDocId || resolvedGroup?.id || `group_${cleanGrp}_${val}`;
 
   // Find current group monthly amount from groupPaymentSettings first to check against custom overrides
   let groupSettingAmt = null;
@@ -275,10 +354,13 @@ export function getEffectiveMonthlyAmount(
       `${val}_${rawGrp}`,
       `group_${cleanGrp}_${val}`,
       `group_${cleanGrp.toLowerCase()}_${val}`,
+      `group_${grpUpper}_${val}`,
       targetDocId,
+      resolvedGroup?.id,
+      resolvedGroup?.totalChitValue ? `${resolvedGroup.totalChitValue}_${normalizeGroupId(resolvedGroup.groupId)}` : null,
       `${cleanGrp}_${val}`,
       `${grpUpper}_${val}`,
-    ];
+    ].filter(Boolean);
 
     for (const key of candidateKeys) {
       const entry = rawMap[key];
@@ -294,11 +376,32 @@ export function getEffectiveMonthlyAmount(
         }
       }
     }
+
+    if (groupSettingAmt === null && Array.isArray(groupPaymentSettings.settingsList)) {
+      const found = groupPaymentSettings.settingsList.find(
+        (s) => Number(s.chitValue) === val && normalizeGroupId(s.groupId || s.cleanGroupId) === cleanGrp
+      );
+      if (found && typeof found.monthlyAmount === 'number' && found.monthlyAmount > 0) {
+        groupSettingAmt = found.monthlyAmount;
+      }
+    }
+  }
+
+  // If not found in groupPaymentSettings, check resolvedGroup definition
+  if (groupSettingAmt === null && resolvedGroup) {
+    const grpMonthly = Number(
+      resolvedGroup.monthlyPremium ??
+      resolvedGroup.monthlyAmount ??
+      resolvedGroup.baseGroupMonthly
+    );
+    if (!isNaN(grpMonthly) && grpMonthly > 0) {
+      groupSettingAmt = grpMonthly;
+    }
   }
 
   // 1. Explicit individual subscription custom amount (only if explicitly enabled with a valid amount)
   if (subscription && hasExplicitCustomMonthlyAmount(null, subscription, groupSettingAmt)) {
-    const customAmt = Number(subscription.customMonthlyAmount);
+    const customAmt = Number(subscription.customMonthlyAmount ?? subscription.monthlyAmount);
     if (!isNaN(customAmt) && customAmt > 0) {
       return customAmt;
     }
@@ -329,15 +432,23 @@ export function getEffectiveMonthlyAmount(
     }
   }
 
-  // 5. Chit group default definition
-  if (chitGroup) {
-    const grpMonthly = Number(chitGroup.monthlyPremium ?? chitGroup.monthlyAmount ?? chitGroup.baseGroupMonthly);
+  // 5. Subscription's own stored monthly amount from Firestore (if positive and valid)
+  if (subscription) {
+    const subMonthly = Number(subscription.monthlyAmount ?? subscription.amountToPay);
+    if (!isNaN(subMonthly) && subMonthly > 0) {
+      return subMonthly;
+    }
+  }
+
+  // 6. Chit group default definition
+  if (resolvedGroup) {
+    const grpMonthly = Number(resolvedGroup.monthlyPremium ?? resolvedGroup.monthlyAmount ?? resolvedGroup.baseGroupMonthly);
     if (!isNaN(grpMonthly) && grpMonthly > 0) {
       return grpMonthly;
     }
   }
 
-  // 6. Mathematical standard fallback based on total chit value (e.g. 1L -> 5000, 2L -> 10000, 5L -> 25000)
+  // 7. Mathematical standard fallback based on total chit value (e.g. 1L -> 5000, 2L -> 10000, 5L -> 25000)
   if (val > 0) {
     return Math.floor(val / 20);
   }
@@ -361,15 +472,16 @@ export function calculateHoldingPayable(
   member = null,
   groupPaymentSettings = {},
   chitGroup = null,
-  monthlyAdjustment = null
+  monthlyAdjustment = null,
+  allGroupsList = []
 ) {
   if (!subscription) return 0;
   if (subscription.status && subscription.status !== 'ACTIVE') return 0;
 
-  const baseMonthly = getEffectiveMonthlyAmount(member, subscription, groupPaymentSettings, chitGroup, monthlyAdjustment);
+  const baseMonthly = getEffectiveMonthlyAmount(member, subscription, groupPaymentSettings, chitGroup, monthlyAdjustment, allGroupsList);
   const quantity = Number(subscription.quantity || 1);
-  const pending = Number(subscription.pending || 0);
-  const balance = Number(subscription.balance || 0);
+  const pending = Number(subscription.pending ?? subscription.pendingAmount ?? 0);
+  const balance = Number(subscription.balance ?? subscription.balanceAmount ?? 0);
 
   return Math.max((baseMonthly * quantity) + pending - balance, 0);
 }
@@ -377,7 +489,7 @@ export function calculateHoldingPayable(
 /**
  * Calculate the aggregate payable amount across all active subscriptions for a member.
  */
-export function calculateMemberAggregatePayable(member, groupPaymentSettings = {}) {
+export function calculateMemberAggregatePayable(member, groupPaymentSettings = {}, allGroupsList = []) {
   if (!member) return 0;
 
   const activeChits = Array.isArray(member.chits) && member.chits.length > 0
@@ -388,12 +500,12 @@ export function calculateMemberAggregatePayable(member, groupPaymentSettings = {
 
   if (activeChits.length === 0) {
     if (member.groupId || member.group) {
-      return calculateHoldingPayable(member, member, groupPaymentSettings);
+      return calculateHoldingPayable(member, member, groupPaymentSettings, null, null, allGroupsList);
     }
     return 0;
   }
 
   return activeChits.reduce((total, chit) => {
-    return total + calculateHoldingPayable(chit, member, groupPaymentSettings);
+    return total + calculateHoldingPayable(chit, member, groupPaymentSettings, null, null, allGroupsList);
   }, 0);
 }

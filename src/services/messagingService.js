@@ -302,7 +302,7 @@ export function generatePersonalizedMessage(
     const chitMonthData = getChitMonthForGroup(targetChit, billingMonth, groupsToUse);
     const chitMonthStr = chitMonthData.display || `${chitMonthData.currentMonth || 1}/${chitMonthData.totalMonths || 20}`;
 
-    const baseMonthly = getEffectiveMonthlyAmount(member, targetChit, groupPaymentSettings);
+    const baseMonthly = getEffectiveMonthlyAmount(member, targetChit, groupPaymentSettings, null, null, groupsToUse);
     const quantity = Number(targetChit.quantity || 1);
     const fullMonthlyAmount = baseMonthly * quantity;
 
@@ -313,7 +313,7 @@ export function generatePersonalizedMessage(
     const resolvedFinal = finalAmount !== null && finalAmount !== undefined ? finalAmount : Math.max(Number(resolvedTotal) - Number(resolvedBalance), 0);
 
     return formatWhatsAppTemplate({
-      templateText: singleTextToUse,
+      templateText: rawSingleText,
       memberName: member.name || 'Member',
       phone: member.whatsapp || member.phone || '',
       groupName: targetChit.groupId || groupId || 'Chit Group',
