@@ -163,8 +163,7 @@ export default function WhatsAppPlaceholder() {
         activeChits.forEach((c) => {
           const matchedGroup = findAssociatedGroupForSubscription(c, chits);
           const baseMonthly = getEffectiveMonthlyAmount(selectedPreviewMember, c, groupPaymentSettings, matchedGroup, null, chits);
-          const qty = Number(c.quantity || 1);
-          sumChit += baseMonthly * qty;
+          sumChit += baseMonthly;
           sumPending += Number(c.pending ?? c.pendingAmount ?? 0);
           sumBalance += Number(c.balance ?? 0);
         });
@@ -187,8 +186,7 @@ export default function WhatsAppPlaceholder() {
         } : {});
         const matchedGroup = findAssociatedGroupForSubscription(targetChit, chits);
         const baseMonthly = getEffectiveMonthlyAmount(selectedPreviewMember, targetChit, groupPaymentSettings, matchedGroup, null, chits);
-        const qty = Number(targetChit.quantity || 1);
-        const singleMonthly = baseMonthly * qty;
+        const singleMonthly = baseMonthly;
         const singlePending = Number(targetChit.pending ?? targetChit.pendingAmount ?? selectedPreviewMember.pending ?? selectedPreviewMember.pendingAmount ?? 0);
         const singleBalance = Number(targetChit.balance ?? selectedPreviewMember.balance ?? 0);
         setChitAmount(String(singleMonthly));

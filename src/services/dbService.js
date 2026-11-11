@@ -121,7 +121,7 @@ export const memberService = {
                 currentMonth: cMonth > 0 ? cMonth : undefined,
                 currentChitMonth: cMonth > 0 ? cMonth : undefined,
                 totalMonths: tMonths,
-                quantity: qty,
+                quantity: 1,
                 status: c?.status || 'ACTIVE',
               };
             })
@@ -143,7 +143,7 @@ export const memberService = {
             pending: Number(rawData.pending || rawData.pendingAmount || 0),
             balance: Number(rawData.balance || 0),
             balanceAmount: Number(rawData.balanceAmount || val),
-            quantity: Number(rawData.quantity || 1),
+            quantity: 1,
             status: rawData.status || 'ACTIVE',
           }];
         }
@@ -217,7 +217,7 @@ export const memberService = {
                 balanceAmount: Number(c?.balanceAmount || val),
                 hasCustomMonthlyAmount: Boolean(c?.hasCustomMonthlyAmount),
                 customMonthlyAmount: typeof c?.customMonthlyAmount === 'number' ? c.customMonthlyAmount : undefined,
-                quantity: Number(c?.quantity || 1),
+                quantity: 1,
                 status: c?.status || 'ACTIVE',
               };
             })

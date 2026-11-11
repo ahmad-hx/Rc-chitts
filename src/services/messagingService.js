@@ -303,8 +303,7 @@ export function generatePersonalizedMessage(
     const chitMonthStr = chitMonthData.display || `${chitMonthData.currentMonth || 1}/${chitMonthData.totalMonths || 20}`;
 
     const baseMonthly = getEffectiveMonthlyAmount(member, targetChit, groupPaymentSettings, null, null, groupsToUse);
-    const quantity = Number(targetChit.quantity || 1);
-    const fullMonthlyAmount = baseMonthly * quantity;
+    const fullMonthlyAmount = baseMonthly;
 
     const resolvedChitAmt = chitAmount !== null && chitAmount !== undefined ? chitAmount : fullMonthlyAmount;
     const resolvedPending = pendingAmount !== null && pendingAmount !== undefined ? pendingAmount : Number(targetChit.pending ?? member.pending ?? 0);

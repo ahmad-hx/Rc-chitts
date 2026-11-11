@@ -405,6 +405,72 @@ const totalChinthaPayable = calculateMemberAggregatePayable(chinthaRatnam, chint
 assert.strictEqual(totalChinthaPayable, 9100, 'Total payable must be 4400 + 4700 = 9100');
 console.log('✓ Test 16 passed');
 
+// ─── 17. 1L Group I & 2L Group E Subscriptions Must NOT Both Show 9,900 ──────
+console.log('Test 17: 1L Group I & 2L Group E Subscriptions Have Distinct Correct Amounts');
+const member1L2L = {
+  id: 'mem_1l_2l',
+  name: 'Multi Member',
+  phone: '9848011223',
+  whatsapp: '9848011223',
+  classification: 'MULTIPLE',
+  chits: [
+    {
+      id: 'sub_grp_i',
+      groupId: 'I',
+      totalChitValue: 100000,
+      monthlyAmount: 4950,
+      currentChitMonth: 18,
+      totalMonths: 20,
+      pending: 0,
+      balance: 0,
+      quantity: 2, // Legacy holding quantity from merge
+      status: 'ACTIVE',
+    },
+    {
+      id: 'sub_grp_e',
+      groupId: 'E',
+      totalChitValue: 200000,
+      monthlyAmount: 9900,
+      currentChitMonth: 18,
+      totalMonths: 20,
+      pending: 0,
+      balance: 0,
+      quantity: 1,
+      status: 'ACTIVE',
+    },
+  ],
+};
+
+const settings1L2L = {
+  settingsMap: {
+    '100000_I': 4950,
+    '200000_E': 9900,
+  },
+};
+
+const groupEList = [
+  { id: 'group_I_100000', groupId: 'I', totalChitValue: 100000, monthlyPremium: 4950, currentChitMonth: 18 },
+  { id: 'group_E_200000', groupId: 'E', totalChitValue: 200000, monthlyPremium: 9900, currentChitMonth: 18 },
+];
+
+const p1 = calculateHoldingPayable(member1L2L.chits[0], member1L2L, settings1L2L, null, null, groupEList);
+const p2 = calculateHoldingPayable(member1L2L.chits[1], member1L2L, settings1L2L, null, null, groupEList);
+
+assert.strictEqual(p1, 4950, '1 Lakh Chit Group I payable MUST be 4,950 (NOT 9,900)');
+assert.strictEqual(p2, 9900, '2 Lakh Chit Group E payable MUST be 9,900');
+assert.notStrictEqual(p1, p2, 'Both subscriptions must NOT show the same amount!');
+
+const msg1L2L = formatLockedWhatsAppMessage(member1L2L, {
+  groupPaymentSettings: settings1L2L,
+  billingMonth: 'August 2026',
+  allGroupsList: groupEList,
+});
+
+assert(msg1L2L.includes('18/20 : 4,950'), 'Group I line must show 4,950');
+assert(msg1L2L.includes('18/20 : 9,900'), 'Group E line must show 9,900');
+assert(msg1L2L.includes('మొత్తం    : ₹14,850'), 'Total must be 4,950 + 9,900 = 14,850');
+console.log('✓ Test 17 passed');
+
 console.log('\n===========================================');
-console.log('ALL 16 COMPREHENSIVE TESTS PASSED 100% SUCCESS! ✓✓✓');
+console.log('ALL 17 COMPREHENSIVE TESTS PASSED 100% SUCCESS! ✓✓✓');
 console.log('===========================================\n');

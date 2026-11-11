@@ -465,7 +465,7 @@ export function isMemberSpecificMonthlyAmount(member = null, subscription = null
 
 /**
  * Calculate the total payable amount for a single holding/subscription.
- * Formula: Math.max((effectiveMonthly * quantity) + pending - balance, 0)
+ * Formula: Math.max(effectiveMonthly + pending - balance, 0)
  */
 export function calculateHoldingPayable(
   subscription,
@@ -479,11 +479,10 @@ export function calculateHoldingPayable(
   if (subscription.status && subscription.status !== 'ACTIVE') return 0;
 
   const baseMonthly = getEffectiveMonthlyAmount(member, subscription, groupPaymentSettings, chitGroup, monthlyAdjustment, allGroupsList);
-  const quantity = Number(subscription.quantity || 1);
   const pending = Number(subscription.pending ?? subscription.pendingAmount ?? 0);
   const balance = Number(subscription.balance ?? 0);
 
-  return Math.max((baseMonthly * quantity) + pending - balance, 0);
+  return Math.max(baseMonthly + pending - balance, 0);
 }
 
 /**

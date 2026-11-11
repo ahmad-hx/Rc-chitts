@@ -347,8 +347,7 @@ export function formatLockedWhatsAppMessage(
     const baseMonthly = monthlyAmount !== null && monthlyAmount !== undefined
       ? Number(monthlyAmount)
       : getEffectiveMonthlyAmount(member, targetChit, groupPaymentSettings, matchedGroup, null, allGroupsList);
-    const quantity = Number(targetChit.quantity || 1);
-    const fullMonthlyAmount = baseMonthly * quantity;
+    const fullMonthlyAmount = baseMonthly;
     const paidSoFar = getPaidAmountForChit(member, targetChit, billingMonth, paymentsList);
     const remainingMonthly = Math.max(fullMonthlyAmount - paidSoFar, 0);
 
@@ -410,10 +409,8 @@ export function formatLockedWhatsAppMessage(
 
     const matchedGroup = findAssociatedGroupForSubscription(c, allGroupsList);
     const baseMonthly = getEffectiveMonthlyAmount(member, c, groupPaymentSettings, matchedGroup, null, allGroupsList);
-    const quantity = Number(c?.quantity || 1);
     const safeMonthly = isNaN(baseMonthly) || baseMonthly < 0 ? 0 : baseMonthly;
-    const safeQty = isNaN(quantity) || quantity < 1 ? 1 : quantity;
-    const fullMonthlyAmount = safeMonthly * safeQty;
+    const fullMonthlyAmount = safeMonthly;
 
     const paidSoFar = getPaidAmountForChit(member, c, billingMonth, paymentsList);
     const safePaid = isNaN(paidSoFar) || paidSoFar < 0 ? 0 : paidSoFar;
